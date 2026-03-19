@@ -21,6 +21,8 @@ COPY prisma ./prisma
 # Instalar dependencias
 RUN npm install
 
+
+
 # Copiar el resto del proyecto
 COPY . .
 
