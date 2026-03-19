@@ -15,8 +15,8 @@ RUN if ! getent group ${GROUP_ID} > /dev/null; then groupadd -g ${GROUP_ID} appg
   && if ! id -u ${USER_ID} > /dev/null 2>&1; then useradd -u ${USER_ID} -g ${GROUP_ID} -m -s /bin/bash appuser; fi
 
 # Copiamos package files primero para aprovechar caché
-COPY package*.json ./
-COPY prisma ./prisma
+# COPY package*.json ./
+# COPY prisma ./prisma
 
 # Instalar dependencias
 RUN npm install
