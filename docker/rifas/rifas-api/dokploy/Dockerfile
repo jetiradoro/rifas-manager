@@ -24,19 +24,14 @@ RUN npm install
 # Copiar el resto del proyecto
 COPY . .
 
-# Generar prisma y compilar Nest
 RUN npx prisma generate
 RUN npm run build
 
-# Script de arranque
-COPY docker/entrypoint.sh /app/docker/entrypoint.sh
-RUN chmod +x /app/docker/entrypoint.sh
-
-# Permisos
+RUN chmod +x /app/dokploy/entrypoint.sh
 RUN chown -R ${USER_ID}:${GROUP_ID} /app
 
 USER ${USER_ID}:${GROUP_ID}
 
 EXPOSE 3000
 
-ENTRYPOINT ["/app/docker/entrypoint.sh"]
+ENTRYPOINT ["/app/dokploy/entrypoint.sh"]
