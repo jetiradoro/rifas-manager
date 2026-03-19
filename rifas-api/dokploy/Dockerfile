@@ -26,7 +26,7 @@ RUN npm install
 # Copiar el resto del proyecto
 COPY . .
 
-RUN npx prisma generate
+RUN npm run generate
 RUN npm run build
 
 RUN chmod +x /app/dokploy/entrypoint.sh
