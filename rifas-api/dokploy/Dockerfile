@@ -19,19 +19,14 @@ COPY package*.json ./
 COPY prisma ./prisma
 
 # Instalar dependencias
-RUN npm config set fetch-retries 5 \
-  && npm config set fetch-retry-mintimeout 20000 \
-  && npm config set fetch-retry-maxtimeout 120000 \
-  && npm config set registry https://registry.npmjs.org/ \
-  && npm ci
-
+# RUN npm ci
 
 
 # Copiar el resto del proyecto
 COPY . .
 
-RUN npm run generate
-RUN npm run build
+# RUN npm run generate
+# RUN npm run build
 
 RUN chmod +x /app/dokploy/entrypoint.sh
 RUN chown -R ${USER_ID}:${GROUP_ID} /app
