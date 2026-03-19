@@ -1,5 +1,7 @@
 FROM node:20-bookworm-slim
 
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
+
 ARG USER_ID=1000
 ARG GROUP_ID=1000
 
