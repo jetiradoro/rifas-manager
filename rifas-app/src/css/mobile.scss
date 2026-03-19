@@ -1,0 +1,263 @@
+// =====================================================
+// Estilos Responsive para dispositivos móviles
+// =====================================================
+
+@media (max-width: 600px) {
+  // ====================================
+  // Página de Detalle de Rifa
+  // ====================================
+
+  .rifa-detail-container {
+    .rifa-info-cards {
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 6px;
+    }
+
+    .status-filters {
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 6px !important;
+
+      .q-chip {
+        margin: 0 !important;
+        justify-content: center;
+        text-align: center;
+      }
+    }
+
+    h1.text-h5 {
+      font-size: 1.25rem;
+    }
+  }
+
+  // ====================================
+  // Grids de listados
+  // ====================================
+
+  // Grid de rifas
+  .rifas-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  // Listado de personas
+  .persons-list {
+    gap: 10px !important;
+  }
+
+  // ====================================
+  // Componentes de tickets
+  // ====================================
+
+  .ticket-grid-container {
+    .ticket-legend {
+      gap: 10px;
+      font-size: 0.75rem;
+
+      .legend-box {
+        width: 16px;
+        height: 16px;
+      }
+    }
+  }
+
+  // Grid de tickets responsive
+  .ticket-grid {
+    grid-template-columns: repeat(auto-fill, minmax(65px, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .filter-search {
+    width: 100%;
+  }
+
+  // Botonera de acciones en detalle de rifa (modo mobile: 2 por fila)
+  .ticket-actions {
+    flex-wrap: wrap;
+    gap: 8px !important;
+
+    .q-btn {
+      flex: 1 1 calc(50% - 8px);
+      min-width: 0;
+      justify-content: center;
+      text-align: center;
+
+      &:nth-child(odd) {
+        justify-content: flex-start;
+        text-align: left;
+      }
+
+      &:nth-child(even) {
+        justify-content: flex-end;
+        text-align: right;
+      }
+    }
+  }
+
+  .ticket-cell {
+    min-width: 65px !important;
+    min-height: 80px !important;
+    padding: 10px 8px !important;
+
+    .ticket-number {
+      font-size: 18px !important;
+    }
+  }
+
+  // ====================================
+  // Modales y diálogos
+  // ====================================
+
+  // Modal de venta de tickets
+  .q-dialog__inner {
+    padding: 8px !important;
+  }
+
+  // Ajustar ancho de cards en modales
+  .q-card {
+    min-width: unset !important;
+    max-width: 100% !important;
+  }
+
+  // ====================================
+  // Formularios
+  // ====================================
+
+  .q-card-section.q-gutter-md {
+    gap: 12px;
+  }
+
+  // ====================================
+  // Botones y acciones
+  // ====================================
+
+  .q-card-actions {
+    padding: 10px 12px;
+
+    .q-btn {
+      min-height: 36px;
+    }
+  }
+
+  // Botones flotantes (FAB)
+  .q-page-sticky {
+    .q-btn {
+      width: 56px !important;
+      height: 56px !important;
+    }
+  }
+
+  // ====================================
+  // Headers y navegación
+  // ====================================
+
+  .q-header {
+    .q-toolbar__title {
+      font-size: 1.1rem;
+    }
+  }
+
+  // ====================================
+  // Animación de sorteo
+  // ====================================
+
+  .draw-container {
+    padding: 12px !important;
+
+    .draw-number {
+      font-size: 2rem !important;
+    }
+
+    .prize-title {
+      font-size: 1rem !important;
+    }
+  }
+
+  // ====================================
+  // Lista de premios
+  // ====================================
+
+  .prize-list {
+    .prize-item {
+      padding: 12px !important;
+
+      .prize-order {
+        font-size: 1.2rem !important;
+      }
+
+      .prize-name {
+        font-size: 0.9rem !important;
+      }
+    }
+  }
+
+  // ====================================
+  // Avatares y badges
+  // ====================================
+
+  .q-avatar {
+    &[size='64px'] {
+      width: 48px !important;
+      height: 48px !important;
+      font-size: 1rem !important;
+    }
+
+    &[size='48px'] {
+      width: 40px !important;
+      height: 40px !important;
+      font-size: 0.9rem !important;
+    }
+  }
+
+  // ====================================
+  // Espaciados generales
+  // ====================================
+
+  .q-pa-md {
+    padding: 12px !important;
+  }
+
+  .q-mb-md {
+    margin-bottom: 12px !important;
+  }
+
+  .q-mt-md {
+    margin-bottom: 12px !important;
+  }
+
+  // ====================================
+  // Tablas y listas
+  // ====================================
+
+  .q-item {
+    padding: 10px 12px;
+
+    .q-item__label {
+      font-size: 0.9rem;
+    }
+
+    .q-item__label--caption {
+      font-size: 0.75rem;
+    }
+  }
+}
+
+// ====================================
+// Tablets (600px - 1024px)
+// ====================================
+
+@media (min-width: 601px) and (max-width: 1024px) {
+  .rifa-detail-container {
+    .rifa-info-cards {
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    }
+  }
+
+  .rifas-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .ticket-grid {
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)) !important;
+  }
+}

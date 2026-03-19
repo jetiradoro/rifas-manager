@@ -1,0 +1,100 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "mysql"
+    url      = env("DATABASE_URL")
+}
+
+model Rifa {
+    id           Int      @id @default(autoincrement())
+    name         String   @unique
+    n_tickets    Int
+    fecha        DateTime
+    n_prizes     Int
+    prize_names  Json?
+
+    tickets      Ticket[]
+    prizes       Prize[]
+
+    @@map("rifas")
+}
+
+model Person {
+    id         Int      @id @default(autoincrement())
+    name       String
+    surname    String
+    phone      String?
+    email      String?  @unique
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+
+    tickets    Ticket[]
+    prizes     Prize[]
+    user       User?
+
+    @@map("persons")
+}
+
+model User {
+    id            Int      @id @default(autoincrement())
+    email         String   @unique
+    password      String?
+    name          String
+    role          Role     @default(user)
+    googleId      String?  @unique
+    avatar        String?
+    personId      Int?     @unique
+    createdAt     DateTime @default(now())
+    updatedAt     DateTime @updatedAt
+
+    person        Person?  @relation(fields: [personId], references: [id], onDelete: SetNull)
+
+    @@map("users")
+}
+
+enum Role {
+    admin
+    user
+}
+
+enum TicketStatus {
+    available
+    reserved
+    paid
+}
+
+model Ticket {
+    id           Int          @id @default(autoincrement())
+    number       Int
+    rifaId       Int
+    personId     Int?
+    status       TicketStatus @default(available)
+    observations String?      @db.Text
+    createdAt    DateTime     @default(now())
+    updatedAt    DateTime     @updatedAt
+
+    rifa         Rifa         @relation(fields: [rifaId], references: [id], onDelete: Cascade)
+    person       Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
+    prizes       Prize[]
+
+    @@unique([rifaId, number])
+    @@map("tickets")
+}
+
+model Prize {
+    id         Int      @id @default(autoincrement())
+    rifaId     Int
+    ticketId   Int
+    personId   Int
+    prizeOrder Int
+    drawnAt    DateTime @default(now())
+
+    rifa       Rifa     @relation(fields: [rifaId], references: [id], onDelete: Cascade)
+    ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+    person     Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+    @@unique([rifaId, prizeOrder])
+    @@map("prizes")
+}

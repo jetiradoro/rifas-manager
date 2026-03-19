@@ -1,0 +1,54 @@
+services:
+  rifas-api:
+    container_name: rifas-api
+    build:
+      context: ../..
+      dockerfile: docker/rifas/rifas-api/Dockerfile
+      args:
+        USER_ID: ${MAP_UUID}
+        GROUP_ID: ${MAP_UUID}
+    user: "${MAP_UUID}:${MAP_UUID}"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      VIRTUAL_HOST: ${API_VIRTUAL_HOST}
+      NPM_CONFIG_CACHE: /tmp/.npm
+    volumes:
+      - ../../rifas-api:/app
+      - ./rifas-api/init-container.sh:/docker/init-container.sh:ro
+    command: bash /docker/init-container.sh
+    ports:
+      - "8100:80"
+    restart: unless-stopped
+    networks:
+      - docker-net
+
+  rifas-app:
+    container_name: rifas-app
+    build:
+      context: ../..
+      dockerfile: docker/rifas/rifas-app/Dockerfile
+      args:
+        USER_ID: ${MAP_UUID}
+        GROUP_ID: ${MAP_UUID}
+    user: "${MAP_UUID}:${MAP_UUID}"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      VIRTUAL_HOST: ${APP_VIRTUAL_HOST}
+      NPM_CONFIG_CACHE: /tmp/.npm
+    volumes:
+      - ../../rifas-app:/app
+      - ./rifas-app/init-container.sh:/docker/init-container.sh:ro
+    command: bash /docker/init-container.sh
+    restart: unless-stopped
+    networks:
+      - docker-net
+    depends_on:
+      - rifas-api
+
+networks:
+  docker-net:
+    external: true

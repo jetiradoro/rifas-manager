@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Node
+node_modules/
+npm-packages-offline-cache/
+
+# Dependency directories inside services
+rifas-app/node_modules/
+rifas-api/node_modules/
+docker/rifas/rifas-app/node_modules/
+docker/rifas/rifas-api/node_modules/
+
+# Builds
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+
+# Quasar/Vite
+.quasar/
+.vite/
+
+# Env files
+**/.env
+.env
+docker/rifas/.env
+docker/rifas/.env.local
+
+# Editors
+.vscode/
+*.swp
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
