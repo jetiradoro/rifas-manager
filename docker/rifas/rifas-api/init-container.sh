@@ -23,3 +23,4 @@ else
   npx prisma generate
   npm run start:dev
 fi
+
