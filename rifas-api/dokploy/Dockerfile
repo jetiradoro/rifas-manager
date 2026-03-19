@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim
+FROM node:22.14.0
 
 ENV NODE_OPTIONS=--dns-result-order=ipv4first
 
