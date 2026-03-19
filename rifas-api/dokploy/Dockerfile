@@ -16,7 +16,7 @@ RUN if ! getent group ${GROUP_ID} > /dev/null; then groupadd -g ${GROUP_ID} appg
 
 # Copiamos package files primero para aprovechar caché
 COPY package*.json ./
-# COPY prisma ./prisma
+COPY prisma ./prisma
 
 # Instalar dependencias
 RUN npm install
