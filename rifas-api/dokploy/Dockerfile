@@ -21,14 +21,14 @@ COPY package*.json ./
 COPY prisma ./prisma
 
 # Instalar dependencias
-RUN npm ci
+# RUN npm ci
 
 
 # Copiar el resto del proyecto
 COPY . .
 
-RUN npm run generate
-RUN npm run build
+# RUN npm run generate
+# RUN npm run build
 
 RUN chmod +x /app/dokploy/entrypoint.sh
 RUN chown -R ${USER_ID}:${GROUP_ID} /app
