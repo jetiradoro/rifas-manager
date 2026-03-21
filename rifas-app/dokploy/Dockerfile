@@ -29,8 +29,6 @@ RUN npm run build
 
 RUN chmod +x /app/dokploy/entrypoint.sh
 
-# Asegurar permisos correctos en /app
-RUN chown -R ${USER_ID}:${GROUP_ID} /app
 
 USER ${USER_ID}:${GROUP_ID}
 
