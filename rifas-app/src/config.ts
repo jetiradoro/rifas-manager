@@ -23,4 +23,5 @@ export const appConfig = {
         runtimeConfig.VITE_CONTACT_ADDRESS || import.meta.env.VITE_CONTACT_ADDRESS || '',
     contactPhone: runtimeConfig.VITE_CONTACT_PHONE || import.meta.env.VITE_CONTACT_PHONE || '',
     jwt_token: runtimeConfig.VITE_JWT_TOKEN || import.meta.env.VITE_JWT_TOKEN || '',
+    demo_env: runtimeConfig.VITE_DEMO_ENV || import.meta.env.VITE_DEMO_ENV || 'false',
 };

@@ -29,12 +29,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import('src/modules/auth/pages/LoginPage.vue'),
         meta: { public: true },
       },
-      {
-        path: '/register',
-        name: 'register',
-        component: () => import('src/modules/auth/pages/RegisterPage.vue'),
-        meta: { public: true },
-      },
+      // TODO: pendiente de mejorar la gestión de usuarios registrados libremente
+      // {
+      //   path: '/register',
+      //   name: 'register',
+      //   component: () => import('src/modules/auth/pages/RegisterPage.vue'),
+      //   meta: { public: true },
+      // },
     ],
   },
 
