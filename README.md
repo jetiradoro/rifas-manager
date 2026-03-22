@@ -1,3 +1,9 @@
+# 🚀 Hackathon CubePath
+
+## 👉 **Ver documentación del despliegue y arquitectura en CubePath**
+
+### [Abrir `hacckaton_cubepath.md`](wiki/hacckaton_cubepath.md)
+
 # Rifas Manager
 
 Monorepo para gestión de rifas con tres servicios dockerizados:
