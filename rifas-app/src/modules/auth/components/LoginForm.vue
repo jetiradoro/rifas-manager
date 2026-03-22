@@ -20,11 +20,11 @@
             </template>
         </q-input>
 
-
         <div class="q-mt-md">
             <q-btn type="submit" color="primary" label="Iniciar sesión" class="full-width" :loading="authStore.loading"
                 :disable="authStore.loading" />
         </div>
+        <small class="text-center block">v{{ appConfig.version }}</small>
     </q-form>
 </template>
 
@@ -33,6 +33,7 @@
         import { ref } from 'vue';
         import { useQuasar } from 'quasar';
         import { useAuthStore } from 'src/modules/auth/stores/auth-store';
+        import { appConfig } from 'src/config';
 
 
         const emit = defineEmits<{
