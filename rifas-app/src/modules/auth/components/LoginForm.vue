@@ -30,16 +30,15 @@
 
 <script setup
         lang="ts">
-        import { computed, ref } from 'vue';
+        import { ref } from 'vue';
         import { useQuasar } from 'quasar';
         import { useAuthStore } from 'src/modules/auth/stores/auth-store';
-        import { appConfig } from 'src/config';
+
 
         const emit = defineEmits<{
             loginSuccess: [];
         }>();
 
-        const demoEnv = computed(() => appConfig.demo_env === 'true');
 
         const $q = useQuasar();
         const authStore = useAuthStore();

@@ -2,13 +2,8 @@
   <q-page class="q-pa-md">
     <section class="text-subtitle1 text-weight-bold q-mb-sm">Gestión de Personas</section>
 
-    <q-input
-      v-model="searchQuery"
-      dense
-      outlined
-      placeholder="Buscar por nombre, apellido, email o teléfono..."
-      class="q-mb-md"
-    >
+    <q-input v-model="searchQuery" dense outlined placeholder="Buscar por nombre, apellido, email o teléfono..."
+      class="q-mb-md">
       <template #prepend>
         <q-icon name="search" />
       </template>
@@ -33,17 +28,12 @@
     </div>
 
     <div v-else class="persons-list">
-      <PersonItem
-        v-for="person in filteredPersons"
-        :key="person.id"
-        :person="person"
-        @edit="openForm"
-        @view-detail="viewDetail"
-      />
+      <PersonItem v-for="person in filteredPersons" :key="person.id" :person="person" @edit="openForm"
+        @view-detail="viewDetail" />
     </div>
 
     <q-page-sticky position="bottom-right" :offset="[12, 12]">
-      <q-btn round color="primary" ipadding="sm" con="add" size="lg" @click="openForm()" />
+      <q-btn round color="primary" ipadding="sm" icon="add" size="lg" @click="openForm()" />
     </q-page-sticky>
 
     <q-dialog v-model="formOpen" persistent dark>
@@ -52,61 +42,62 @@
   </q-page>
 </template>
 
-<script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
-import { usePersonsStore, type Person } from 'src/modules/persons/stores/persons-store';
-import PersonForm from 'src/modules/persons/components/PersonForm.vue';
-import PersonItem from 'src/modules/persons/components/PersonItem.vue';
+<script setup
+        lang="ts">
+        import { computed, onMounted, ref } from 'vue';
+        import { useRouter } from 'vue-router';
+        import { usePersonsStore, type Person } from 'src/modules/persons/stores/persons-store';
+        import PersonForm from 'src/modules/persons/components/PersonForm.vue';
+        import PersonItem from 'src/modules/persons/components/PersonItem.vue';
 
-const personsStore = usePersonsStore();
-const router = useRouter();
+        const personsStore = usePersonsStore();
+        const router = useRouter();
 
-const formOpen = ref(false);
-const editingPerson = ref<Person | null>(null);
-const searchQuery = ref('');
+        const formOpen = ref(false);
+        const editingPerson = ref<Person | null>(null);
+        const searchQuery = ref('');
 
-/**
- * Filtra personas en caliente según query de búsqueda.
- * Busca en nombre, apellido, email y teléfono.
- */
-const filteredPersons = computed(() => {
-  if (!searchQuery.value.trim()) {
-    return personsStore.sortedPersons;
-  }
+        /**
+         * Filtra personas en caliente según query de búsqueda.
+         * Busca en nombre, apellido, email y teléfono.
+         */
+        const filteredPersons = computed(() => {
+          if (!searchQuery.value.trim()) {
+            return personsStore.sortedPersons;
+          }
 
-  const query = searchQuery.value.toLowerCase().trim();
-  return personsStore.sortedPersons.filter((person) => {
-    return (
-      person.name.toLowerCase().includes(query) ||
-      person.surname.toLowerCase().includes(query) ||
-      (person.email?.toLowerCase().includes(query) ?? false) ||
-      (person.phone?.toLowerCase().includes(query) ?? false)
-    );
-  });
-});
+          const query = searchQuery.value.toLowerCase().trim();
+          return personsStore.sortedPersons.filter((person) => {
+            return (
+              person.name.toLowerCase().includes(query) ||
+              person.surname.toLowerCase().includes(query) ||
+              (person.email?.toLowerCase().includes(query) ?? false) ||
+              (person.phone?.toLowerCase().includes(query) ?? false)
+            );
+          });
+        });
 
-onMounted(async () => {
-  await personsStore.fetchPersons();
-});
+        onMounted(async () => {
+          await personsStore.fetchPersons();
+        });
 
-function openForm(person?: Person) {
-  editingPerson.value = person ?? null;
-  formOpen.value = true;
-}
+        function openForm(person?: Person) {
+          editingPerson.value = person ?? null;
+          formOpen.value = true;
+        }
 
-function closeForm() {
-  formOpen.value = false;
-}
+        function closeForm() {
+          formOpen.value = false;
+        }
 
-function onSaved() {
-  formOpen.value = false;
-  editingPerson.value = null;
-}
+        function onSaved() {
+          formOpen.value = false;
+          editingPerson.value = null;
+        }
 
-function viewDetail(person: Person) {
-  void router.push({ name: 'person-detail', params: { id: person.id } });
-}
+        function viewDetail(person: Person) {
+          void router.push({ name: 'person-detail', params: { id: person.id } });
+        }
 </script>
 
 <style scoped>
