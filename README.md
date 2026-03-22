@@ -2,7 +2,7 @@
 
 ## 👉 **Ver documentación del despliegue y arquitectura en CubePath**
 
-### [Abrir `hacckaton_cubepath.md`](wiki/hacckaton_cubepath.md)
+### [Abrir `hackaton_cubepath.md`](wiki/hackaton_cubepath.md)
 
 # Rifas Manager
 
