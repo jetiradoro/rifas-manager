@@ -19,10 +19,6 @@ window.__RIFAS_RUNTIME_CONFIG__ = {
 };
 EOF
 
-  if ! grep -q "runtime-config.js" /app/dist/pwa/index.html; then
-    sed -i 's#</head>#  <script src="/runtime-config.js"></script>\n</head>#' /app/dist/pwa/index.html
-  fi
-
   npm run start:prod
 else
   npm run dev

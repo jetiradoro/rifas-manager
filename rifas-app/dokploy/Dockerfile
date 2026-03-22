@@ -27,6 +27,13 @@ RUN npm ci
 COPY --chown=1000:1000 . .
 RUN npm run build
 
+RUN if ! grep -q "runtime-config.js" /app/dist/pwa/index.html; then \
+    sed -i 's#</head>#  <script src="/runtime-config.js"></script>\n</head>#' \
+      /app/dist/pwa/index.html; \
+  fi
+
+RUN chown -R ${USER_ID}:${GROUP_ID} /app/dist
+
 RUN chmod +x /app/dokploy/entrypoint.sh
 
 
