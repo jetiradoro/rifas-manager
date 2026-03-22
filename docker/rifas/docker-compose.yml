@@ -49,6 +49,26 @@ services:
     depends_on:
       - rifas-api
 
+  rifas-docs:
+    container_name: rifas-docs
+    build:
+      context: ../..
+      dockerfile: docker/rifas/rifas-docs/Dockerfile
+    env_file:
+      - .env
+    environment:
+      VIRTUAL_HOST: ${DOCS_VIRTUAL_HOST:-docs.rifas.local}
+      DOCS_UID: ${MAP_UUID:-1000}
+      DOCS_GID: ${MAP_UUID:-1000}
+    volumes:
+      - ../../docs/user:/var/www/html/user
+      - ../../docs/themes:/var/www/html/user/themes
+    restart: unless-stopped
+    networks:
+      - docker-net
+    depends_on:
+      - rifas-api
+
 networks:
   docker-net:
     external: true

@@ -18,14 +18,15 @@
 
       <q-separator />
 
-      <q-card-section class="text-center q-pt-sm">
+      <!-- TODO: pendiente de mejorar la gestión de usuarios registrados libremente -->
+      <!-- <q-card-section class="text-center q-pt-sm">
         <div class="text-body2 text-grey-7">
           ¿No tienes cuenta?
           <router-link to="/register" class="text-primary text-weight-medium">
             Regístrate
           </router-link>
         </div>
-      </q-card-section>
+      </q-card-section> -->
     </q-card>
   </q-page>
 </template>

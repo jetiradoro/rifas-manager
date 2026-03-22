@@ -1,0 +1,134 @@
+last_checked: 1774208364
+data:
+  feed:
+    -
+      id: 40
+      date: '2026-01-27 12:00'
+      message: '🔑 <b>New Licensing System!</b> Grav premium products now use our new in-house license manager. Update Admin to the latest version.'
+      link: 'https://getgrav.org/blog/new-licensing-system'
+      type: note
+      location:
+        - feed
+    -
+      id: 38
+      date: '2025-10-21 11:40'
+      message: '️🗺️ <b>AI Translate</b> Instant professional-grade translations for Grav Admin'
+      link: 'https://getgrav.org/premium/ai-translate'
+      type: info
+      location:
+        - feed
+    -
+      id: 37
+      date: '2025-10-20 11:40'
+      message: '🤖 <b>AI Pro</b> providing an Admin AI Assistant with OpenAI, Anthropic, Google Models and more.'
+      link: 'https://getgrav.org/premium/ai-pro'
+      type: info
+      location:
+        - feed
+    -
+      id: 36
+      date: '2025-08-28 11:40'
+      message: '✍️️ Edit smarter with <b>Editor Pro</b>: Modern WYSIWYM editing, live preview, and powerful content tools!'
+      link: 'https://getgrav.org/premium/editor-pro'
+      type: info
+      location:
+        - feed
+    -
+      id: 35
+      date: '2025-07-30 11:40'
+      message: '🕙️ Power up Grav with <b>Revisions Pro</b>, Track, Compare, Revert content and config!'
+      link: 'https://getgrav.org/premium/revisions-pro'
+      type: info
+      location:
+        - feed
+    -
+      id: 34
+      date: '2025-07-29 11:40'
+      message: '🗳️ Transform your Grav site into an interactive experience with <b>Polls.</b>'
+      link: 'https://getgrav.org/premium/polls'
+      type: info
+      location:
+        - feed
+    -
+      id: 33
+      date: '2025-07-28 11:40'
+      message: '💬 Build a community with <b>Comments Pro</b> for Grav, now available.'
+      link: 'https://getgrav.org/premium/comments-pro'
+      type: info
+      location:
+        - feed
+    -
+      id: 31
+      date: '2024-02-13 11:40'
+      message: '🗜️Optimize your Grav site with <b>Image Optimize</b>, now available.'
+      link: 'https://getgrav.org/premium/image-optimize'
+      type: info
+      location:
+        - feed
+    -
+      id: 12
+      date: '2024-01-17 15:15'
+      message: '☕️ Support Grav for the price of a <span class=''fa fa-coffee''></span> a month!'
+      link: 'https://opencollective.com/grav'
+      type: note
+      location:
+        - feed
+    -
+      id: 23
+      date: '2024-01-05 15:50'
+      message: '🙊 Grav community chat has moved from Slack to <span class=''fa fa-comments''></span> Discord'
+      link: 'https://chat.getgrav.org'
+      type: info
+      location:
+        - feed
+    -
+      id: 2
+      date: '2024-01-05 02:23'
+      message: '🎖 Don''t forget to star Grav on GitHub!'
+      link: 'https://github.com/getgrav/grav'
+      type: info
+      location:
+        - feed
+  top:
+    -
+      id: 39
+      date: '2026-01-27 12:00'
+      message: "<style>\n.top-notifications-container .alert.notice.position-top {\n    background: none;\n    border: none;\n    padding: 0;\n    margin: 0 0 1rem 0;\n    position: relative;\n}\n.top-notifications-container .alert.notice.position-top:before {\n    display: none;\n}\n.top-notifications-container .alert.notice.position-top > .hide-notification {\n    top: 50%;\n    transform: translateY(-50%);\n    right: 12px;\n    color: rgba(255,255,255,0.7);\n    text-shadow: none;\n    z-index: 1;\n}\n.top-notifications-container .alert.notice.position-top > .hide-notification:hover {\n    color: #fff;\n}\n.licensing-banner {\n    display: flex;\n    align-items: center;\n    justify-content: center;\n    gap: 15px;\n    background: linear-gradient(135deg, #323640 0%, #3d424e 100%);\n    color: #fff;\n    padding: 14px 40px 14px 20px;\n    border-radius: 4px;\n    font-size: 14px;\n    line-height: 1.4;\n    flex-wrap: wrap;\n}\n.licensing-banner .lb-icon {\n    font-size: 20px;\n}\n.licensing-banner .lb-text {\n    flex: 1;\n    min-width: 200px;\n    color: rgba(255,255,255,0.9);\n}\n.licensing-banner .lb-text b {\n    color: #fff;\n}\n.licensing-banner .lb-action {\n    display: inline-block;\n    background: transparent;\n    color: #fff;\n    padding: 5px 14px;\n    border: 1px solid rgba(255,255,255,0.5);\n    border-radius: 3px;\n    text-decoration: none;\n    font-weight: bold;\n    font-size: 13px;\n    white-space: nowrap;\n}\n.licensing-banner .lb-action:hover {\n    background: rgba(255,255,255,0.15);\n    border-color: #fff;\n}\n</style>\n<div class=\"licensing-banner\">\n    <span class=\"lb-icon\">🔑</span>\n    <span class=\"lb-text\"><b>New Licensing &amp; Purchase System!</b> Grav premium products now use our new in-house license manager. Please update the <b>Admin plugin</b> to the latest version for purchase links to work correctly.</span>\n    <a class=\"lb-action\" href=\"https://getgrav.org/blog/new-licensing-system\" target=\"_blank\">Learn More</a>\n</div>\n"
+      type: notice
+      location:
+        - top
+      dependencies:
+        admin: '< 2.0.0'
+  dashboard:
+    -
+      id: 27
+      date: '2020-02-21 00:01'
+      message: "<style>\n.dashboard-notifications-container, .dashboard-notifications-container .alert, .themes-notifications-container, .themes-notifications-container .alert, .plugins-notifications-container, .plugins-notifications-container .alert {\n    margin: 0;\n    padding: 0;\n}\n.dashboard-notifications-container .alert.position-dashboard:before,\n.themes-notifications-container .alert.position-themes:before,\n.plugins-notifications-container .alert.position-plugins:before {\n    display: none;\n}\n.dashboard-notifications-container .alert .hide-notification,\n.themes-notifications-container .alert .hide-notification,\n.plugins-notifications-container .alert .hide-notification {\n    top: 50%;\n    transform: translateY(-50%);\n    right: 12px;\n    color: rgba(255,255,255,0.7);\n    text-shadow: none;\n}\n.dashboard-notifications-container .alert .hide-notification:hover,\n.themes-notifications-container .alert .hide-notification:hover,\n.plugins-notifications-container .alert .hide-notification:hover {\n    color: #fff;\n}\n.gp-banner {\n    display: flex;\n    align-items: center;\n    gap: 20px;\n    background: linear-gradient(135deg, #322048 0%, #4a2068 50%, #2d1b4e 100%);\n    color: #fff;\n    padding: 12px 40px 12px 20px;\n    border-radius: 4px;\n    font-size: 14px;\n    line-height: 1.4;\n    flex-wrap: wrap;\n    margin-bottom: 1rem;\n}\n.gp-banner .gp-image {\n    flex-shrink: 0;\n}\n.gp-banner .gp-image img {\n    height: 28px;\n    display: block;\n}\n.gp-banner .gp-text {\n    flex: 1;\n    min-width: 200px;\n    color: rgba(255,255,255,0.9);\n}\n.gp-banner .gp-text b {\n    color: #fff;\n}\n.gp-banner .gp-learn-more {\n    display: inline-block;\n    background: transparent;\n    color: #fff;\n    padding: 5px 14px;\n    border: 1px solid rgba(255,255,255,0.5);\n    border-radius: 3px;\n    text-decoration: none;\n    font-weight: bold;\n    font-size: 13px;\n    white-space: nowrap;\n}\n.gp-banner .gp-learn-more:hover {\n    background: rgba(255,255,255,0.15);\n    border-color: #fff;\n}\n</style>\n<div class=\"gp-banner\">\n    <div class=\"gp-image\">\n        <img src=\"https://getgrav.org/user/themes/planetoid/images/grav-premium-logo-white.svg\" />\n    </div>\n    <span class=\"gp-text\">Turbo-charge your Grav site with <b>premium plugins &amp; themes</b> from the creators of Grav</span>\n    <a class=\"gp-learn-more\" href=\"https://getgrav.org/premium\" target=\"_blank\">Learn more</a>\n</div>\n"
+      type: notice
+      link: 'https://getgrav.org/premium'
+      location:
+        - dashboard
+        - plugins
+        - themes
+  plugins:
+    -
+      id: 27
+      date: '2020-02-21 00:01'
+      message: "<style>\n.dashboard-notifications-container, .dashboard-notifications-container .alert, .themes-notifications-container, .themes-notifications-container .alert, .plugins-notifications-container, .plugins-notifications-container .alert {\n    margin: 0;\n    padding: 0;\n}\n.dashboard-notifications-container .alert.position-dashboard:before,\n.themes-notifications-container .alert.position-themes:before,\n.plugins-notifications-container .alert.position-plugins:before {\n    display: none;\n}\n.dashboard-notifications-container .alert .hide-notification,\n.themes-notifications-container .alert .hide-notification,\n.plugins-notifications-container .alert .hide-notification {\n    top: 50%;\n    transform: translateY(-50%);\n    right: 12px;\n    color: rgba(255,255,255,0.7);\n    text-shadow: none;\n}\n.dashboard-notifications-container .alert .hide-notification:hover,\n.themes-notifications-container .alert .hide-notification:hover,\n.plugins-notifications-container .alert .hide-notification:hover {\n    color: #fff;\n}\n.gp-banner {\n    display: flex;\n    align-items: center;\n    gap: 20px;\n    background: linear-gradient(135deg, #322048 0%, #4a2068 50%, #2d1b4e 100%);\n    color: #fff;\n    padding: 12px 40px 12px 20px;\n    border-radius: 4px;\n    font-size: 14px;\n    line-height: 1.4;\n    flex-wrap: wrap;\n    margin-bottom: 1rem;\n}\n.gp-banner .gp-image {\n    flex-shrink: 0;\n}\n.gp-banner .gp-image img {\n    height: 28px;\n    display: block;\n}\n.gp-banner .gp-text {\n    flex: 1;\n    min-width: 200px;\n    color: rgba(255,255,255,0.9);\n}\n.gp-banner .gp-text b {\n    color: #fff;\n}\n.gp-banner .gp-learn-more {\n    display: inline-block;\n    background: transparent;\n    color: #fff;\n    padding: 5px 14px;\n    border: 1px solid rgba(255,255,255,0.5);\n    border-radius: 3px;\n    text-decoration: none;\n    font-weight: bold;\n    font-size: 13px;\n    white-space: nowrap;\n}\n.gp-banner .gp-learn-more:hover {\n    background: rgba(255,255,255,0.15);\n    border-color: #fff;\n}\n</style>\n<div class=\"gp-banner\">\n    <div class=\"gp-image\">\n        <img src=\"https://getgrav.org/user/themes/planetoid/images/grav-premium-logo-white.svg\" />\n    </div>\n    <span class=\"gp-text\">Turbo-charge your Grav site with <b>premium plugins &amp; themes</b> from the creators of Grav</span>\n    <a class=\"gp-learn-more\" href=\"https://getgrav.org/premium\" target=\"_blank\">Learn more</a>\n</div>\n"
+      type: notice
+      link: 'https://getgrav.org/premium'
+      location:
+        - dashboard
+        - plugins
+        - themes
+  themes:
+    -
+      id: 27
+      date: '2020-02-21 00:01'
+      message: "<style>\n.dashboard-notifications-container, .dashboard-notifications-container .alert, .themes-notifications-container, .themes-notifications-container .alert, .plugins-notifications-container, .plugins-notifications-container .alert {\n    margin: 0;\n    padding: 0;\n}\n.dashboard-notifications-container .alert.position-dashboard:before,\n.themes-notifications-container .alert.position-themes:before,\n.plugins-notifications-container .alert.position-plugins:before {\n    display: none;\n}\n.dashboard-notifications-container .alert .hide-notification,\n.themes-notifications-container .alert .hide-notification,\n.plugins-notifications-container .alert .hide-notification {\n    top: 50%;\n    transform: translateY(-50%);\n    right: 12px;\n    color: rgba(255,255,255,0.7);\n    text-shadow: none;\n}\n.dashboard-notifications-container .alert .hide-notification:hover,\n.themes-notifications-container .alert .hide-notification:hover,\n.plugins-notifications-container .alert .hide-notification:hover {\n    color: #fff;\n}\n.gp-banner {\n    display: flex;\n    align-items: center;\n    gap: 20px;\n    background: linear-gradient(135deg, #322048 0%, #4a2068 50%, #2d1b4e 100%);\n    color: #fff;\n    padding: 12px 40px 12px 20px;\n    border-radius: 4px;\n    font-size: 14px;\n    line-height: 1.4;\n    flex-wrap: wrap;\n    margin-bottom: 1rem;\n}\n.gp-banner .gp-image {\n    flex-shrink: 0;\n}\n.gp-banner .gp-image img {\n    height: 28px;\n    display: block;\n}\n.gp-banner .gp-text {\n    flex: 1;\n    min-width: 200px;\n    color: rgba(255,255,255,0.9);\n}\n.gp-banner .gp-text b {\n    color: #fff;\n}\n.gp-banner .gp-learn-more {\n    display: inline-block;\n    background: transparent;\n    color: #fff;\n    padding: 5px 14px;\n    border: 1px solid rgba(255,255,255,0.5);\n    border-radius: 3px;\n    text-decoration: none;\n    font-weight: bold;\n    font-size: 13px;\n    white-space: nowrap;\n}\n.gp-banner .gp-learn-more:hover {\n    background: rgba(255,255,255,0.15);\n    border-color: #fff;\n}\n</style>\n<div class=\"gp-banner\">\n    <div class=\"gp-image\">\n        <img src=\"https://getgrav.org/user/themes/planetoid/images/grav-premium-logo-white.svg\" />\n    </div>\n    <span class=\"gp-text\">Turbo-charge your Grav site with <b>premium plugins &amp; themes</b> from the creators of Grav</span>\n    <a class=\"gp-learn-more\" href=\"https://getgrav.org/premium\" target=\"_blank\">Learn more</a>\n</div>\n"
+      type: notice
+      link: 'https://getgrav.org/premium'
+      location:
+        - dashboard
+        - plugins
+        - themes

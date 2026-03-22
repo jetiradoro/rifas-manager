@@ -1,0 +1,9 @@
+version: '1.2'
+timestamp: 1774208364
+count: 1
+index:
+  admin:
+    storage_key: admin
+    storage_timestamp: 1774208364
+    key: admin
+    email: jesus@jetiradoro.com
