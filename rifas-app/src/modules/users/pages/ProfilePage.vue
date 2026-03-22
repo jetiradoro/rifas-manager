@@ -3,6 +3,10 @@
     <div class="row justify-center">
       <div class="col-12 col-md-10 col-lg-8">
         <div class="text-h4 text-weight-bold q-mb-md">Mi Perfil</div>
+        <q-banner v-if="isDemoEnv" class="bg-warning text-dark" rounded>
+
+          Estás en modo demo. Las ediciones no se guardarán.
+        </q-banner>
 
         <q-card flat bordered class="q-mb-md">
           <q-card-section>
@@ -33,13 +37,16 @@
   </q-page>
 </template>
 
-<script setup lang="ts">
-import { computed } from 'vue';
-import { useAuthStore } from 'src/modules/auth/stores/auth-store';
-import ProfileForm from '../components/ProfileForm.vue';
-import PasswordForm from '../components/PasswordForm.vue';
+<script setup
+        lang="ts">
+        import { computed } from 'vue';
+        import { useAuthStore } from 'src/modules/auth/stores/auth-store';
+        import ProfileForm from '../components/ProfileForm.vue';
+        import PasswordForm from '../components/PasswordForm.vue';
+        import { appConfig } from 'src/config';
 
-const authStore = useAuthStore();
+        const authStore = useAuthStore();
 
-const isGoogleUser = computed(() => !!authStore.user?.googleId);
+        const isGoogleUser = computed(() => !!authStore.user?.googleId);
+        const isDemoEnv = computed(() => appConfig.demo_env === 'true');
 </script>
