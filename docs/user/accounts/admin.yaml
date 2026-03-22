@@ -1,0 +1,11 @@
+state: enabled
+email: jesus@jetiradoro.com
+fullname: Jesus.T
+title: Admin
+access:
+  admin:
+    login: true
+    super: true
+  site:
+    login: true
+hashed_password: $2y$10$fRcoj3amtsA0igrWEixrqujR0hdnCU8OtAPM9gjqb6tsye1G5kL0y
