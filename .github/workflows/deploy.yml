@@ -25,6 +25,7 @@ jobs:
             set -e
             cd "${{ secrets.APP_DIR }}"
             git checkout .
-            git pull          
+            git fetch origin
+            git reset --hard origin/master
             docker restart rifas-api
             docker restart rifas-app
