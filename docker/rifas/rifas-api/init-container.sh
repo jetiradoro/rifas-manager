@@ -13,6 +13,8 @@ if [ "${NODE_ENV}" = "production" ]; then
   # Aplica migraciones ya creadas al entorno objetivo
   npx prisma migrate deploy
   npx prisma generate
+  # Crea el admin inicial si no existe (idempotente)
+  npx ts-node prisma/seed-admin.ts
   npm run build
   npm run start:prod
 else
@@ -21,6 +23,8 @@ else
   npx prisma migrate dev
   # Genera el cliente de Prisma con los permisos del usuario 1000 dentro del contenedor
   npx prisma generate
+  # Crea el admin inicial si no existe (idempotente)
+  npx ts-node prisma/seed-admin.ts
   npm run start:dev
 fi
 
