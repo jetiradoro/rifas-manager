@@ -41,3 +41,16 @@ docker/rifas/.env.local
 .DS_Store
 Thumbs.db
 
+
+# Grav (docs): ficheros generados en local/runtime
+docs/cache/
+docs/logs/
+docs/backup/
+docs/tmp/
+docs/images/
+docs/assets/
+docs/user/data/*
+!docs/user/data/.gitkeep
+!docs/user/data/.htaccess
+docs/user/config/versions.yaml
+docs/user/plugins/**/.env
