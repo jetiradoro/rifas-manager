@@ -39,11 +39,11 @@
 <script setup
         lang="ts">
         import { ref } from 'vue';
-        // import { useAuthStore } from 'src/modules/auth/stores/auth-store';
+        import { useAuthStore } from 'src/modules/auth/stores/auth-store';
         import { useQuasar } from 'quasar';
-        // import { appConfig } from 'src/config';
+        import { appConfig } from 'src/config';
 
-        // const authStore = useAuthStore();
+        const authStore = useAuthStore();
         const $q = useQuasar();
 
         const loading = ref(false);
@@ -66,35 +66,37 @@
           confirmPassword.value = '';
         };
 
-        const onSubmit = () => {
+        const isDemo = appConfig.demo_env === 'true';
 
-          $q.notify({
-            type: 'negative',
-            message: 'Modo demo: cambio de contraseña deshabilitado',
-            position: 'top',
-          });
-          return;
-          // TODO DESHABILITADO PARA LA DEMO
+        const onSubmit = async () => {
+          if (isDemo) {
+            $q.notify({
+              type: 'negative',
+              message: 'Modo demo: cambio de contraseña deshabilitado',
+              position: 'top',
+            });
+            return;
+          }
 
-          // loading.value = true;
-          // try {
-          //   await authStore.updatePassword(form.value);
+          loading.value = true;
+          try {
+            await authStore.updatePassword(form.value);
 
-          //   $q.notify({
-          //     type: 'positive',
-          //     message: 'Contraseña actualizada correctamente',
-          //     position: 'top',
-          //   });
+            $q.notify({
+              type: 'positive',
+              message: 'Contraseña actualizada correctamente',
+              position: 'top',
+            });
 
-          //   resetForm();
-          // } catch (error: unknown) {
-          //   $q.notify({
-          //     type: 'negative',
-          //     message: error instanceof Error ? error.message : 'Error al actualizar la contraseña',
-          //     position: 'top',
-          //   });
-          // } finally {
-          //   loading.value = false;
-          // }
+            resetForm();
+          } catch (error: unknown) {
+            $q.notify({
+              type: 'negative',
+              message: error instanceof Error ? error.message : 'Error al actualizar la contraseña',
+              position: 'top',
+            });
+          } finally {
+            loading.value = false;
+          }
         };
 </script>

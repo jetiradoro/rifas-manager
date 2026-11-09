@@ -3,8 +3,7 @@
     <div class="row justify-center">
       <div class="col-12 col-md-10 col-lg-8">
         <div class="text-h4 text-weight-bold q-mb-md">Mi Perfil</div>
-        <q-banner class="bg-warning text-dark" rounded>
-
+        <q-banner v-if="isDemo" class="bg-warning text-dark" rounded>
           Estás en modo demo. Las ediciones no se guardarán.
         </q-banner>
 
@@ -40,11 +39,13 @@
 <script setup
         lang="ts">
         import { computed } from 'vue';
+        import { appConfig } from 'src/config';
         import { useAuthStore } from 'src/modules/auth/stores/auth-store';
         import ProfileForm from '../components/ProfileForm.vue';
         import PasswordForm from '../components/PasswordForm.vue';
 
         const authStore = useAuthStore();
 
+        const isDemo = appConfig.demo_env === 'true';
         const isGoogleUser = computed(() => !!authStore.user?.googleId);
 </script>

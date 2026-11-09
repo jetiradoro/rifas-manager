@@ -27,6 +27,7 @@
         import { ref, computed, onMounted } from 'vue';
         import { useAuthStore } from 'src/modules/auth/stores/auth-store';
         import { useQuasar } from 'quasar';
+        import { appConfig } from 'src/config';
 
         const authStore = useAuthStore();
         const $q = useQuasar();
@@ -60,46 +61,47 @@
           form.value = { ...originalData.value };
         };
 
-        const onSubmit = () => {
+        const isDemo = appConfig.demo_env === 'true';
 
+        const onSubmit = async () => {
+          if (isDemo) {
+            $q.notify({
+              type: 'negative',
+              message: 'Modo demo: edición de perfil deshabilitada',
+              position: 'top',
+            });
+            return;
+          }
 
-          $q.notify({
-            type: 'negative',
-            message: 'Modo demo: edición de perfil deshabilitada',
-            position: 'top',
-          });
-          return;
-          // TODO DESHABILITADO PARA LA DEMO
+          loading.value = true;
+          try {
+            const updateData: { name?: string; email?: string } = {};
 
-          // loading.value = true;
-          // try {
-          //   const updateData: { name?: string; email?: string } = {};
+            if (form.value.name !== originalData.value.name) {
+              updateData.name = form.value.name;
+            }
+            if (form.value.email !== originalData.value.email) {
+              updateData.email = form.value.email;
+            }
 
-          //   if (form.value.name !== originalData.value.name) {
-          //     updateData.name = form.value.name;
-          //   }
-          //   if (form.value.email !== originalData.value.email) {
-          //     updateData.email = form.value.email;
-          //   }
+            await authStore.updateProfile(updateData);
 
-          //   await authStore.updateProfile(updateData);
+            originalData.value = { ...form.value };
 
-          //   originalData.value = { ...form.value };
-
-          //   $q.notify({
-          //     type: 'positive',
-          //     message: 'Perfil actualizado correctamente',
-          //     position: 'top',
-          //   });
-          // } catch (error: unknown) {
-          //   $q.notify({
-          //     type: 'negative',
-          //     message: error instanceof Error ? error.message : 'Error al actualizar el perfil',
-          //     position: 'top',
-          //   });
-          // } finally {
-          //   loading.value = false;
-          // }
+            $q.notify({
+              type: 'positive',
+              message: 'Perfil actualizado correctamente',
+              position: 'top',
+            });
+          } catch (error: unknown) {
+            $q.notify({
+              type: 'negative',
+              message: error instanceof Error ? error.message : 'Error al actualizar el perfil',
+              position: 'top',
+            });
+          } finally {
+            loading.value = false;
+          }
         };
 
         onMounted(() => {
