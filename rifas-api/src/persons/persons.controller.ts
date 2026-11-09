@@ -1,3 +1,5 @@
+import { Role } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
 import {
   Body,
   Controller,
@@ -25,6 +27,7 @@ export class PersonsController {
    * @param body Datos de creación
    * @returns Persona creada
    */
+  @Roles(Role.admin)
   @Post()
   create(@Body() body: CreatePersonDto) {
     try {
@@ -86,6 +89,7 @@ export class PersonsController {
    * @param body Datos a modificar
    * @returns Persona actualizada
    */
+  @Roles(Role.admin)
   @Patch(':id')
   async update(@Param('id') id: string, @Body() body: UpdatePersonDto) {
     try {
@@ -108,6 +112,7 @@ export class PersonsController {
    * @param id Identificador de la persona
    * @returns Persona eliminada
    */
+  @Roles(Role.admin)
   @Delete(':id')
   remove(@Param('id') id: string) {
     try {

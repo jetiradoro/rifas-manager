@@ -1,3 +1,5 @@
+import { Role } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
 import {
   Body,
   Controller,
@@ -44,6 +46,7 @@ export class PrizesController {
    * @param rifaId Identificador de la rifa
    * @returns Premios generados
    */
+  @Roles(Role.admin)
   @Post('rifa/:rifaId/draw')
   draw(@Param('rifaId') rifaId: string) {
     try {
@@ -66,6 +69,7 @@ export class PrizesController {
    * @param prizeOrder Orden del premio a sortear
    * @returns Premio generado
    */
+  @Roles(Role.admin)
   @Post('rifa/:rifaId/draw/:prizeOrder')
   drawSinglePrize(
     @Param('rifaId') rifaId: string,
@@ -94,6 +98,7 @@ export class PrizesController {
    * @param dto Datos del premio manual (prizeOrder y ticketNumber)
    * @returns Premio creado
    */
+  @Roles(Role.admin)
   @Post('rifa/:rifaId/manual')
   createManual(@Param('rifaId') rifaId: string, @Body() dto: ManualPrizeDto) {
     try {
@@ -115,6 +120,7 @@ export class PrizesController {
    * @param id Identificador del premio
    * @returns Premio eliminado
    */
+  @Roles(Role.admin)
   @Delete(':id')
   remove(@Param('id') id: string) {
     try {
@@ -136,6 +142,7 @@ export class PrizesController {
    * @param rifaId Identificador de la rifa
    * @returns Cantidad de premios eliminados
    */
+  @Roles(Role.admin)
   @Delete('rifa/:rifaId')
   removeAll(@Param('rifaId') rifaId: string) {
     try {

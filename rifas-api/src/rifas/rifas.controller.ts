@@ -1,3 +1,5 @@
+import { Role } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
 import {
   Body,
   Controller,
@@ -30,6 +32,7 @@ export class RifasController {
    * @param body Datos de creación
    * @returns Rifa creada
    */
+  @Roles(Role.admin)
   @Post()
   create(@Body() body: CreateRifaDto) {
     try {
@@ -99,6 +102,7 @@ export class RifasController {
    * @param body Datos a modificar
    * @returns Rifa actualizada
    */
+  @Roles(Role.admin)
   @Patch(':id')
   async update(@Param('id') id: string, @Body() body: UpdateRifaDto) {
     try {
@@ -121,6 +125,7 @@ export class RifasController {
    * @param id Identificador de la rifa
    * @returns Rifa eliminada
    */
+  @Roles(Role.admin)
   @Delete(':id')
   remove(@Param('id') id: string) {
     try {
@@ -161,6 +166,7 @@ export class RifasController {
    * @param body Datos de asignación
    * @returns Tickets asignados
    */
+  @Roles(Role.admin)
   @Post(':rifaId/tickets/assign')
   assignTickets(
     @Param('rifaId') rifaId: string,

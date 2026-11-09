@@ -1,4 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Role } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 const { fakerES: faker } = require('@faker-js/faker');
 
 const prisma = new PrismaClient();
@@ -54,10 +55,32 @@ async function seedPersons() {
 }
 
 /**
+ * Crea (o actualiza) el usuario administrador inicial a partir de variables de entorno.
+ * Requiere ADMIN_EMAIL y ADMIN_PASSWORD; si faltan, se omite.
+ * @returns Promesa sin valor.
+ */
+async function seedAdmin(): Promise<void> {
+    const email = process.env.ADMIN_EMAIL;
+    const password = process.env.ADMIN_PASSWORD;
+    if (!email || !password) {
+        console.log('⚠️ ADMIN_EMAIL/ADMIN_PASSWORD no definidos: se omite el admin.');
+        return;
+    }
+    const hashed = await bcrypt.hash(password, 10);
+    await prisma.user.upsert({
+        where: { email },
+        update: { role: Role.admin, password: hashed },
+        create: { email, password: hashed, name: 'Admin', role: Role.admin },
+    });
+    console.log(`✅ Admin listo: ${email}`);
+}
+
+/**
  * Punto de entrada del seeder.
  * @returns Promesa sin valor.
  */
 async function main(): Promise<void> {
+    await seedAdmin();
     const result = await seedPersons();
     console.log(`✅ Seeder completado. Registros creados: ${result.count}`);
 }

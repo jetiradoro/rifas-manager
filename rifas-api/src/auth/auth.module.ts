@@ -18,7 +18,7 @@ import { GoogleStrategy } from './strategies/google.strategy';
         JwtModule.registerAsync({
             imports: [ConfigModule],
             useFactory: async (configService: ConfigService): Promise<JwtModuleOptions> => {
-                const secret = configService.get<string>('JWT_SECRET') || 'default-secret-key';
+                const secret = configService.getOrThrow<string>('JWT_SECRET');
                 const expiresIn = configService.get<string>('JWT_EXPIRES_IN') || '1h';
 
                 return {

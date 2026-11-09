@@ -11,8 +11,9 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { Roles } from './decorators/roles.decorator';
+import { Role } from '@prisma/client';
 import { Public } from './decorators/public.decorator';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
@@ -21,7 +22,6 @@ import type { Response } from 'express';
  * Controlador de autenticación.
  */
 @Controller('auth')
-@Public()
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
@@ -29,10 +29,11 @@ export class AuthController {
   ) {}
 
   /**
-   * Registro de nuevo usuario.
+   * Registro de nuevo usuario (solo administradores).
    * @param registerDto Datos de registro
    * @returns Token JWT y datos del usuario
    */
+  @Roles(Role.admin)
   @Post('register')
   register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
@@ -43,6 +44,7 @@ export class AuthController {
    * @param loginDto Credenciales
    * @returns Token JWT y datos del usuario
    */
+  @Public()
   @Post('login')
   login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
@@ -51,6 +53,7 @@ export class AuthController {
   /**
    * Inicia el flujo de autenticación con Google.
    */
+  @Public()
   @Get('google')
   @UseGuards(GoogleAuthGuard)
   async googleAuth() {
@@ -62,6 +65,7 @@ export class AuthController {
    * @param req Request con datos de usuario de Google
    * @param res Response para redirección
    */
+  @Public()
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
   async googleAuthRedirect(@Req() req: any, @Res() res: Response) {
@@ -81,7 +85,6 @@ export class AuthController {
    * @returns Datos del usuario actual
    */
   @Get('me')
-  @UseGuards(JwtAuthGuard)
   getProfile(@CurrentUser() user: any) {
     return user;
   }

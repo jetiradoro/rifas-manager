@@ -13,7 +13,8 @@ import { TicketsModule } from './tickets/tickets.module';
 import { PrizesModule } from './prizes/prizes.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
-import { ApiTokenGuard } from './guards/api-token.guard';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
 
 /**
  * Módulo raíz de la API y punto de entrada para configuración global.
@@ -37,10 +38,8 @@ import { ApiTokenGuard } from './guards/api-token.guard';
   controllers: [AppController],
   providers: [
     AppService,
-    // {
-    //   provide: APP_GUARD,
-    //   useClass: ApiTokenGuard,
-    // },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
 export class AppModule implements NestModule {

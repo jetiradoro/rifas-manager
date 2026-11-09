@@ -1,8 +1,7 @@
-import { Controller, Get, Patch, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Body } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdatePasswordDto } from './dto/update-password.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { User } from '@prisma/client';
 
@@ -10,7 +9,6 @@ import type { User } from '@prisma/client';
  * Controlador para que los usuarios gestionen su propio perfil.
  */
 @Controller('profile')
-@UseGuards(JwtAuthGuard)
 export class ProfileController {
   constructor(private readonly usersService: UsersService) {}
 

@@ -7,12 +7,10 @@ import {
     Param,
     Delete,
     ParseIntPipe,
-    UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
@@ -22,7 +20,6 @@ import { Role } from '@prisma/client';
  * Solo accesible por administradores.
  */
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.admin)
 export class UsersController {
     constructor(private readonly usersService: UsersService) {}
