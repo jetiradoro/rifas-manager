@@ -1,0 +1,23 @@
+# Defense-in-depth backup for the `^(user)/...` rules in the site root .htaccess.
+#
+# mod_alias only, never mod_rewrite. An .htaccess that turns RewriteEngine on
+# replaces the root's rewrite rules for its folder and everything beneath it, so
+# a rewrite ruleset here would have to restate the root's and route missing files
+# back to index.php itself, and every host quirk in that path would break the
+# whole user/ tree (getgrav/grav#4309, getgrav/grav-plugin-admin2#179). With no
+# RewriteEngine here, the root rules keep covering user/ exactly as they always
+# have. mod_alias sits outside the rewrite pipeline and its rules merge into
+# subdirectories instead of being replaced, so a plugin or theme that ships its
+# own RewriteEngine cannot switch these off (getgrav/grav#4236). It is
+# FileInfo-class like mod_rewrite, so it needs nothing more from AllowOverride
+# than the root .htaccess already does.
+#
+# Deliberately unanchored. These rules only run for requests that resolve into
+# this folder, which is what scopes them, and matching the tail rather than a
+# leading /user/ keeps them correct for a Grav installed in a subdirectory.
+# Keep the extension list in sync with the `^(user)/(.*)\.(...)` rule in the
+# site root .htaccess.
+<IfModule mod_alias.c>
+    RedirectMatch 403 (?i)\.(txt|md|json|yaml|yml|php|php2|php3|php4|php5|phar|phtml|pl|py|cgi|twig|sh|bat)$
+    RedirectMatch 403 (?i)(^|/)\.
+</IfModule>

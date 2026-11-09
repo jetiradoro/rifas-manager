@@ -1,0 +1,2727 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Grav\Plugin\Api\Controllers;
+
+use Grav\Common\Data\Blueprint;
+use Grav\Common\User\Authentication;
+use Grav\Common\User\DataUser\User as DataUser;
+use Grav\Common\User\Interfaces\UserCollectionInterface;
+use Grav\Common\User\Interfaces\UserInterface;
+use Grav\Common\Utils;
+use Grav\Framework\Collection\ArrayCollection;
+use Grav\Framework\Flex\FlexDirectory;
+use Grav\Framework\Flex\Interfaces\FlexCollectionInterface;
+use Grav\Plugin\Api\Auth\ApiKeyManager;
+use Grav\Plugin\Api\Auth\JwtAuthenticator;
+use Grav\Plugin\Api\Exceptions\ApiException;
+use Grav\Plugin\Api\Exceptions\ConflictException;
+use Grav\Plugin\Api\Exceptions\ForbiddenException;
+use Grav\Plugin\Api\Exceptions\NotFoundException;
+use Grav\Plugin\Api\Exceptions\TooManyRequestsException;
+use Grav\Plugin\Api\Exceptions\ValidationException;
+use Grav\Plugin\Api\FlexBackend;
+use Grav\Plugin\Api\PermissionResolver;
+use Grav\Plugin\Api\Response\ApiResponse;
+use Grav\Plugin\Api\Serializers\UserSerializer;
+use Grav\Plugin\Api\Services\PasswordPolicyService;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use RocketTheme\Toolbox\Event\Event;
+
+class UsersController extends AbstractApiController
+{
+    use FlexBackend;
+
+    /** 8 MB cap — a profile avatar shouldn't be anywhere near this. */
+    private const AVATAR_MAX_SIZE = 8_388_608;
+
+    /**
+     * Client-side renderers a plugin column may name. The server only ever
+     * declares *which* formatter renders a value; the rendering itself is the
+     * client's job. No renderer function or HTML crosses the wire, so a plugin
+     * can't smuggle markup or behaviour through a column. Unknown values fall
+     * back to 'text'.
+     */
+    private const COLUMN_FORMATTERS = ['text', 'link', 'date', 'datetime', 'boolean', 'number', 'badge'];
+
+    /** Hard caps so a misbehaving plugin can't bloat a list response. */
+    private const COLUMN_MAX_FIELDS = 32;
+    private const COLUMN_VALUE_MAX_LEN = 2048;
+
+    /** Hard cap on plugin-declared row actions per user row. */
+    private const ROW_ACTIONS_MAX = 24;
+
+    /** Cap on the toast message a row-action handler may return. */
+    private const ROW_ACTION_MESSAGE_MAX_LEN = 512;
+
+    /**
+     * Account fields create()/update() apply explicitly (each with its own
+     * privilege gate) or that are internally managed. The custom-field sweep
+     * skips these so it can't bypass a gate or clobber server-managed state;
+     * every other field the account blueprint declares is fair game so a
+     * site's own account fields persist (admin2#138).
+     */
+    private const RESERVED_ACCOUNT_FIELDS = [
+        // Applied explicitly, with permission gating, in create()/update().
+        'email', 'fullname', 'title', 'language', 'content_editor',
+        'state', 'access', 'groups',
+        // Two-factor state only changes through the /2fa endpoints, which
+        // check a code; a plain PATCH must never switch it on or off.
+        'twofa_enabled', 'twofa_secret',
+        // Passkeys only change through the /passkeys endpoints (Login's
+        // Passkeys service). Writing them here would let anyone who can edit
+        // an account plant a passkey of their own on it.
+        'passkeys', 'webauthn_id',
+        // Credentials / identity — never mass-assigned through the sweep.
+        'password', 'current_password', 'hashed_password', 'username',
+        // Server-managed bookkeeping.
+        'authenticated', 'authorized', 'created', 'modified', 'api_tokens_valid_after',
+    ];
+
+    /**
+     * Blueprint field types the custom-field sweep never persists: layout /
+     * display containers, and inputs with dedicated handling (file avatars,
+     * 2FA secrets, the permissions matrix).
+     */
+    private const NON_DATA_FIELD_TYPES = [
+        'section', 'spacer', 'conditional', 'fieldset', 'tab', 'tabs',
+        'columns', 'column', 'userinfo', 'button', 'file', '2fa_secret',
+        'permissions', 'frontmatter', 'key',
+    ];
+
+    private ?UserSerializer $serializer = null;
+
+    /**
+     * Custom account field names, resolved once per request. Every account
+     * shares the same blueprint, so the list is worked out on the first
+     * serialize and reused for the rest of a listing.
+     *
+     * @var string[]|null
+     */
+    private ?array $customAccountFields = null;
+
+    public function index(ServerRequestInterface $request): ResponseInterface
+    {
+        // Without api.users.read a caller can still see *their own* row —
+        // we auto-filter the listing to self rather than 403 the request.
+        // Anything beyond that requires api.users.read.
+        //
+        // Because this branches rather than rejecting, requirePermission() never
+        // runs and the API-key scope cap has to be applied by hand. Reading the
+        // account ACL alone let a key scoped to something unrelated (say
+        // api.pages.read) minted on an account holding api.users.read return the
+        // full account listing — usernames, emails, groups, state and 2FA flags
+        // (GHSA-p57v-xhv3-mf2w class). Both routes to "yes" are capped.
+        $currentUser = $this->getUser($request);
+        $canSeeAll = $this->isSuperWithinScope($request)
+            || $this->hasPermissionWithinScope($request, 'api.users.read');
+
+        if (!$canSeeAll) {
+            return $this->indexSelfOnly($request, $currentUser);
+        }
+
+        $directory = $this->getFlexDirectory('user-accounts');
+        if ($directory) {
+            return $this->indexViaFlex($request, $directory);
+        }
+        return $this->indexViaAccounts($request);
+    }
+
+    /**
+     * GET /users/filters — the tab definitions for the Users-list nav row.
+     *
+     * Restores a capability admin-classic had: plugins can add tabs to the
+     * Users page (e.g. "Active", "Licensed") that narrow the listing. A tab is
+     * declared via the `onApiUserListFilters` event; selecting it adds
+     * `?filter=<id>` to GET /users, which fires `onApiUserListFilter` to narrow
+     * the collection before pagination.
+     *
+     * Tab format (mirrors the sidebar item contract):
+     *   [
+     *     'id'        => 'active',          // selected via ?filter=active; 'all' is reserved
+     *     'plugin'    => 'my-plugin',       // owning plugin slug
+     *     'label'     => 'Active',          // display name (raw text, not an i18n key)
+     *     'icon'      => 'fa-bolt',         // optional FA icon class
+     *     'priority'  => 10,                // optional sort order (higher = earlier)
+     *     'badge'     => null,              // optional static badge text/count
+     *     'badgeEndpoint' => '/my/count',   // optional — API path returning { count: N }
+     *     'authorize' => 'api.users.read',  // optional — string or array for any-of
+     *   ]
+     *
+     * A plugin may also set two page-level policies on the event itself (not on
+     * an individual tab):
+     *   $event['defaultFilter'] = 'active';  // tab the client lands on with no ?filter
+     *   $event['showAll']       = false;     // suppress the built-in "All Users" tab
+     *
+     * The built-in "All Users" tab (id `all`) leads the row and is the default
+     * landing view unless a plugin overrides these, and selecting it sends no
+     * `filter` param.
+     *
+     * Response shape:
+     *   { "tabs": [ ... ], "defaultFilter": "active", "showAll": true }
+     */
+    public function filters(ServerRequestInterface $request): ResponseInterface
+    {
+        // Tabs only mean something to a caller who can list users; a self-only
+        // caller has nothing to filter.
+        $this->requirePermission($request, 'api.users.read');
+
+        $user = $this->getUser($request);
+        $event = $this->fireEvent('onApiUserListFilters', [
+            'filters' => [],
+            'defaultFilter' => null,
+            'showAll' => true,
+            'user' => $user,
+        ]);
+
+        return ApiResponse::create($this->assembleFilterTabs($event, $user, $request));
+    }
+
+    /**
+     * GET /users/columns — plugin-declared extra columns for the Users list.
+     *
+     * The presentation half of the Users extension contract (getgrav/
+     * grav-plugin-admin2#111). A plugin declares columns via the
+     * `onApiUserListColumns` event; Admin2 owns the table, and the per-user
+     * values ride along inside each user's `extra` map on GET /users (populated
+     * by `onApiUserListColumnData`, scoped to the current page — never a
+     * parallel all-users fetch).
+     *
+     * Column format:
+     *   [
+     *     'id'        => 'my-plugin-valid-till', // required, unique; client key
+     *     'plugin'    => 'my-plugin',            // owning plugin slug
+     *     'label'     => 'Valid until',          // display name (raw text)
+     *     'field'     => 'subscription.valid_till', // key into each user's `extra`
+     *     'formatter' => 'datetime',             // one of COLUMN_FORMATTERS; else 'text'
+     *     'labelField' => 'my-plugin.link_label', // optional for formatter=link; key for visible link text
+     *     'sortable'  => false,                  // client-side, current page only
+     *     'priority'  => 50,                     // optional sort order (higher = earlier)
+     *     'authorize' => 'api.users.read',       // optional — string or array for any-of
+     *   ]
+     *
+     * Deliberately narrow: scalar data only, a fixed formatter whitelist, no
+     * raw HTML or renderer functions. That keeps plugin columns from becoming
+     * the kind of open-ended surface that let classic-admin plugins break on
+     * upgrade.
+     *
+     * Response shape: { "columns": [ ... ] }
+     */
+    public function columns(ServerRequestInterface $request): ResponseInterface
+    {
+        // Columns only mean something to a caller who can list users.
+        $this->requirePermission($request, 'api.users.read');
+
+        $user = $this->getUser($request);
+        $event = $this->fireEvent('onApiUserListColumns', [
+            'columns' => [],
+            'user' => $user,
+        ]);
+
+        return ApiResponse::create(['columns' => $this->assembleColumns($event, $user, $request)]);
+    }
+
+    /**
+     * Validate and normalize plugin-declared columns: drop malformed entries and
+     * columns the caller isn't authorized for, whitelist the formatter, sanitize
+     * the field key, then order by descending priority. Mirrors
+     * assembleFilterTabs() — the `authorize` field is a server-side annotation
+     * and is stripped before the column reaches the client.
+     *
+     * @param Event $event The onApiUserListColumns event after plugins ran
+     * @return array<int, array<string, mixed>>
+     */
+    private function assembleColumns(Event $event, UserInterface $user, ServerRequestInterface $request): array
+    {
+
+        $columns = [];
+        $seen = [];
+        foreach ((array) ($event['columns'] ?? []) as $column) {
+            if (!is_array($column) || !isset($column['id']) || !is_string($column['id']) || $column['id'] === '') {
+                continue;
+            }
+            if (isset($seen[$column['id']])) {
+                continue; // first declaration of an id wins
+            }
+            if (!$this->userPassesAuthorize($user, $column['authorize'] ?? null, $request)) {
+                continue;
+            }
+
+            // The field is the key looked up in each user's `extra` map. Keep it
+            // to a safe identifier charset — no traversal or odd keys.
+            $field = isset($column['field']) && is_string($column['field'])
+                ? preg_replace('/[^A-Za-z0-9_.\-]/', '', $column['field'])
+                : '';
+            if ($field === '') {
+                continue;
+            }
+
+            $formatter = isset($column['formatter']) && is_string($column['formatter'])
+                && in_array($column['formatter'], self::COLUMN_FORMATTERS, true)
+                    ? $column['formatter']
+                    : 'text';
+
+            $labelField = isset($column['labelField']) && is_string($column['labelField'])
+                ? preg_replace('/[^A-Za-z0-9_.\-]/', '', $column['labelField'])
+                : '';
+
+            $seen[$column['id']] = true;
+            $column['field'] = $field;
+            $column['formatter'] = $formatter;
+            $column['sortable'] = (bool) ($column['sortable'] ?? false);
+            if ($formatter === 'link' && $labelField !== '') {
+                $column['labelField'] = $labelField;
+            } else {
+                unset($column['labelField']);
+            }
+            // Strip the authorize field — server-side annotation, not client data.
+            unset($column['authorize']);
+            $columns[] = $column;
+        }
+
+        usort($columns, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
+
+        return $columns;
+    }
+
+    /**
+     * GET /users/row-actions — plugin-declared per-user action buttons for the
+     * Users list (getgrav/grav-plugin-admin2#115).
+     *
+     * The execution half of the Users extension contract: a plugin declares
+     * actions via the `onApiUserListRowActions` event; Admin2 renders them in
+     * each user row's native Actions cell (next to edit/delete) and invokes the
+     * chosen one over POST /users/{username}/row-action, which fires
+     * `onApiUserListRowAction` server-side with the target username. This
+     * replaces the impersonate-style DOM injection that patched the rendered
+     * table client-side.
+     *
+     * Action format (mirrors the columns / filters contract):
+     *   [
+     *     'id'        => 'impersonate-user',   // required, unique; client + exec key
+     *     'plugin'    => 'impersonate',        // owning plugin slug
+     *     'label'     => 'Impersonate',        // display name (raw text, not a key)
+     *     'icon'      => 'fa-user-secret',     // optional FA icon class
+     *     'action'    => 'start',              // optional verb passed back to the handler
+     *     'priority'  => 80,                   // optional sort order (higher = earlier)
+     *     'confirm'   => 'Impersonate this user?', // optional client confirm prompt
+     *     'authorize' => ['admin.impersonate', 'admin.super'], // string or array (any-of)
+     *   ]
+     *
+     * Like columns, this is deliberately narrow: no raw HTML or renderer
+     * functions cross the wire, only a formatter-free descriptor the client
+     * turns into a button. `authorize` gates which buttons render but is NOT a
+     * security boundary — the execution endpoint re-authorizes independently.
+     *
+     * Response shape: { "actions": [ ... ] }
+     */
+    public function rowActions(ServerRequestInterface $request): ResponseInterface
+    {
+        // Row actions only mean something to a caller who can list users.
+        $this->requirePermission($request, 'api.users.read');
+
+        $user = $this->getUser($request);
+        $event = $this->fireEvent('onApiUserListRowActions', [
+            'actions' => [],
+            'user' => $user,
+        ]);
+
+        return ApiResponse::create(['actions' => $this->assembleRowActions($event, $user, $request)]);
+    }
+
+    /**
+     * Validate and normalize plugin-declared row actions: drop malformed
+     * entries and actions the caller isn't authorized for, coerce the display
+     * fields to safe scalars, then order by descending priority. Mirrors
+     * assembleColumns() — `authorize` is a server-side annotation stripped
+     * before the action reaches the client.
+     *
+     * @param Event $event The onApiUserListRowActions event after plugins ran
+     * @return array<int, array<string, mixed>>
+     */
+    private function assembleRowActions(Event $event, UserInterface $user, ServerRequestInterface $request): array
+    {
+
+        $actions = [];
+        $seen = [];
+        foreach ((array) ($event['actions'] ?? []) as $action) {
+            if (count($actions) >= self::ROW_ACTIONS_MAX) {
+                break;
+            }
+            if (!is_array($action) || !isset($action['id']) || !is_string($action['id']) || $action['id'] === '') {
+                continue;
+            }
+            if (isset($seen[$action['id']])) {
+                continue; // first declaration of an id wins
+            }
+            if (!$this->userPassesAuthorize($user, $action['authorize'] ?? null, $request)) {
+                continue;
+            }
+
+            $seen[$action['id']] = true;
+            // Keep only known descriptor keys as safe scalars — no HTML, no
+            // renderer functions, nothing the client would eval.
+            $clean = [
+                'id'     => $action['id'],
+                'plugin' => isset($action['plugin']) && is_string($action['plugin']) ? $action['plugin'] : '',
+                'label'  => isset($action['label']) && is_string($action['label']) ? $action['label'] : $action['id'],
+            ];
+            if (isset($action['icon']) && is_string($action['icon'])) {
+                $clean['icon'] = $action['icon'];
+            }
+            if (isset($action['action']) && is_string($action['action'])) {
+                $clean['action'] = $action['action'];
+            }
+            if (isset($action['confirm']) && is_string($action['confirm']) && $action['confirm'] !== '') {
+                $clean['confirm'] = $action['confirm'];
+            }
+            $clean['priority'] = (int) ($action['priority'] ?? 0);
+            $actions[] = $clean;
+        }
+
+        usort($actions, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
+
+        return $actions;
+    }
+
+    /**
+     * POST /users/{username}/row-action — execute a plugin-declared row action
+     * against one user (getgrav/grav-plugin-admin2#115).
+     *
+     * Body: { "id": "<action-id>" } — the id of a declared row action.
+     *
+     * Security model (declaration-time `authorize` is UX, not a boundary):
+     *   1. The caller must be able to list users (api.users.read).
+     *   2. We re-run the declaration event and re-check the action's own
+     *      `authorize` against the current user server-side, so a client can't
+     *      invoke a button it was never authorized to see.
+     *   3. The controller-wide floor applies here exactly as it does to every
+     *      other per-user endpoint: a non-super caller may not act on a
+     *      super-admin target, whatever the handler intends to do with it.
+     *   4. On top of that floor the plugin handler MUST re-check its own
+     *      per-target rules — this endpoint can't know them. The checks are
+     *      independent.
+     *
+     * The handler returns a result via `$event['result']`; we sanitize it to a
+     * fixed { status, message, url } shape. Any `url` is validated as a
+     * same-origin/relative redirect before it reaches the client, so an
+     * impersonate-style "return a URL and go there" flow can't become an
+     * open-redirect. A throwing handler degrades to an error toast rather than
+     * breaking the Users list.
+     */
+    public function rowAction(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.users.read');
+
+        $currentUser = $this->getUser($request);
+        $username = $this->getRouteParam($request, 'username');
+        // Resolve against a real, existing account — the same identity space the
+        // list itself serves. A non-existent target is a 404, never handed to a
+        // plugin handler.
+        $target = $this->loadUserOrFail($username);
+
+        // The same target guard every other per-user endpoint carries. This
+        // endpoint was added after the GHSA-p97c-g455-q447 sweep and missed it,
+        // which let an api.users.write manager drive a plugin action against the
+        // instance owner: the Login plugin's unlock action clears every rate limit
+        // standing against an account. (GHSA-985r-mpj8-5rqw)
+        $this->requireNotSuperTarget($request, $target);
+
+        $body = $this->getRequestBody($request);
+        $id = isset($body['id']) && is_string($body['id']) ? trim($body['id']) : '';
+        if ($id === '') {
+            throw new ValidationException('Row action id is required.');
+        }
+
+        // Re-assemble the declared actions and locate the requested one. Because
+        // assembleRowActions() applies the same `authorize` filter as the
+        // declaration endpoint, an action the caller isn't authorized for is
+        // simply absent here — indistinguishable from an unknown id (404), so we
+        // never leak which actions exist to an unauthorized caller.
+        $event = $this->fireEvent('onApiUserListRowActions', [
+            'actions' => [],
+            'user' => $currentUser,
+        ]);
+        $declared = null;
+        foreach ($this->assembleRowActions($event, $currentUser, $request) as $candidate) {
+            if (($candidate['id'] ?? null) === $id) {
+                $declared = $candidate;
+                break;
+            }
+        }
+        if ($declared === null) {
+            throw new NotFoundException("Row action '{$id}' is not available.");
+        }
+
+        try {
+            $result = $this->fireEvent('onApiUserListRowAction', [
+                'id'       => $id,
+                'plugin'   => $declared['plugin'] ?? '',
+                'action'   => $declared['action'] ?? '',
+                'username' => $target->username,
+                'user'     => $currentUser,
+                'result'   => null,
+            ]);
+        } catch (ForbiddenException $e) {
+            // A handler's own per-target permission check is a real 403 — let it
+            // propagate so the client shows the right status.
+            throw $e;
+        } catch (\Throwable $e) {
+            // Isolation: any other handler fault degrades to an error toast
+            // instead of 500-ing the Users page.
+            $this->grav['log']->warning('[api] onApiUserListRowAction failed: ' . $e->getMessage());
+            return ApiResponse::create([
+                'status'  => 'error',
+                'message' => 'The action could not be completed.',
+            ]);
+        }
+
+        return ApiResponse::create(
+            $this->sanitizeActionResult($result['result'] ?? null, $request),
+        );
+    }
+
+    /**
+     * Normalize a row-action handler's result into the fixed client contract:
+     * { status: 'success'|'error', message: string, url?: string }.
+     *
+     * `url` survives only when it's a safe same-origin redirect (a root-relative
+     * path, or an absolute URL whose host matches the current request). Anything
+     * else — a `javascript:`/`data:` scheme, a protocol-relative `//evil` URL,
+     * or a cross-origin absolute URL — is dropped rather than navigated to, so
+     * the impersonate-style redirect flow can't be turned into an open redirect.
+     *
+     * @param mixed $result
+     * @return array<string, string>
+     */
+    private function sanitizeActionResult($result, ServerRequestInterface $request): array
+    {
+        $result = is_array($result) ? $result : [];
+
+        $status = ($result['status'] ?? 'success') === 'error' ? 'error' : 'success';
+
+        $out = ['status' => $status];
+
+        if (isset($result['message']) && is_string($result['message']) && $result['message'] !== '') {
+            $message = $result['message'];
+            if (strlen($message) > self::ROW_ACTION_MESSAGE_MAX_LEN) {
+                $message = substr($message, 0, self::ROW_ACTION_MESSAGE_MAX_LEN);
+            }
+            $out['message'] = $message;
+        }
+
+        if (isset($result['url']) && is_string($result['url'])) {
+            $safe = $this->safeRedirectUrl($result['url'], $request);
+            if ($safe !== null) {
+                $out['url'] = $safe;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Validate a handler-supplied redirect URL, returning it only when it's a
+     * safe same-origin target. Accepts a root-relative path (`/...`, but not the
+     * protocol-relative `//host` form) or an absolute http(s) URL whose host and
+     * port match the current request. Returns null for everything else.
+     */
+    private function safeRedirectUrl(string $url, ServerRequestInterface $request): ?string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return null;
+        }
+
+        // Root-relative path — safe, but reject the protocol-relative `//host`
+        // form which browsers treat as an absolute cross-origin URL.
+        if ($url[0] === '/') {
+            return isset($url[1]) && $url[1] === '/' ? null : $url;
+        }
+
+        $parts = parse_url($url);
+        if ($parts === false || !isset($parts['scheme'], $parts['host'])) {
+            return null; // no scheme/host, or a scheme-relative/opaque value like javascript:
+        }
+        $scheme = strtolower($parts['scheme']);
+        if ($scheme !== 'http' && $scheme !== 'https') {
+            return null;
+        }
+
+        $reqUri = $request->getUri();
+        $sameHost = strtolower($parts['host']) === strtolower($reqUri->getHost());
+        $samePort = ($parts['port'] ?? null) === $reqUri->getPort();
+
+        return ($sameHost && $samePort) ? $url : null;
+    }
+
+    /**
+     * Merge plugin-owned scalar column data into an already-serialized,
+     * already-paginated page of users. Fired ONCE for the whole page (the
+     * `onApiUserListColumnData` event receives only the usernames already
+     * selected after search / filter / permission / pagination), so there is no
+     * N+1 and no incentive to load metadata for every account.
+     *
+     * Hard isolation: a throwing or misbehaving subscriber can never 500 or
+     * stall the listing — failures degrade to missing column values, logged as
+     * a warning. Plugin values are scalar-only and capped.
+     *
+     * @param array<int, array<string, mixed>> $data Serialized users for this page
+     * @return array<int, array<string, mixed>>
+     */
+    private function applyColumnData(array $data, UserInterface $currentUser): array
+    {
+        if ($data === []) {
+            return $data;
+        }
+
+        $usernames = array_values(array_filter(array_column($data, 'username'), 'is_string'));
+        if ($usernames === []) {
+            return $data;
+        }
+
+        try {
+            $event = $this->fireEvent('onApiUserListColumnData', [
+                'usernames' => $usernames,
+                'data' => [], // plugin fills: username => [ field => scalar ]
+                'user' => $currentUser,
+            ]);
+
+            $map = $event['data'] ?? null;
+            if (!is_array($map) || $map === []) {
+                return $data;
+            }
+
+            foreach ($data as &$row) {
+                $extra = $map[$row['username']] ?? null;
+                if (is_array($extra)) {
+                    $clean = $this->sanitizeColumnValues($extra);
+                    if ($clean !== []) {
+                        $row['extra'] = $clean;
+                    }
+                }
+            }
+            unset($row);
+        } catch (\Throwable $e) {
+            // Isolation: a plugin fault must not break the users list.
+            $this->grav['log']->warning('[api] onApiUserListColumnData failed: ' . $e->getMessage());
+        }
+
+        return $data;
+    }
+
+    /**
+     * Enforce the column-data contract on one user's plugin values: scalars (or
+     * null) only — arrays, objects and resources are rejected so a plugin can't
+     * leak blobs or nested structures — with a safe key charset and per-value
+     * and per-user size caps.
+     *
+     * @param array<mixed, mixed> $extra
+     * @return array<string, string|int|float|bool|null>
+     */
+    private function sanitizeColumnValues(array $extra): array
+    {
+        $clean = [];
+        foreach ($extra as $key => $value) {
+            if (count($clean) >= self::COLUMN_MAX_FIELDS) {
+                break;
+            }
+            if (!is_string($key)) {
+                continue;
+            }
+            $key = preg_replace('/[^A-Za-z0-9_.\-]/', '', $key);
+            if ($key === '') {
+                continue;
+            }
+            if ($value !== null && !is_scalar($value)) {
+                continue; // scalar-only: drop arrays/objects/resources
+            }
+            if (is_string($value) && strlen($value) > self::COLUMN_VALUE_MAX_LEN) {
+                $value = substr($value, 0, self::COLUMN_VALUE_MAX_LEN);
+            }
+            $clean[$key] = $value;
+        }
+
+        return $clean;
+    }
+
+    /**
+     * Merge plugin-contributed Users tabs with the built-in "All Users" tab,
+     * dropping malformed entries and tabs the caller isn't authorized for, then
+     * ordering by descending priority. The `all` id is reserved so a plugin
+     * can't shadow it. Returns the tab row alongside the resolved landing-view
+     * policy (defaultFilter / showAll) for the client.
+     *
+     * @param Event $event The onApiUserListFilters event after plugins ran
+     * @return array{tabs: array<int, array<string, mixed>>, defaultFilter: string, showAll: bool}
+     */
+    private function assembleFilterTabs(Event $event, UserInterface $user, ServerRequestInterface $request): array
+    {
+
+        $tabs = [];
+        foreach ((array) ($event['filters'] ?? []) as $tab) {
+            if (!is_array($tab) || !isset($tab['id']) || !is_string($tab['id']) || $tab['id'] === '') {
+                continue;
+            }
+            if ($tab['id'] === 'all') {
+                continue; // reserved for the built-in tab
+            }
+            if (!$this->userPassesAuthorize($user, $tab['authorize'] ?? null, $request)) {
+                continue;
+            }
+            // Strip the authorize field — it's a server-side annotation, not client data.
+            unset($tab['authorize']);
+            $tabs[] = $tab;
+        }
+
+        usort($tabs, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
+
+        // A plugin can suppress the built-in "All Users" tab when showing every
+        // account isn't a sensible (or safe) landing view — but only once it has
+        // contributed at least one authorized tab of its own, so the row can
+        // never end up empty.
+        $showAll = ($event['showAll'] ?? true) !== false;
+        if ($showAll || $tabs === []) {
+            array_unshift($tabs, [
+                'id' => 'all',
+                'plugin' => 'api',
+                'label' => 'All Users',
+            ]);
+        }
+
+        // Resolve the landing tab. Honour a plugin's defaultFilter only when it
+        // maps to a tab the caller can actually see; otherwise fall back to the
+        // first tab in the row (which is "all" whenever it's present).
+        $ids = array_column($tabs, 'id');
+        $requested = $event['defaultFilter'] ?? null;
+        $defaultFilter = (is_string($requested) && in_array($requested, $ids, true))
+            ? $requested
+            : ($ids[0] ?? 'all');
+
+        return [
+            'tabs' => $tabs,
+            'defaultFilter' => $defaultFilter,
+            'showAll' => in_array('all', $ids, true),
+        ];
+    }
+
+    /**
+     * Single-row "listing" for callers without api.users.read. Matches the
+     * paginated envelope of the full listing so the client doesn't need a
+     * special-case branch.
+     */
+    private function indexSelfOnly(ServerRequestInterface $request, UserInterface $currentUser): ResponseInterface
+    {
+        $pagination = $this->getPagination($request);
+        $data = [$this->serializeUser($currentUser)];
+
+        return ApiResponse::paginated(
+            data: $data,
+            total: 1,
+            page: $pagination['page'],
+            perPage: $pagination['per_page'],
+            baseUrl: $this->getApiBaseUrl() . '/users',
+            query: $request->getQueryParams(),
+        );
+    }
+
+    /**
+     * List users using the Flex-Objects backend (indexed, searchable).
+     */
+    private function indexViaFlex(ServerRequestInterface $request, FlexDirectory $directory): ResponseInterface
+    {
+        $pagination = $this->getPagination($request);
+        $query = $request->getQueryParams();
+        $search = $query['search'] ?? null;
+        $filters = $this->getListFilters($request);
+
+        // Grav's Flex FileStorage indexes every file in user/accounts/ without
+        // filtering by extension — any stray file left there by another plugin
+        // (e.g. revisions-pro's `name.yaml.<timestamp>.rev` snapshots) surfaces
+        // as a phantom user. Constrain to keys that look like actual usernames
+        // before the collection is built so downstream search/sort/pagination
+        // operate on real accounts only.
+        //
+        // Usernames may legitimately contain periods (DataUser::isValidUsername
+        // allows them, and so does POST /users), so we can't simply reject dots
+        // — that hid accounts like `bill.bailey`. Instead accept anything that
+        // is a valid username but drop keys that embed a stored-file extension
+        // (`.yaml`/`.json`), which is the tell-tale of a revision/backup stray.
+        $index = $directory->getIndex();
+        $validKeys = array_values(array_filter(
+            $index->getKeys(),
+            static fn($k) => is_string($k)
+                && DataUser::isValidUsername($k)
+                && !preg_match('/\.(ya?ml|json)(\.|$)/i', $k),
+        ));
+        $collection = $directory->getCollection($validKeys);
+
+        // Apply search (searches username, email, fullname per blueprint config)
+        if ($search && $search !== '') {
+            $collection = $collection->search($search);
+        }
+
+        // Sort by username by default
+        $collection = $collection->sort(['username' => 'asc']);
+
+        // Plugin-contributed Users-tab filter (e.g. an "Active" or "Licensed"
+        // tab from onApiUserListFilters). Fired AFTER search/sort but BEFORE
+        // permission/group filtering and pagination, so a tab can only *narrow*
+        // the collection — core still applies the caller's access scope and
+        // paginates the result, meaning a plugin tab can never widen visibility
+        // or break the response envelope. The plugin owning $filter assigns the
+        // narrowed collection back to the event; anything else is ignored.
+        if ($filters['filter'] !== '') {
+            $event = $this->fireEvent('onApiUserListFilter', [
+                'filter' => $filters['filter'],
+                'collection' => $collection,
+                'query' => $query,
+                'user' => $this->getUser($request),
+            ]);
+            $narrowed = $event['collection'] ?? null;
+            if ($narrowed instanceof FlexCollectionInterface) {
+                $collection = $narrowed;
+            }
+        }
+
+        if ($filters['access'] === '' && $filters['group'] === '') {
+            // No permission/group filter — keep the lazy, indexed fast path that
+            // only materializes the requested page.
+            $total = $collection->count();
+            $slice = $collection->slice($pagination['offset'], $pagination['limit']);
+
+            $data = [];
+            foreach ($slice as $flexUser) {
+                if ($flexUser instanceof UserInterface) {
+                    $data[] = $this->serializeUser($flexUser);
+                }
+            }
+        } else {
+            // Permission/group filtering can't be expressed as an indexed query
+            // (it depends on effective access, including group inheritance and
+            // the superuser fallback), so materialize the ordered users and
+            // filter in PHP before paginating. Search above already narrowed
+            // the set.
+            $users = [];
+            foreach ($collection as $flexUser) {
+                if ($flexUser instanceof UserInterface && $this->userMatchesFilters($flexUser, $filters)) {
+                    $users[] = $flexUser;
+                }
+            }
+
+            $total = count($users);
+            $data = [];
+            foreach (array_slice($users, $pagination['offset'], $pagination['limit']) as $flexUser) {
+                $data[] = $this->serializeUser($flexUser);
+            }
+        }
+
+        // Let plugins attach their declared column values to this page of
+        // users (getgrav/grav-plugin-admin2#111). Scoped to the served page,
+        // applied after pagination — the indexed fast path above is untouched.
+        $data = $this->applyColumnData($data, $this->getUser($request));
+
+        return ApiResponse::paginated(
+            data: $data,
+            total: $total,
+            page: $pagination['page'],
+            perPage: $pagination['per_page'],
+            baseUrl: $this->getApiBaseUrl() . '/users',
+            query: $request->getQueryParams(),
+        );
+    }
+
+    /**
+     * List users using filesystem scan (fallback).
+     */
+    private function indexViaAccounts(ServerRequestInterface $request): ResponseInterface
+    {
+        $pagination = $this->getPagination($request);
+        $query = $request->getQueryParams();
+        $search = isset($query['search']) ? trim((string) $query['search']) : '';
+        $filters = $this->getListFilters($request);
+
+        /** @var array<string, UserInterface> $matched */
+        $matched = [];
+        foreach ($this->getAllUsernames() as $username) {
+            $user = $this->grav['accounts']->load($username);
+            if (!$user->exists()) {
+                continue;
+            }
+            if ($search !== '' && !$this->userMatchesSearch($user, $search)) {
+                continue;
+            }
+            $matched[(string) $user->username] = $user;
+        }
+
+        // Plugin Users-tab filter, at the same point as indexViaFlex() (after
+        // search, before permission/group filtering and pagination) and with
+        // the same payload. Without it a plugin tab showed every account here.
+        if ($filters['filter'] !== '') {
+            $matched = $this->applyPluginListFilter($request, $filters['filter'], $matched);
+        }
+
+        $allUsers = [];
+        foreach ($matched as $user) {
+            if (!$this->userMatchesFilters($user, $filters)) {
+                continue;
+            }
+            $allUsers[] = $this->serializeUser($user);
+        }
+
+        $total = count($allUsers);
+        $paged = array_slice($allUsers, $pagination['offset'], $pagination['limit']);
+
+        // Column data is resolved for the served page only — never $allUsers —
+        // so a plugin isn't pushed into loading metadata for every account.
+        $paged = $this->applyColumnData($paged, $this->getUser($request));
+
+        return ApiResponse::paginated(
+            data: $paged,
+            total: $total,
+            page: $pagination['page'],
+            perPage: $pagination['per_page'],
+            baseUrl: $this->getApiBaseUrl() . '/users',
+            query: $request->getQueryParams(),
+        );
+    }
+
+    /**
+     * Fire `onApiUserListFilter` for the filesystem account store.
+     *
+     * The event carries the same keys as on Flex (`filter`, `collection`,
+     * `query`, `user`), but `collection` is a Grav ArrayCollection of
+     * UserInterface keyed by username, since there is no Flex collection to
+     * hand over. It supports filter(), matching() and iteration; a plugin that
+     * calls Flex-only methods should check for FlexCollectionInterface first.
+     *
+     * The plugin may assign back any iterable of users. Only accounts that were
+     * already in the list are kept, so a tab can narrow the listing but never
+     * add accounts to it.
+     *
+     * @param array<string, UserInterface> $users
+     * @return array<string, UserInterface>
+     */
+    private function applyPluginListFilter(ServerRequestInterface $request, string $filter, array $users): array
+    {
+        $event = $this->fireEvent('onApiUserListFilter', [
+            'filter' => $filter,
+            'collection' => new ArrayCollection($users),
+            'query' => $request->getQueryParams(),
+            'user' => $this->getUser($request),
+        ]);
+
+        $narrowed = $event['collection'] ?? null;
+        if (!is_iterable($narrowed)) {
+            return $users;
+        }
+
+        $keep = [];
+        foreach ($narrowed as $user) {
+            if ($user instanceof UserInterface) {
+                $keep[(string) $user->username] = true;
+            }
+        }
+
+        // Filter the original list rather than trusting the returned one, so
+        // the username sort order is kept too.
+        return array_intersect_key($users, $keep);
+    }
+
+    public function show(ServerRequestInterface $request): ResponseInterface
+    {
+        $username = $this->getRouteParam($request, 'username');
+        // Self-access mirrors update(): a user can fetch their own record
+        // with just api.access. Otherwise api.users.read is required to see
+        // someone else's account.
+        $currentUser = $this->getUser($request);
+        if ($currentUser->username !== $username) {
+            $this->requirePermission($request, 'api.users.read');
+        } else {
+            $this->requirePermission($request, 'api.access');
+        }
+
+        $user = $this->loadUserOrFail($username);
+
+        $data = $this->serializeUser($user);
+
+        // ETag is computed from the user data only — system capability flags
+        // like twofa_global_enabled are not part of the resource state and
+        // shouldn't cause spurious 409s on PATCH when the admin flips the
+        // global setting between fetch and save.
+        $etag = $this->generateEtag($data);
+
+        return ApiResponse::create($this->withAccountFlags($data, $user), 200, ['ETag' => '"' . $etag . '"']);
+    }
+
+    public function create(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.users.write');
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['username', 'password', 'email']);
+        $this->validateEmailType($body);
+
+        $username = $body['username'];
+
+        // Validate username format. Delegate the character rules to the core
+        // helper (Grav\Common\User\DataUser\User::isValidUsername) so the API
+        // accepts exactly what admin-classic does: anything except path
+        // traversal (`..`), a leading dot and the filesystem-dangerous
+        // characters \ / ? * : ; { } and line breaks. Keep a 3-64 length
+        // bound for a friendlier message and to match the admin-next UI hint.
+        $length = mb_strlen((string) $username);
+        if ($length < 3 || $length > 64 || !DataUser::isValidUsername((string) $username)) {
+            throw new ValidationException(
+                'Invalid username format.',
+                [['field' => 'username', 'message' => 'Username must be 3-64 characters, cannot start with a period or contain "..", and cannot contain \\ / ? * : ; { } or a line break.']],
+            );
+        }
+
+        /** @var UserCollectionInterface $accounts */
+        $accounts = $this->grav['accounts'];
+        $existing = $accounts->load($username);
+
+        if ($existing->exists()) {
+            throw new ConflictException("User '{$username}' already exists.");
+        }
+
+        // The same password policy setup, invite-accept and password reset
+        // apply. The blueprint check further down covers pwd_regex, but not the
+        // minimum length enforced when no regex is set.
+        PasswordPolicyService::assertValid($this->config, (string) $body['password']);
+
+        // Create new user
+        $user = $accounts->load($username);
+        $user->set('email', $body['email']);
+        $user->set('fullname', $body['fullname'] ?? '');
+        $user->set('title', $body['title'] ?? '');
+        $user->set('state', $body['state'] ?? 'enabled');
+        $user->set('hashed_password', Authentication::create($body['password']));
+        $user->set('created', time());
+        $user->set('modified', time());
+
+        if (isset($body['access'])) {
+            // A non-super creator must not mint a super-admin account — granting
+            // super is a tier the caller does not hold. See GHSA-p97c-g455-q447.
+            // isSuperWithinScope() also rejects a scoped key on a super account,
+            // which a bare isSuperAdmin() would have let through (GHSA-jrm3-jpp7-3gmx).
+            if (!$this->isSuperWithinScope($request) && $this->accessGrantsSuper($body['access'])) {
+                throw new ForbiddenException('Granting super-admin access requires super-admin privileges.');
+            }
+            // Nor any other permission the creator doesn't hold themselves.
+            if (is_array($body['access'])) {
+                $this->assertCanGrantAccess($request, $body['access']);
+            }
+            $user->set('access', $body['access']);
+        }
+
+        // `groups` is super-admin-only (see update()): group membership can grant
+        // access, so a non-super creator must not seed group assignments. Gated on
+        // the scope cap too, so a scoped key on a super account cannot (GHSA-jrm3).
+        if (isset($body['groups']) && $this->isSuperWithinScope($request)) {
+            $user->set('groups', $body['groups']);
+        }
+
+        // Persist any custom fields the site added by extending the account
+        // blueprint, the same as update() (admin2#138).
+        $this->applyCustomAccountFields($user, $body);
+
+        // Allow plugins to modify the user before save
+        $this->fireAdminEvent('onAdminSave', ['object' => &$user]);
+
+        // Validate the submitted fields against the account blueprint before
+        // writing to disk (admin2#30) — e.g. a password that fails the
+        // configured pwd_regex, or a required field sent empty, now returns 422.
+        $this->validateChangedFields($body, $this->accountBlueprint($user));
+
+        $user->save();
+
+        $this->fireAdminEvent('onAdminAfterSave', ['object' => $user]);
+        $this->fireEvent('onApiUserCreated', ['user' => $user]);
+
+        return ApiResponse::created(
+            data: $this->serializeUser($user),
+            location: $this->getApiBaseUrl() . '/users/' . $username,
+            headers: $this->invalidationHeaders(['users:create:' . $username, 'users:list']),
+        );
+    }
+
+    public function update(ServerRequestInterface $request): ResponseInterface
+    {
+        $currentUser = $this->getUser($request);
+        $username = $this->getRouteParam($request, 'username');
+        $user = $this->loadUserOrFail($username);
+
+        // Users can update themselves with just api.access, otherwise need api.users.write
+        //
+        // Capped, like $isSuper below. On the self-edit branch the only
+        // requirePermission() that runs is for api.access, so nothing else applies
+        // the scope cap to api.users.write — reading it off the account ACL let a
+        // key scoped to api.access alone, minted on an account that holds
+        // api.users.write, edit the admin-only fields on its own record
+        // (GHSA-p57v-xhv3-mf2w class).
+        $isSelf = $currentUser->username === $username;
+        $canManageUsers = $this->isSuperWithinScope($request)
+            || $this->hasPermissionWithinScope($request, 'api.users.write');
+        if (!$isSelf) {
+            $this->requirePermission($request, 'api.users.write');
+        } else {
+            // Self-edit only requires api.access (already checked by auth middleware)
+            $this->requirePermission($request, 'api.access');
+        }
+
+        // Prevent privilege escalation (IDOR): a non-super manager must not modify
+        // a super-admin account. Holding api.users.write authorizes managing users,
+        // not acting on a higher-privilege target — otherwise a delegated user-manager
+        // could overwrite the super-admin's password (via the password field below,
+        // which sits outside the per-field permission gate) and seize the instance.
+        // The target check covers both super flags (admin.super and api.super): a
+        // classic admin.super account may not carry api.super. See GHSA-p97c-g455-q447.
+        //
+        // Resolved through the scope cap (GHSA-jrm3-jpp7-3gmx): a key scoped below
+        // super on a super account is treated as non-super here, so it cannot edit
+        // super-admin targets, assign groups, or grant super via `access`. An
+        // unscoped super credential (session, JWT, unscoped key) is unaffected.
+        $isSuper = $this->isSuperWithinScope($request);
+        if (!$isSuper && $this->targetIsSuper($user)) {
+            throw new ForbiddenException('Only super-admins can modify super-admin accounts.');
+        }
+
+        // ETag validation
+        $currentHash = $this->generateEtag($this->serializeUser($user));
+        $this->validateEtag($request, $currentHash);
+
+        $body = $this->getRequestBody($request);
+
+        $this->validateEmailType($body);
+
+        if (empty($body)) {
+            throw new ValidationException('Request body must contain fields to update.');
+        }
+
+        // Privilege-sensitive fields are gated on api.users.write. Without this
+        // split a self-edit (api.access only) could PATCH `access` and grant
+        // itself api.super / admin.super — see GHSA-r945-h4vm-h736.
+        // `twofa_enabled` is deliberately absent: turning 2FA off must go through
+        // POST /users/{username}/2fa/disable, which checks a code for a self-edit.
+        // Accepting it here let an account owner skip that check. It is ignored,
+        // not rejected, so clients that send back the whole user still work.
+        $selfFields  = ['email', 'fullname', 'title', 'language', 'content_editor'];
+        $adminFields = ['state', 'access'];
+        // `groups` is marked `security@: admin.super` in the account blueprint:
+        // group membership can confer access, so only super admins may change it
+        // — a plain api.users.write manager must not assign users into groups.
+        $superFields = ['groups'];
+
+        if (!$canManageUsers) {
+            foreach ($adminFields as $field) {
+                if (array_key_exists($field, $body)) {
+                    throw new ForbiddenException(
+                        "Modifying '{$field}' requires the 'api.users.write' permission."
+                    );
+                }
+            }
+        }
+
+        if (!$isSuper) {
+            foreach ($superFields as $field) {
+                if (array_key_exists($field, $body)) {
+                    throw new ForbiddenException(
+                        "Modifying '{$field}' requires super-admin privileges."
+                    );
+                }
+            }
+
+            // A non-super manager may edit `access` (it's an admin field), but must
+            // not use it to grant super — that would promote an account to a tier
+            // the caller does not hold. See GHSA-p97c-g455-q447.
+            if (isset($body['access']) && $this->accessGrantsSuper($body['access'])) {
+                throw new ForbiddenException('Granting super-admin access requires super-admin privileges.');
+            }
+
+            // Nor grant anything else the manager doesn't hold. Entries the
+            // account already has are left alone, so editing an account that
+            // holds more than the manager still works.
+            if (isset($body['access']) && is_array($body['access'])) {
+                $this->assertCanGrantAccess($request, $body['access'], $user->get('access'));
+            }
+        }
+
+        // The counterpart of delete()'s self guard: a disabled account loses its
+        // session at once and can't log back in, so disabling yourself locks you
+        // out, and on a single-admin site only a hand edit of the account file
+        // undoes it. Keyed on the value, not the key's presence, because Admin2
+        // sends the unchanged `state: enabled` back with every save. Core treats
+        // anything other than 'enabled' as disabled.
+        if ($isSelf && $canManageUsers && array_key_exists('state', $body)
+            && ($body['state'] ?? 'enabled') !== 'enabled') {
+            throw new ForbiddenException('You cannot disable your own account.');
+        }
+
+        // @scope-cap-exempt: only ever blocks an edit (the self-demotion guard
+        // below), never grants anything, so an API-key scope cannot widen it.
+        $wasSuper = $isSelf && $this->isSuperAdmin($user);
+
+        $allowedFields = $selfFields;
+        if ($canManageUsers) {
+            $allowedFields = array_merge($allowedFields, $adminFields);
+        }
+        if ($isSuper) {
+            $allowedFields = array_merge($allowedFields, $superFields);
+        }
+
+        // A new password must meet the policy, and changing your own takes your
+        // current password too, whatever permissions you hold, so a stolen
+        // session or token can't lock the owner out. An account with no
+        // password yet (one created by a sign-in service) sets its first
+        // without one. An admin setting someone else's password needs only
+        // api.users.write, as before. Checked before anything is written.
+        $passwordChanged = isset($body['password']) && $body['password'] !== '';
+        if ($passwordChanged) {
+            if (!is_string($body['password'])) {
+                throw new ValidationException('The password must be a string.', [
+                    ['field' => 'password', 'message' => 'The password must be a string.'],
+                ]);
+            }
+            PasswordPolicyService::assertValid($this->config, $body['password']);
+            if ($isSelf) {
+                $this->assertCurrentPassword($request, $user, $body['current_password'] ?? null);
+            }
+        }
+
+        // Someone changing their own address has to prove the new one first,
+        // whatever permissions they hold, so it waits as `email_pending` until
+        // the link mailed to it is opened. Checked before anything is written,
+        // so a refused or rate limited change leaves the rest of the request
+        // unsaved too. An admin editing another account saves at once.
+        $storedEmail = $user->get('email', '');
+        $oldEmail = is_string($storedEmail) ? mb_strtolower(trim($storedEmail)) : '';
+
+        // Your own new address needs your current password too, as a new
+        // password does and as the Login plugin's profile form asks (3.11.1):
+        // whoever holds a signed-in session must not be able to move the
+        // account to an address they control. Asked once when both change.
+        if ($isSelf && !$passwordChanged && isset($body['email']) && is_string($body['email'])
+            && mb_strtolower(trim($body['email'])) !== $oldEmail) {
+            $this->assertCurrentPassword(
+                $request,
+                $user,
+                $body['current_password'] ?? null,
+                'Enter your current password to change your email address.'
+            );
+        }
+
+        $pendingEmail = null;
+        if ($isSelf && isset($body['email']) && is_string($body['email'])) {
+            $pendingEmail = $this->screenOwnEmailChange($user, $body['email']);
+        }
+
+        foreach ($allowedFields as $field) {
+            if ($field === 'email' && $pendingEmail !== null) {
+                continue;
+            }
+            if (array_key_exists($field, $body)) {
+                $user->set($field, $body[$field]);
+            }
+        }
+
+        // An address saved straight away makes any waiting change out of date,
+        // and its link would otherwise overwrite this edit when opened.
+        if ($pendingEmail === null && isset($body['email']) && is_string($body['email'])
+            && mb_strtolower(trim($body['email'])) !== $oldEmail
+            && isset($this->grav['login']) && method_exists($this->grav['login'], 'clearEmailChange')) {
+            $this->grav['login']->clearEmailChange($user);
+        }
+
+        // Same lockout through `access` or `groups`: a super admin who drops
+        // their own api.super can no longer reach the super-only parts of the
+        // admin, including the form that would give it back. Checked on the
+        // result (own map plus groups) with a fresh resolver, since the shared
+        // one has already cached this account's pre-edit access.
+        if ($wasSuper && (new PermissionResolver())->resolveExact($user, 'api.super') !== true) {
+            throw new ForbiddenException('You cannot remove super-admin access from your own account.');
+        }
+
+        // Persist any custom fields the site added by extending the account
+        // blueprint. The built-in fields above keep their privilege gates;
+        // this only touches extra, non-reserved blueprint fields (admin2#138).
+        $this->applyCustomAccountFields($user, $body);
+
+        // Hash password if provided. A plain-text password left in the account
+        // file would otherwise be hashed over the new one when it saves.
+        if ($passwordChanged) {
+            $user->set('hashed_password', Authentication::create($body['password']));
+            $user->set('password', null);
+        }
+
+        // Invalidate every outstanding API token for this account when its
+        // password changes or it gets disabled. Stamping the cutoff is the kill
+        // switch JwtAuthenticator checks on each request, so a stolen access or
+        // refresh token can't outlive a password reset or account lockout.
+        // GHSA-m8g9-wxhx-6f86. A password change also signs the account's other
+        // browsers out (Login plugin 3.11.0 or later).
+        $disabledNow = in_array('state', $allowedFields, true)
+            && array_key_exists('state', $body)
+            && $user->get('state') === 'disabled';
+        if ($passwordChanged) {
+            $this->endOtherSessions($user, $isSelf);
+        } elseif ($disabledNow) {
+            $user->set('api_tokens_valid_after', time());
+        }
+
+        $user->set('modified', time());
+
+        // Allow plugins to modify the user before save
+        $this->fireAdminEvent('onAdminSave', ['object' => &$user]);
+
+        // Validate the submitted fields against the account blueprint before
+        // writing to disk (admin2#30).
+        $this->validateChangedFields($body, $this->accountBlueprint($user));
+
+        $user->save();
+
+        $this->fireAdminEvent('onAdminAfterSave', ['object' => $user]);
+        $this->fireEvent('onApiUserUpdated', ['user' => $user]);
+
+        // The rest of the request is saved; now start the email change, which
+        // saves the pending address itself and mails the link.
+        $meta = null;
+        if ($pendingEmail !== null) {
+            $meta = ['message' => $this->startEmailChange($user, $pendingEmail)];
+        }
+
+        // The cutoff just stamped also ends the token this request came with,
+        // so someone changing their own password gets a fresh pair and stays
+        // signed in. A browser session was kept by endOtherSessions(), and an
+        // API key isn't affected by the cutoff.
+        if ($passwordChanged && $isSelf && $request->getAttribute('api_auth_method') === 'jwt') {
+            $meta = ($meta ?? []) + [
+                'tokens' => $this->buildTokenPair(new JwtAuthenticator($this->grav, $this->config), $user),
+            ];
+        }
+
+        $data = $this->serializeUser($user);
+
+        return $this->respondWithEtag(
+            // The 2FA panel keys off this flag, and the client repopulates from
+            // the save response — leave it out and the panel disappears until
+            // the next page load. Kept out of the ETag for the reason show()
+            // explains.
+            $this->withAccountFlags($data, $user),
+            200,
+            ['users:update:' . $username, 'users:list'],
+            $this->generateEtag($data),
+            $meta,
+        );
+    }
+
+    /**
+     * The Login plugin's service when it can confirm email changes (3.10.0 or
+     * later) and the site has that turned on, otherwise null. Older Login
+     * versions and sites without the plugin keep saving an address at once.
+     *
+     * @return object|null
+     */
+    private function emailChangeLogin(): ?object
+    {
+        if (!isset($this->grav['login'])) {
+            return null;
+        }
+
+        $login = $this->grav['login'];
+        if (!method_exists($login, 'requestEmailChange') || !method_exists($login, 'clearEmailChange')
+            || !method_exists($login, 'emailBelongsToAnother') || !method_exists($login, 'getRateLimiter')) {
+            return null;
+        }
+
+        if (!$this->config->get('plugins.login.profile.verify_email_change', true)) {
+            return null;
+        }
+
+        return $login;
+    }
+
+    /**
+     * Decide whether a change to the caller's own address has to wait for
+     * confirmation, and refuse it up front when it can't go ahead. Answers
+     * like the Login plugin's profile form does.
+     *
+     * @return string|null The new address to keep as pending, or null when the
+     *                     address is unchanged or confirmation is not in use.
+     */
+    private function screenOwnEmailChange(UserInterface $user, string $email): ?string
+    {
+        $login = $this->emailChangeLogin();
+        if ($login === null) {
+            return null;
+        }
+
+        $newEmail = trim($email);
+        $storedEmail = $user->get('email', '');
+        $oldEmail = is_string($storedEmail) ? trim($storedEmail) : '';
+        if ($newEmail === '' || mb_strtolower($newEmail) === mb_strtolower($oldEmail)) {
+            return null;
+        }
+
+        if (!filter_var($newEmail, FILTER_VALIDATE_EMAIL)) {
+            throw new ValidationException('Invalid email address.', [['field' => 'email', 'message' => 'Invalid email address.']]);
+        }
+
+        $limiter = $login->getRateLimiter('email_changes');
+        if ($limiter->hasReachedLimit($user->username)) {
+            $minutes = (int) $limiter->getInterval();
+            throw new TooManyRequestsException(
+                sprintf('Too many email change requests. Please try again in %d minutes.', $minutes),
+                $minutes * 60,
+            );
+        }
+
+        // With activation by email on, registration doesn't say whether an
+        // address is taken (GHSA-crh8-xm27-j9g9), so neither does this: the
+        // change shows as waiting and no link goes out.
+        $hideTaken = (bool) $this->config->get('plugins.login.user_registration.options.send_activation_email', false);
+        if (!$hideTaken && $login->emailBelongsToAnother($user, $newEmail)) {
+            $message = sprintf('Email address %s already exists, please pick another email address', $newEmail);
+            throw new ValidationException($message, [['field' => 'email', 'message' => $message]]);
+        }
+
+        return $newEmail;
+    }
+
+    /**
+     * Keep a new address as pending and mail the confirmation link to it.
+     *
+     * @return string The message to hand back to the client.
+     */
+    private function startEmailChange(UserInterface $user, string $email): string
+    {
+        $login = $this->emailChangeLogin();
+        if ($login === null) {
+            throw new ApiException(500, 'Email Change Unavailable', 'The Login plugin cannot confirm email changes.');
+        }
+
+        $login->getRateLimiter('email_changes')->registerRateLimitedAction($user->username);
+
+        try {
+            $login->requestEmailChange($user, $email);
+        } catch (\RuntimeException $e) {
+            throw new ApiException(500, 'Email Not Sent', $e->getMessage(), [], $e);
+        }
+
+        return sprintf('We sent a confirmation link to %s. The email address changes once the link is opened.', $email);
+    }
+
+    /**
+     * DELETE /users/{username}/email-change: drop the caller's waiting email
+     * change. The account keeps its current address.
+     */
+    public function cancelEmailChange(ServerRequestInterface $request): ResponseInterface
+    {
+        [$user, $login] = $this->ownPendingEmailChange($request);
+
+        $login->clearEmailChange($user);
+        $user->save();
+
+        return $this->emailChangeResponse($user);
+    }
+
+    /**
+     * POST /users/{username}/email-change/resend: mail the confirmation link
+     * for the caller's waiting email change again, with a fresh day to use it.
+     */
+    public function resendEmailChange(ServerRequestInterface $request): ResponseInterface
+    {
+        [$user, $login] = $this->ownPendingEmailChange($request);
+
+        $limiter = $login->getRateLimiter('email_changes');
+        if ($limiter->hasReachedLimit($user->username)) {
+            $minutes = (int) $limiter->getInterval();
+            throw new TooManyRequestsException(
+                sprintf('Too many email change requests. Please try again in %d minutes.', $minutes),
+                $minutes * 60,
+            );
+        }
+
+        $message = $this->startEmailChange($user, (string) $user->get('email_pending'));
+
+        return $this->emailChangeResponse($user, ['message' => $message]);
+    }
+
+    /**
+     * Shared checks for the cancel and resend routes: the caller's own account
+     * only, with a change actually waiting.
+     *
+     * @return array{0: UserInterface, 1: object}
+     */
+    private function ownPendingEmailChange(ServerRequestInterface $request): array
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $username = $this->getRouteParam($request, 'username');
+        if ($this->getUser($request)->username !== $username) {
+            throw new ForbiddenException('You can only manage the email change on your own account.');
+        }
+
+        $login = $this->emailChangeLogin();
+        if ($login === null) {
+            throw new NotFoundException('Email changes are not confirmed on this site.');
+        }
+
+        $user = $this->loadUserOrFail($username);
+        if ((string) $user->get('email_pending', '') === '') {
+            throw new NotFoundException('There is no email change waiting.');
+        }
+
+        return [$user, $login];
+    }
+
+    /** @param array<string, mixed>|null $meta */
+    private function emailChangeResponse(UserInterface $user, ?array $meta = null): ResponseInterface
+    {
+        $data = $this->serializeUser($user);
+
+        return $this->respondWithEtag(
+            $this->withAccountFlags($data, $user),
+            200,
+            ['users:update:' . $user->username, 'users:list'],
+            $this->generateEtag($data),
+            $meta,
+        );
+    }
+
+    /**
+     * Tag a serialized user with the 2FA capability flag.
+     *
+     * Offer 2FA enrollment whenever the capability is present (Login plugin
+     * installed). This used to key off `plugins.login.twofa_enabled`, which
+     * defaults to false, so the enroll panel was hidden on a stock 2.0 install
+     * and 2FA could not be configured from admin2 at all (getgrav/grav#4145).
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function withAccountFlags(array $data, UserInterface $user): array
+    {
+        $data['twofa_global_enabled'] = class_exists(\Grav\Plugin\Login\TwoFactorAuth\TwoFactorAuth::class);
+        // Whether the account has a password of its own. One created by a
+        // sign-in service may not, and then setting your first password needs
+        // no current one.
+        $data['has_password'] = $this->accountHasPassword($user);
+
+        return $data;
+    }
+
+    /**
+     * Whether the account has a password: a hash, or a plain-text one still
+     * sitting in the account file (Grav hashes it on the next sign-in).
+     */
+    private function accountHasPassword(UserInterface $user): bool
+    {
+        $hash = $user->get('hashed_password');
+        $plain = $user->get('password');
+
+        return (is_string($hash) && $hash !== '') || (is_string($plain) && $plain !== '');
+    }
+
+    /**
+     * Refuse a change of your own password or email unless `current_password` is right.
+     * Each try counts against the Login plugin's sign-in limits for the
+     * account and the IP (429 once they are used up), so this can't be used to
+     * guess the password, and a right one clears the count like a sign-in.
+     * An account with no password yet passes without one.
+     */
+    private function assertCurrentPassword(
+        ServerRequestInterface $request,
+        UserInterface $user,
+        mixed $current,
+        string $requiredMessage = 'Enter your current password to set a new one.',
+    ): void {
+        if (!$this->accountHasPassword($user)) {
+            return;
+        }
+
+        if (!is_string($current) || $current === '') {
+            $message = $requiredMessage;
+            throw new ValidationException($message, [['field' => 'current_password', 'message' => $message]]);
+        }
+
+        $username = (string) $user->username;
+        $login = isset($this->grav['login']) ? $this->grav['login'] : null;
+        $limited = is_object($login) && method_exists($login, 'checkLoginRateLimit');
+        if ($limited) {
+            $wait = (int) $login->checkLoginRateLimit($username);
+            if ($wait > 0) {
+                throw new TooManyRequestsException(
+                    sprintf('Too many wrong passwords. Try again in %d minutes.', $wait),
+                    $wait * 60,
+                );
+            }
+        }
+
+        if (!$this->passwordMatches($user, $current)) {
+            $this->fireEvent('onApiUserLoginFailure', [
+                'username' => $username,
+                'reason' => 'current_password',
+                'ip' => $this->getRequestIp($request),
+            ]);
+            $message = 'The current password is not correct.';
+            throw new ValidationException($message, [['field' => 'current_password', 'message' => $message]]);
+        }
+
+        if ($limited && method_exists($login, 'resetLoginRateLimit')) {
+            $login->resetLoginRateLimit($username);
+        }
+    }
+
+    /**
+     * Check a password against the account without saving anything, the way
+     * core's authenticate() does: a plain-text password still in the file is
+     * compared as is, and an account with no hash still runs a hash check so
+     * the time taken gives nothing away.
+     */
+    private function passwordMatches(UserInterface $user, string $password): bool
+    {
+        $plain = $user->get('password');
+        if (is_string($plain) && $plain !== '') {
+            return hash_equals($plain, $password);
+        }
+
+        $hash = $user->get('hashed_password');
+        if (!is_string($hash) || $hash === '') {
+            $default = (string) $this->config->get('system.security.default_hash', '');
+            if ($default !== '') {
+                Authentication::verify($password, $default);
+            }
+            return false;
+        }
+
+        return Authentication::verify($password, $hash) > 0;
+    }
+
+    public function delete(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.users.write');
+
+        $currentUser = $this->getUser($request);
+        $username = $this->getRouteParam($request, 'username');
+
+        if ($currentUser->username === $username) {
+            throw new ForbiddenException('You cannot delete your own account.');
+        }
+
+        $user = $this->loadUserOrFail($username);
+
+        // A non-super manager must not delete a super-admin account — a destructive
+        // cross-boundary action (lockout / takeover of the instance owner).
+        // See GHSA-p97c-g455-q447. Capped via isSuperWithinScope() for the same
+        // reason as requireNotSuperTarget(): the super branch grants an exemption,
+        // so a bare isSuperAdmin() let a scoped key on a super account delete other
+        // super-admins without carrying admin.super in its scopes.
+        if (!$this->isSuperWithinScope($request) && $this->targetIsSuper($user)) {
+            throw new ForbiddenException('Only super-admins can delete super-admin accounts.');
+        }
+
+        $this->fireEvent('onApiBeforeUserDelete', ['user' => $user]);
+
+        // Remove the account through the accounts collection: a Flex account has no
+        // file() to delete, and both account types take the per-account lock there.
+        if (!$this->grav['accounts']->delete($username)) {
+            throw new \RuntimeException('Failed to delete user account.');
+        }
+
+        $this->fireEvent('onApiUserDeleted', ['username' => $username]);
+
+        return ApiResponse::noContent(
+            $this->invalidationHeaders(['users:delete:' . $username, 'users:list']),
+        );
+    }
+
+    /**
+     * POST /users/{username}/avatar - Upload a custom avatar image.
+     */
+    public function uploadAvatar(ServerRequestInterface $request): ResponseInterface
+    {
+        $username = $this->getRouteParam($request, 'username');
+        $user = $this->loadUserOrFail($username);
+
+        $currentUser = $this->getUser($request);
+        if ($currentUser->username !== $username) {
+            $this->requirePermission($request, 'api.users.write');
+        }
+        // Sibling gap found alongside GHSA-985r-mpj8-5rqw: overwriting a
+        // super-admin's avatar re-saves their account from a lesser caller.
+        $this->requireNotSuperTarget($request, $user);
+
+        $uploadedFiles = $request->getUploadedFiles();
+        $file = $uploadedFiles['avatar'] ?? $uploadedFiles['file'] ?? null;
+
+        if (!$file || $file->getError() !== UPLOAD_ERR_OK) {
+            throw new ValidationException('No avatar file uploaded.');
+        }
+
+        $size = $file->getSize();
+        if ($size !== null && $size > self::AVATAR_MAX_SIZE) {
+            throw new ValidationException(
+                sprintf('Avatar exceeds maximum size of %d MB.', self::AVATAR_MAX_SIZE / 1_048_576)
+            );
+        }
+
+        // Validate the ACTUAL image bytes, not the client-declared MIME type.
+        // getClientMediaType() is attacker-controlled, so trusting it lets a
+        // PHP/SVG/polyglot payload be written to disk with an image extension
+        // (GHSA-xc64-vh46-vph6). getimagesizefromstring() only succeeds on a
+        // real raster image, and the extension is taken from the detected type.
+        $contents = (string) $file->getStream();
+        $info = @getimagesizefromstring($contents);
+        $ext = match ($info[2] ?? null) {
+            IMAGETYPE_PNG => 'png',
+            IMAGETYPE_WEBP => 'webp',
+            IMAGETYPE_JPEG => 'jpg',
+            default => throw new ValidationException(
+                'Avatar must be a valid PNG, JPEG, or WebP image.'
+            ),
+        };
+        $mime = (string) $info['mime'];
+
+        // Save to account://avatars/
+        $locator = $this->grav['locator'];
+        $avatarDir = $locator->findResource('account://', true) . '/avatars';
+        if (!is_dir($avatarDir) && !@mkdir($avatarDir, 0775, true) && !is_dir($avatarDir)) {
+            throw new \RuntimeException(sprintf('Unable to create avatar directory "%s"', $avatarDir));
+        }
+
+        $filename = $username . '-' . substr(md5((string) time()), 0, 8) . '.' . $ext;
+        $filepath = $avatarDir . '/' . $filename;
+        // Write the validated bytes ourselves rather than moveTo(): we've already
+        // read the stream, and this guarantees only the inspected content lands on disk.
+        if (file_put_contents($filepath, $contents) === false) {
+            throw new \RuntimeException('Failed to write avatar file.');
+        }
+
+        // Build path relative to Grav root (e.g. user/accounts/avatars/filename.jpg)
+        // to match the format used by the old admin plugin.
+        $relativeBase = $locator->findResource('account://', false);
+        $relativePath = $relativeBase . '/avatars/' . $filename;
+
+        // Update user's avatar reference
+        $user->set('avatar', [
+            $relativePath => [
+                'name' => $filename,
+                'type' => $mime,
+                'size' => filesize($filepath),
+                'path' => $relativePath,
+            ],
+        ]);
+        $user->save();
+
+        return ApiResponse::create(
+            $this->serializeUser($user),
+            201,
+            $this->invalidationHeaders(['users:update:' . $username]),
+        );
+    }
+
+    /**
+     * DELETE /users/{username}/avatar - Remove the custom avatar.
+     */
+    public function deleteAvatar(ServerRequestInterface $request): ResponseInterface
+    {
+        $username = $this->getRouteParam($request, 'username');
+        $user = $this->loadUserOrFail($username);
+
+        $currentUser = $this->getUser($request);
+        if ($currentUser->username !== $username) {
+            $this->requirePermission($request, 'api.users.write');
+        }
+        // Sibling gap found alongside GHSA-985r-mpj8-5rqw.
+        $this->requireNotSuperTarget($request, $user);
+
+        // Delete avatar file(s)
+        $avatar = $user->get('avatar');
+        if (is_array($avatar)) {
+            foreach ($avatar as $entry) {
+                if (is_array($entry) && isset($entry['path'])) {
+                    // path is relative to Grav root (e.g. user/accounts/avatars/file.jpg)
+                    $filePath = GRAV_ROOT . '/' . $entry['path'];
+                    if (file_exists($filePath)) {
+                        @unlink($filePath);
+                    }
+                }
+            }
+        }
+
+        $user->set('avatar', []);
+        $user->save();
+
+        return ApiResponse::create(
+            $this->serializeUser($user),
+            200,
+            $this->invalidationHeaders(['users:update:' . $username]),
+        );
+    }
+
+    /**
+     * POST /users/{username}/2fa - Generate or regenerate 2FA secret and return QR code.
+     */
+    public function generate2fa(ServerRequestInterface $request): ResponseInterface
+    {
+        $username = $this->getRouteParam($request, 'username');
+
+        // Self or admin. Checked before the account is loaded so a caller who
+        // may not manage users gets the same 403 whether or not the username
+        // exists. Self still needs api.access, like every other self-service
+        // route (the auth middleware does not enforce it).
+        $currentUser = $this->getUser($request);
+        if ($currentUser->username !== $username) {
+            $this->requirePermission($request, 'api.users.write');
+        } else {
+            $this->requirePermission($request, 'api.access');
+        }
+
+        $user = $this->loadUserOrFail($username);
+        $this->requireNotSuperTarget($request, $user);
+
+        if (!class_exists(\Grav\Plugin\Login\TwoFactorAuth\TwoFactorAuth::class)) {
+            throw new \Grav\Plugin\Api\Exceptions\ApiException(
+                500,
+                '2FA Not Available',
+                'The Login plugin with 2FA support must be installed.'
+            );
+        }
+
+        // A new secret also switches 2FA off until a code for it is verified,
+        // so on your own account, with 2FA on, it takes a current code, the
+        // same as POST /2fa/disable. Otherwise a signed-in session could drop
+        // the second factor without it. An admin resetting someone else's
+        // (lost-device recovery) needs no code.
+        if ($currentUser->username === $username && $this->hasActiveTwoFactor($user)) {
+            $body = $this->getRequestBody($request);
+            $this->assertCurrentTwoFactorCode($user, $body['code'] ?? null);
+        }
+
+        $twoFa = new \Grav\Plugin\Login\TwoFactorAuth\TwoFactorAuth();
+        $secret = $twoFa->createSecret();
+
+        // Format secret with spaces for readability
+        $formattedSecret = trim(chunk_split($secret, 4, ' '));
+
+        // Save to user
+        $user->set('twofa_secret', $formattedSecret);
+        // Generating/regenerating a secret resets the enabled flag — the user
+        // must verify a code against the new secret to re-enable.
+        $user->set('twofa_enabled', false);
+        $user->save();
+
+        // Generate QR code data URI
+        $qrImage = $twoFa->getQrImageData($username, $secret);
+
+        return ApiResponse::create([
+            'secret' => $formattedSecret,
+            'qr_code' => $qrImage,
+        ]);
+    }
+
+    /**
+     * POST /users/{username}/2fa/enable - Verify a code against the stored
+     * secret and set twofa_enabled=true. Self-only: only the account owner
+     * can enable their own 2FA, because enabling requires proving you hold
+     * the secret (otherwise an attacker could lock a user out by enabling
+     * 2FA with a secret they don't control).
+     */
+    public function enable2fa(ServerRequestInterface $request): ResponseInterface
+    {
+        $username = $this->getRouteParam($request, 'username');
+
+        // Ownership first: loading the account before this check answered 404
+        // for an unknown username and 403 for a real one, so any caller could
+        // probe which accounts exist.
+        $currentUser = $this->getUser($request);
+        if ($currentUser->username !== $username) {
+            throw new ForbiddenException('Only the account owner can enable 2FA.');
+        }
+        $this->requirePermission($request, 'api.access');
+
+        $user = $this->loadUserOrFail($username);
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['code']);
+
+        if (!class_exists(\Grav\Plugin\Login\TwoFactorAuth\TwoFactorAuth::class)) {
+            throw new \Grav\Plugin\Api\Exceptions\ApiException(
+                500,
+                '2FA Not Available',
+                'The Login plugin with 2FA support must be installed.',
+            );
+        }
+
+        $secret = (string) $user->get('twofa_secret');
+        if ($secret === '') {
+            throw new ValidationException('2FA secret has not been generated. POST /users/{username}/2fa first.');
+        }
+
+        $twoFa = new \Grav\Plugin\Login\TwoFactorAuth\TwoFactorAuth();
+        if (!$twoFa->verifyCode($secret, (string) $body['code'])) {
+            throw new ValidationException('Invalid 2FA code.');
+        }
+
+        $user->set('twofa_enabled', true);
+        $user->save();
+
+        $this->fireEvent('onApiUser2faEnabled', ['user' => $user]);
+
+        return ApiResponse::create(['twofa_enabled' => true]);
+    }
+
+    /**
+     * POST /users/{username}/2fa/disable - Disable 2FA for a user.
+     *
+     * Self-disable requires a valid current TOTP code so that a stolen
+     * session cannot unilaterally remove 2FA. Admins with api.users.write
+     * (or superadmin) can force-disable without a code — used for lost-
+     * device recovery. Both paths clear twofa_secret.
+     */
+    public function disable2fa(ServerRequestInterface $request): ResponseInterface
+    {
+        $username = $this->getRouteParam($request, 'username');
+
+        $currentUser = $this->getUser($request);
+        $isSelf = $currentUser->username === $username;
+        // The admin/force-disable authority is gated on the API-key scope cap too
+        // (GHSA-22p9-6fh4-mmf2): a key that does not carry api.users.write in its
+        // scopes is not treated as admin here, so it cannot force-remove another
+        // user's 2FA even when its owning account holds the permission.
+        // @scope-cap-exempt: the cap is applied by the scopeAllows() conjunct on
+        // this same expression, so the super branch cannot be reached uncapped.
+        $isAdmin = $this->scopeAllows($request, 'api.users.write')
+            && ($this->isSuperAdmin($currentUser) || $this->hasPermission($currentUser, 'api.users.write'));
+
+        if (!$isSelf && !$isAdmin) {
+            throw new ForbiddenException('You do not have permission to disable 2FA for this user.');
+        }
+        if (!$isAdmin) {
+            // The self path needs api.access, like every other self-service
+            // route (the auth middleware does not enforce it).
+            $this->requirePermission($request, 'api.access');
+        }
+
+        // Loaded only after the checks above, so a caller without authority
+        // cannot tell an existing username (403) from a missing one (404).
+        $user = $this->loadUserOrFail($username);
+        $this->requireNotSuperTarget($request, $user);
+
+        // Turning off your own 2FA takes a current code, whatever permissions
+        // you hold: user-management rights are for other people's accounts
+        // (lost-device recovery), and skipping the code on your own let a
+        // signed-in session of a manager drop its second factor. Nothing to
+        // prove when 2FA isn't on.
+        if ($isSelf && $this->hasActiveTwoFactor($user)) {
+            if (!class_exists(\Grav\Plugin\Login\TwoFactorAuth\TwoFactorAuth::class)) {
+                throw new \Grav\Plugin\Api\Exceptions\ApiException(
+                    500,
+                    '2FA Not Available',
+                    'The Login plugin with 2FA support must be installed.',
+                );
+            }
+
+            $body = $this->getRequestBody($request);
+            $this->assertCurrentTwoFactorCode($user, $body['code'] ?? null);
+        }
+
+        $user->set('twofa_enabled', false);
+        $user->set('twofa_secret', '');
+        $user->save();
+
+        $this->fireEvent('onApiUser2faDisabled', [
+            'user' => $user,
+            'forced_by_admin' => !$isSelf,
+        ]);
+
+        return ApiResponse::create(['twofa_enabled' => false]);
+    }
+
+    /** Whether the account has 2FA switched on with a secret to check codes against. */
+    private function hasActiveTwoFactor(UserInterface $user): bool
+    {
+        return (bool) $user->get('twofa_enabled') && (string) $user->get('twofa_secret') !== '';
+    }
+
+    /**
+     * Refuse unless `$code` is a current code for the account's 2FA secret.
+     * Wrong codes count against the Login plugin's 2FA limit for the account
+     * (429 once it is used up), the same counter the sign-in challenge uses,
+     * so the six digits can't be guessed through here.
+     */
+    private function assertCurrentTwoFactorCode(UserInterface $user, mixed $code): void
+    {
+        $code = is_string($code) || is_int($code) ? trim((string) $code) : '';
+        if ($code === '') {
+            $message = 'Enter the current code from your authenticator app.';
+            throw new ValidationException($message, [['field' => 'code', 'message' => $message]]);
+        }
+
+        $username = (string) $user->username;
+        $login = isset($this->grav['login']) ? $this->grav['login'] : null;
+        $limiter = is_object($login) && method_exists($login, 'getRateLimiter')
+            ? $login->getRateLimiter('twofa_attempts')
+            : null;
+
+        if ($limiter && $limiter->hasReachedLimit($username)) {
+            $seconds = method_exists($limiter, 'getRetryAfter')
+                ? (int) $limiter->getRetryAfter($username)
+                : (int) $limiter->getInterval() * 60;
+            $minutes = max(1, (int) ceil($seconds / 60));
+            throw new TooManyRequestsException(
+                sprintf('Too many wrong codes. Try again in %d minutes.', $minutes),
+                $minutes * 60,
+            );
+        }
+
+        if (!$this->verifyTwoFactorCode((string) $user->get('twofa_secret'), $code)) {
+            $limiter?->registerRateLimitedAction($username);
+            $message = 'The code is not correct.';
+            throw new ValidationException($message, [['field' => 'code', 'message' => $message]]);
+        }
+
+        if ($limiter && method_exists($limiter, 'resetRateLimit')) {
+            $limiter->resetRateLimit($username);
+        }
+    }
+
+    /** Check a TOTP code against a secret with the Login plugin's 2FA helper. */
+    protected function verifyTwoFactorCode(string $secret, string $code): bool
+    {
+        if ($secret === '' || !class_exists(\Grav\Plugin\Login\TwoFactorAuth\TwoFactorAuth::class)) {
+            return false;
+        }
+
+        return (bool) (new \Grav\Plugin\Login\TwoFactorAuth\TwoFactorAuth())->verifyCode($secret, $code);
+    }
+
+    // ─── Passkeys ────────────────────────────────────────────────────────────
+
+    /**
+     * GET /users/{username}/passkeys
+     *
+     * The account's passkeys (names and dates, never keys). Self, or anyone
+     * who may read users.
+     */
+    public function passkeys(ServerRequestInterface $request): ResponseInterface
+    {
+        $username = $this->getRouteParam($request, 'username');
+        $this->requireApiKeyPermission($request, $username);
+        $user = $this->loadUserOrFail($username);
+        $passkeys = $this->passkeyService();
+
+        return ApiResponse::create([
+            'enabled' => $passkeys !== null,
+            'passkeys' => $passkeys !== null ? $passkeys->list($user) : [],
+            // What adding or removing your own passkey asks for. Only on your
+            // own account: someone else's sign-in setup is not theirs to know.
+            // 'unavailable': an account with neither can't change its passkeys.
+            'proof' => $this->getUser($request)->username !== $username ? null
+                : ($this->accountHasPassword($user) ? 'password' : ($this->hasActiveTwoFactor($user) ? 'code' : 'unavailable')),
+        ]);
+    }
+
+    /**
+     * POST /users/{username}/passkeys/options
+     *
+     * Start adding a passkey to your own account. Body: { current_password }
+     * (or { code } for an account without a password and with 2FA on).
+     * Returns { options, ticket } for navigator.credentials.create().
+     */
+    public function passkeyOptions(ServerRequestInterface $request): ResponseInterface
+    {
+        [$user, $passkeys] = $this->ownPasskeyAccount($request);
+        $login = $this->grav['login'];
+        $limiter = $login->getRateLimiter('passkey_options');
+        if ($limiter->hasReachedLimit($login->getIpKey(), 'ip')) {
+            throw new TooManyRequestsException('Too many passkey attempts. Try again in a few minutes.', max(60, (int) $limiter->getInterval() * 60));
+        }
+        $limiter->registerRateLimitedAction($login->getIpKey(), 'ip');
+        $this->assertPasskeyProof($request, $user, $this->getRequestBody($request));
+
+        return ApiResponse::create($passkeys->registrationOptions($user));
+    }
+
+    /**
+     * POST /users/{username}/passkeys
+     *
+     * Finish adding a passkey. Body: { ticket, credential }.
+     */
+    public function addPasskey(ServerRequestInterface $request): ResponseInterface
+    {
+        [$user, $passkeys] = $this->ownPasskeyAccount($request);
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['ticket', 'credential']);
+
+        try {
+            $passkey = $passkeys->finishRegistration($user, (string) $body['ticket'], is_array($body['credential']) ? $body['credential'] : []);
+        } catch (\Grav\Plugin\Login\Passkeys\PasskeyException $e) {
+            $message = (string) $this->grav['language']->translate($e->getMessage());
+            throw new ValidationException($message, [['field' => 'credential', 'message' => $message]]);
+        }
+
+        $this->fireEvent('onApiUserPasskeyAdded', ['user' => $user, 'passkey' => $passkey]);
+
+        return ApiResponse::create($passkey, 201);
+    }
+
+    /**
+     * PATCH /users/{username}/passkeys/{id}
+     *
+     * Rename one of your own passkeys. Body: { name }.
+     */
+    public function renamePasskey(ServerRequestInterface $request): ResponseInterface
+    {
+        [$user, $passkeys] = $this->ownPasskeyAccount($request);
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['name']);
+        $name = \Grav\Plugin\Login\Passkeys\Passkeys::cleanName((string) $body['name']);
+        if ($name === '') {
+            throw new ValidationException('Give the passkey a name.', [['field' => 'name', 'message' => 'Give the passkey a name.']]);
+        }
+        if (!$passkeys->rename($user, (string) $this->getRouteParam($request, 'id'), $name)) {
+            throw new NotFoundException('That passkey is not on this account.');
+        }
+
+        return ApiResponse::create(['id' => (string) $this->getRouteParam($request, 'id'), 'name' => $name]);
+    }
+
+    /**
+     * DELETE /users/{username}/passkeys/{id}
+     *
+     * Remove a passkey. Your own takes the same proof as adding one (body or
+     * query: current_password / code). Removing someone else's (a lost
+     * device) takes api.users.write and no proof, the same split as 2FA.
+     * Nobody can add a passkey to another account.
+     */
+    public function removePasskey(ServerRequestInterface $request): ResponseInterface
+    {
+        $username = $this->getRouteParam($request, 'username');
+        $currentUser = $this->getUser($request);
+        $isSelf = $currentUser->username === $username;
+        // @scope-cap-exempt: the cap is applied by the scopeAllows() conjunct on
+        // this same expression, so the super branch cannot be reached uncapped.
+        $isAdmin = $this->scopeAllows($request, 'api.users.write')
+            && ($this->isSuperAdmin($currentUser) || $this->hasPermission($currentUser, 'api.users.write'));
+        if (!$isSelf && !$isAdmin) {
+            throw new ForbiddenException('You do not have permission to remove passkeys from this user.');
+        }
+        if ($isSelf && !$isAdmin) {
+            $this->requirePermission($request, 'api.access');
+        }
+
+        $passkeys = $this->passkeyService() ?? throw new ForbiddenException('Passkeys are not available on this site.');
+        $user = $this->loadUserOrFail($username);
+        $this->requireNotSuperTarget($request, $user);
+
+        if ($isSelf) {
+            $this->assertPasskeyProof($request, $user, $this->getRequestBody($request) + $request->getQueryParams());
+        }
+
+        $name = $passkeys->remove($user, (string) $this->getRouteParam($request, 'id'));
+        if ($name === null) {
+            throw new NotFoundException('That passkey is not on this account.');
+        }
+
+        $this->fireEvent('onApiUserPasskeyRemoved', ['user' => $user, 'name' => $name, 'by' => $currentUser->username]);
+
+        return ApiResponse::noContent();
+    }
+
+    /** @return array{0: UserInterface, 1: \Grav\Plugin\Login\Passkeys\Passkeys} */
+    private function ownPasskeyAccount(ServerRequestInterface $request): array
+    {
+        $username = $this->getRouteParam($request, 'username');
+        // Ownership first, so a caller can't probe which accounts exist.
+        if ($this->getUser($request)->username !== $username) {
+            throw new ForbiddenException('Only the account owner can add or rename passkeys.');
+        }
+        $this->requirePermission($request, 'api.access');
+        $passkeys = $this->passkeyService() ?? throw new ForbiddenException('Passkeys are not available on this site.');
+
+        return [$this->loadUserOrFail($username), $passkeys];
+    }
+
+    /**
+     * Proof for changing your own passkeys: the current password, or for an
+     * account without one the current 2FA code when 2FA is on. An account with
+     * neither (made by a sign-in service) can't change its passkeys: a token
+     * alone must not add a way in that outlives it.
+     */
+    private function assertPasskeyProof(ServerRequestInterface $request, UserInterface $user, array $body): void
+    {
+        if ($this->accountHasPassword($user)) {
+            $this->assertCurrentPassword($request, $user, $body['current_password'] ?? null, 'Enter your current password to change your passkeys.');
+        } elseif ($this->hasActiveTwoFactor($user)) {
+            $this->assertCurrentTwoFactorCode($user, $body['code'] ?? null);
+        } else {
+            throw new ForbiddenException('Set a password or 2FA on your account first. Passkeys can\'t be added or removed with a signed-in session alone.');
+        }
+    }
+
+    private function passkeyService(): ?\Grav\Plugin\Login\Passkeys\Passkeys
+    {
+        $login = $this->grav['login'] ?? null;
+
+        return is_object($login) && method_exists($login, 'passkeys') ? $login->passkeys() : null;
+    }
+
+    public function apiKeys(ServerRequestInterface $request): ResponseInterface
+    {
+        $username = $this->getRouteParam($request, 'username');
+        $user = $this->loadUserOrFail($username);
+
+        $this->requireApiKeyPermission($request, $username);
+
+        $manager = new ApiKeyManager();
+        $keys = $manager->listKeys($user);
+
+        return ApiResponse::create($keys);
+    }
+
+    public function createApiKey(ServerRequestInterface $request): ResponseInterface
+    {
+        $username = $this->getRouteParam($request, 'username');
+        $user = $this->loadUserOrFail($username);
+
+        $this->requireApiKeyPermission($request, $username, write: true);
+        $this->requireNotSuperTarget($request, $user);
+
+        $body = $this->getRequestBody($request);
+        $name = $body['name'] ?? '';
+        $scopes = $body['scopes'] ?? [];
+        $expiryDays = isset($body['expiry_days']) ? (int) $body['expiry_days'] : null;
+
+        // GHSA-95v9-4fcj-96gh: a new key must not exceed the caller's own
+        // authority. A scoped caller (non-empty api_key_scopes) may only mint a
+        // key whose scopes are a subset of its own, and must NOT mint an unscoped
+        // (full-access) key — otherwise a deliberately-restricted key on a super
+        // account could self-mint an uncapped super key. An unscoped caller
+        // (session, JWT, or unscoped key) may still mint any scopes.
+        $callerScopes = $request->getAttribute('api_key_scopes');
+        if (is_array($callerScopes) && $callerScopes !== []) {
+            $requested = is_array($scopes)
+                ? array_values(array_filter($scopes, static fn($s) => is_string($s) && $s !== ''))
+                : [];
+            if ($requested === []) {
+                throw new ForbiddenException('A scoped API key cannot create an unscoped key.');
+            }
+            foreach ($requested as $scope) {
+                if (!$this->scopeAllows($request, $scope)) {
+                    throw new ForbiddenException("API key cannot grant a scope outside its own: {$scope}");
+                }
+            }
+            $scopes = $requested;
+        }
+
+        $manager = new ApiKeyManager();
+        $result = $manager->generateKey($user, $name, $scopes, $expiryDays);
+
+        // Return the raw key (shown ONCE only) along with key metadata
+        $keys = $manager->listKeys($user);
+        $keyMeta = null;
+        foreach ($keys as $key) {
+            if ($key['id'] === $result['id']) {
+                $keyMeta = $key;
+                break;
+            }
+        }
+
+        $data = array_merge($keyMeta ?? [], ['api_key' => $result['key']]);
+
+        return ApiResponse::created(
+            data: $data,
+            location: $this->getApiBaseUrl() . '/users/' . $username . '/api-keys',
+            headers: $this->invalidationHeaders(['users:update:' . $username . ':api-keys']),
+        );
+    }
+
+    public function deleteApiKey(ServerRequestInterface $request): ResponseInterface
+    {
+        $username = $this->getRouteParam($request, 'username');
+        $user = $this->loadUserOrFail($username);
+
+        $this->requireApiKeyPermission($request, $username, write: true);
+        $this->requireNotSuperTarget($request, $user);
+
+        $keyId = $this->getRouteParam($request, 'keyId');
+
+        $manager = new ApiKeyManager();
+        $revoked = $manager->revokeKey($user, $keyId);
+
+        if (!$revoked) {
+            throw new NotFoundException("API key '{$keyId}' not found for user '{$username}'.");
+        }
+
+        return ApiResponse::noContent(
+            $this->invalidationHeaders(['users:update:' . $username . ':api-keys']),
+        );
+    }
+
+    /**
+     * Check permission for API key operations. Own user with api.access is sufficient,
+     * otherwise require api.users.read (or api.users.write for mutations).
+     */
+    private function requireApiKeyPermission(
+        ServerRequestInterface $request,
+        string $targetUsername,
+        bool $write = false,
+    ): void {
+        $currentUser = $this->getUser($request);
+        $isSelf = $currentUser->username === $targetUsername;
+
+        if ($isSelf) {
+            // Self-access only requires api.access
+            $this->requirePermission($request, 'api.access');
+        } else {
+            $this->requirePermission($request, $write ? 'api.users.write' : 'api.users.read');
+        }
+    }
+
+    /**
+     * Block a non-super caller from acting on a super-admin target via the
+     * per-user sibling endpoints (API keys, 2FA generate/disable). The primary
+     * mutators — create()/update()/delete() — already carry this guard; these
+     * siblings target /users/{username} too and must not become an escalation
+     * path (e.g. minting an API key for, or stripping 2FA from, a super-admin).
+     * Acting on your own account is never an escalation, so self is allowed.
+     * Callers must pass the already-loaded target user. See GHSA-p97c-g455-q447
+     * and GHSA-8gg4.
+     *
+     * The super exemption runs through isSuperWithinScope() rather than a bare
+     * isSuperAdmin(): this guard GRANTS AN EXEMPTION when the caller is super, so
+     * reading super-ness off the account alone let a scoped key minted on a
+     * super-admin account skip the guard entirely and manage other super-admins
+     * without ever carrying admin.super in its scopes (GHSA-94q7-vrqr-cx5v). The
+     * request is required for exactly that reason.
+     */
+    private function requireNotSuperTarget(ServerRequestInterface $request, UserInterface $target): void
+    {
+        $current = $this->getUser($request);
+
+        if ($current->username === $target->username) {
+            return;
+        }
+
+        if (!$this->isSuperWithinScope($request) && $this->targetIsSuper($target)) {
+            throw new ForbiddenException('Only super-admins can manage super-admin accounts.');
+        }
+    }
+
+    /**
+     * Whether a loaded target account is EFFECTIVELY super — through its own
+     * access map or through any group it belongs to.
+     *
+     * `$target->get('access')` only ever returns the account's own map, but both
+     * authorization layers resolve groups first (core UserTrait::authorize() and
+     * PermissionResolver::buildFlatAccess()), and a group carrying admin.super
+     * authorizes every action for its members. An account that is super purely by
+     * group membership was therefore invisible to every target guard while being
+     * fully super at authorization time, letting a non-super api.users.write
+     * manager reset its password and take it over (GHSA-vv8m-jqpm-38x4).
+     *
+     * This deliberately does NOT go through $target->authorize(): a target loaded
+     * from storage is not `authenticated`, so authorize() returns false for every
+     * action and the guard would fail OPEN. Reading access maps directly is the
+     * only login-state-independent answer.
+     *
+     * @param UserInterface $target
+     */
+    private function targetIsSuper(UserInterface $target): bool
+    {
+        if ($this->accessGrantsSuper($target->get('access'))) {
+            return true;
+        }
+
+        foreach ((array) $target->get('groups', []) as $group) {
+            if (is_string($group) && $this->accessGrantsSuper($this->config->get("groups.{$group}.access"))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function validateEmailType(array $body): void
+    {
+        if (array_key_exists('email', $body) && !is_string($body['email'])) {
+            throw new ValidationException('The email must be a string.', [
+                ['field' => 'email', 'message' => 'The email must be a string.'],
+            ]);
+        }
+    }
+
+    /**
+     * Detect whether an `access` payload would confer super-admin privileges
+     * (admin.super or api.super), in either nested (`['admin' => ['super' => 1]]`)
+     * or dot-keyed (`['admin.super' => 1]`) form.
+     *
+     * Used to stop a non-super api.users.write manager from minting or promoting
+     * a super account, and to detect when a loaded target user is itself super —
+     * privilege escalation by proxy. See GHSA-p97c-g455-q447.
+     *
+     * @param mixed $access
+     */
+    private function accessGrantsSuper($access): bool
+    {
+        if (!is_array($access)) {
+            return false;
+        }
+
+        $this->assertAccessKeys($access);
+
+        foreach (['admin', 'api'] as $scope) {
+            if (isset($access[$scope]) && !is_array($access[$scope]) && Utils::isPositive($access[$scope])) {
+                return true;
+            }
+
+            if (!empty($access[$scope]['super']) || !empty($access["{$scope}.super"])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function assertAccessKeys(array $access): void
+    {
+        if (array_key_exists('<<', $access)) {
+            throw new ValidationException("'<<' cannot be used as an access key.");
+        }
+        foreach ($access as $value) {
+            if (is_array($value)) {
+                $this->assertAccessKeys($value);
+            }
+        }
+    }
+
+    private function loadUserOrFail(?string $username): UserInterface
+    {
+        if ($username === null || $username === '') {
+            throw new ValidationException('Username is required.');
+        }
+
+        /** @var UserCollectionInterface $accounts */
+        $accounts = $this->grav['accounts'];
+        $user = $accounts->load($username);
+
+        if (!$user->exists()) {
+            throw new NotFoundException("User '{$username}' not found.");
+        }
+
+        return $user;
+    }
+
+    private function serializeUser(UserInterface $user): array
+    {
+        // Built-in keys win: the sweep never yields a reserved name, but the
+        // union order keeps that guaranteed rather than incidental.
+        return $this->getSerializer()->serialize($user) + $this->customAccountFieldValues($user);
+    }
+
+    /**
+     * Read back the site's custom account fields.
+     *
+     * The serializer emits a fixed set of built-in fields. A site that extends
+     * the account blueprint (user/blueprints/user/account.yaml) gets its own
+     * fields saved by applyCustomAccountFields(), but they never came back out
+     * again, so the admin form redrew them empty right after a successful save
+     * (admin2#138). Return the stored value for every field the sweep is
+     * allowed to write, so a custom field round-trips.
+     *
+     * Fields the user has never been given a value for are left out entirely,
+     * so the client still falls back to the blueprint default.
+     *
+     * @return array<string, mixed>
+     */
+    private function customAccountFieldValues(UserInterface $user): array
+    {
+        $values = [];
+        foreach ($this->customAccountFieldNames($user) as $field) {
+            $value = $user->get($field);
+            if ($value !== null) {
+                $values[$field] = $value;
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * Field names the custom-field sweep is allowed to read and write.
+     *
+     * Walks the (extended) account blueprint and keeps every editable input
+     * that isn't explicitly handled elsewhere: reserved fields, display and
+     * container types, and anything a `security@` gate marks off-limits for
+     * the current caller are all skipped, matching applyCustomAccountFields()
+     * so a field can't be readable but unwritable (or the reverse).
+     *
+     * @return string[]
+     */
+    private function customAccountFieldNames(UserInterface $user): array
+    {
+        if ($this->customAccountFields !== null) {
+            return $this->customAccountFields;
+        }
+
+        $this->customAccountFields = [];
+
+        $blueprint = $this->accountBlueprint($user);
+        if ($blueprint === null) {
+            return $this->customAccountFields;
+        }
+
+        $items = $blueprint->schema()->getState()['items'] ?? [];
+        if (!is_array($items)) {
+            return $this->customAccountFields;
+        }
+
+        foreach ($items as $field => $property) {
+            // The schema is flat and dotted; '' is the synthetic root and a
+            // dotted name is a child of a list/collection field, neither of
+            // which is a plain account value.
+            if (!is_string($field) || $field === '' || str_contains($field, '.')) {
+                continue;
+            }
+            if (in_array($field, self::RESERVED_ACCOUNT_FIELDS, true)) {
+                continue;
+            }
+            if (!is_array($property) || !isset($property['type'])) {
+                continue;
+            }
+            if (in_array($property['type'], self::NON_DATA_FIELD_TYPES, true)) {
+                continue;
+            }
+            if (!empty($property['validate']['ignore'])) {
+                continue;
+            }
+
+            $this->customAccountFields[] = $field;
+        }
+
+        return $this->customAccountFields;
+    }
+
+    /**
+     * Resolve the account blueprint for a user regardless of the accounts
+     * backend. Flex accounts expose getBlueprint(); classic DataUser accounts
+     * expose blueprints(). Both resolve `user/account`, so a site extension at
+     * user/blueprints/user/account.yaml is already merged in — which is what
+     * lets custom account fields validate and persist (admin2#138). Returns
+     * null only for an exotic user type that offers neither.
+     */
+    private function accountBlueprint(UserInterface $user): ?Blueprint
+    {
+        if (method_exists($user, 'getBlueprint')) {
+            $blueprint = $user->getBlueprint();
+            return $blueprint instanceof Blueprint ? $blueprint : null;
+        }
+        if (method_exists($user, 'blueprints')) {
+            $blueprint = $user->blueprints();
+            return $blueprint instanceof Blueprint ? $blueprint : null;
+        }
+        return null;
+    }
+
+    /**
+     * Persist the site's custom account fields from the request body.
+     *
+     * The account blueprint's built-in fields are applied explicitly by
+     * create()/update() so their privilege gates stay in force. A site can
+     * also extend the account blueprint (user/blueprints/user/account.yaml)
+     * with its own fields; those were previously dropped on save (admin2#138).
+     * We set every field customAccountFieldNames() allows that the body
+     * actually carries, so a site's own account fields persist while reserved
+     * and `security@`-gated fields stay out of reach. Keys the blueprint
+     * doesn't define never make the list, so this can't mass-assign internal
+     * account state.
+     */
+    private function applyCustomAccountFields(UserInterface $user, array $body): void
+    {
+        foreach ($this->customAccountFieldNames($user) as $field) {
+            // Only touch what the request actually sent, so a PATCH stays a
+            // partial update. Keys the blueprint doesn't list never appear
+            // here, so an invented key can't reach $user->set().
+            if (array_key_exists($field, $body)) {
+                $user->set($field, $body[$field]);
+            }
+        }
+    }
+
+    /**
+     * Extract the access/group list filters from the request query string.
+     *
+     * `access` is the canonical permission filter (e.g. `admin.login`,
+     * `api.super`); `permission` is accepted as an alias. `group` filters by
+     * group membership. `filter` carries the active Users-tab id (see
+     * onApiUserListFilters / onApiUserListFilter) — empty means the built-in
+     * "All Users" tab and is handled entirely by core.
+     *
+     * @return array{access: string, group: string, filter: string}
+     */
+    private function getListFilters(ServerRequestInterface $request): array
+    {
+        $query = $request->getQueryParams();
+        $access = $query['access'] ?? $query['permission'] ?? '';
+        $group = $query['group'] ?? '';
+        $filter = $query['filter'] ?? '';
+
+        return [
+            'access' => is_string($access) ? trim($access) : '',
+            'group' => is_string($group) ? trim($group) : '',
+            'filter' => is_string($filter) ? trim($filter) : '',
+        ];
+    }
+
+    /**
+     * @param array{access: string, group: string, filter?: string} $filters
+     */
+    private function userMatchesFilters(UserInterface $user, array $filters): bool
+    {
+        if ($filters['group'] !== '') {
+            $groups = array_map('strval', (array) $user->get('groups', []));
+            if (!in_array($filters['group'], $groups, true)) {
+                return false;
+            }
+        }
+
+        if ($filters['access'] !== '' && !$this->userHasEffectiveAccess($user, $filters['access'])) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Test whether a user is effectively granted a permission, independent of
+     * login state (so it works against accounts loaded from storage).
+     *
+     * Resolves the action against the merged access map (group access overlaid
+     * by the user's own access) with parent-key inheritance — `api.pages`
+     * covers `api.pages.read` — and treats super admins (api.super or the
+     * legacy admin.super) as authorized for everything, so "find all admins"
+     * catches either authority.
+     */
+    private function userHasEffectiveAccess(UserInterface $user, string $action): bool
+    {
+        if ($action === '') {
+            return true;
+        }
+
+        $flat = $this->effectiveAccessMap($user);
+
+        if ($action !== 'admin.super' && $action !== 'api.super') {
+            if ($this->isPositiveFlat($flat, 'api.super') || $this->isPositiveFlat($flat, 'admin.super')) {
+                return true;
+            }
+        }
+
+        // Walk up the dot-path; the closest explicitly-set key wins.
+        $key = $action;
+        while ($key !== '') {
+            if (array_key_exists($key, $flat)) {
+                return Utils::isPositive($flat[$key]);
+            }
+            $pos = strrpos($key, '.');
+            $key = $pos !== false ? substr($key, 0, $pos) : '';
+        }
+
+        return false;
+    }
+
+    /**
+     * Build a flattened (dot-notation) access map for the user: each group's
+     * access first, then the user's own access on top so direct grants
+     * override inherited ones.
+     *
+     * @return array<string, mixed>
+     */
+    private function effectiveAccessMap(UserInterface $user): array
+    {
+        $map = [];
+
+        foreach ((array) $user->get('groups', []) as $group) {
+            if (!is_string($group)) {
+                continue;
+            }
+            $groupAccess = $this->config->get("groups.{$group}.access");
+            if (is_array($groupAccess)) {
+                $map = array_merge($map, Utils::arrayFlattenDotNotation($groupAccess));
+            }
+        }
+
+        $own = $user->get('access');
+        if (is_array($own)) {
+            $map = array_merge($map, Utils::arrayFlattenDotNotation($own));
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, mixed> $flat
+     */
+    private function isPositiveFlat(array $flat, string $key): bool
+    {
+        return array_key_exists($key, $flat) && Utils::isPositive($flat[$key]);
+    }
+
+    /**
+     * Case-insensitive substring match across the searchable user fields,
+     * mirroring the Flex backend's blueprint-configured search.
+     */
+    private function userMatchesSearch(UserInterface $user, string $search): bool
+    {
+        $needle = mb_strtolower($search);
+        $haystacks = [
+            (string) $user->username,
+            (string) $user->get('email', ''),
+            (string) $user->get('fullname', ''),
+            (string) $user->get('title', ''),
+        ];
+
+        foreach ($haystacks as $value) {
+            if ($value !== '' && str_contains(mb_strtolower($value), $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function getSerializer(): UserSerializer
+    {
+        return $this->serializer ??= new UserSerializer();
+    }
+
+    /**
+     * Get all usernames by scanning account files.
+     */
+    private function getAllUsernames(): array
+    {
+        $locator = $this->grav['locator'];
+
+        $accountDir = $locator->findResource('account://', true)
+            ?: $locator->findResource('user://accounts', true);
+
+        if (!$accountDir || !is_dir($accountDir)) {
+            return [];
+        }
+
+        $usernames = [];
+        foreach (new \DirectoryIterator($accountDir) as $file) {
+            if ($file->isDot() || !$file->isFile() || $file->getExtension() !== 'yaml') {
+                continue;
+            }
+            $usernames[] = $file->getBasename('.yaml');
+        }
+
+        sort($usernames);
+        return $usernames;
+    }
+}

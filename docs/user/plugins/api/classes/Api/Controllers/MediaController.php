@@ -1,0 +1,2754 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Grav\Plugin\Api\Controllers;
+
+use Grav\Common\Page\Interfaces\PageInterface;
+use Grav\Common\Yaml;
+use Grav\Framework\Psr7\Response;
+use Grav\Plugin\Api\Exceptions\NotFoundException;
+use Grav\Plugin\Api\Exceptions\ValidationException;
+use Grav\Plugin\Api\Response\ApiResponse;
+use Grav\Plugin\Api\Services\PathContainment;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+
+class MediaController extends AbstractApiController
+{
+    use HandlesMediaUploads;
+
+    /**
+     * Per-folder sidecar holding a manual ordering of site media. Mirrors the
+     * page-media `header.media_order` concept for folders that have no page to
+     * hang the order on. Lives inside the folder it orders and is excluded from
+     * media listings.
+     */
+    private const MEDIA_ORDER_FILE = 'media_order.yaml';
+
+    /**
+     * Sidecar suffix Grav uses for per-file metadata: `photo.jpg.meta.yaml`
+     * sits next to `photo.jpg`.
+     */
+    private const META_SUFFIX = '.meta.yaml';
+
+    /**
+     * Keys the metadata editor may never write. These are owned by Grav core
+     * (intrinsic file properties it derives, and the `upload` block it persists
+     * from a FormFlash upload). Blocking them stops a misconfigured field — or a
+     * crafted payload — from overwriting dimensions/mime and breaking rendering.
+     * Any such keys already in a sidecar are still preserved untouched on save.
+     */
+    private const RESERVED_META_KEYS = [
+        'width', 'height', 'mime', 'size', 'filesize', 'modified', 'upload', 'type',
+    ];
+
+    /**
+     * The built-in fields. They stay in the editor whatever
+     * `media_metadata.fields` lists, unless an entry with the same key sets
+     * `remove: true`; an entry with the same key replaces the built-in one.
+     */
+    private const DEFAULT_META_FIELDS = [
+        ['key' => 'alt', 'label' => 'Alt Text', 'type' => 'text'],
+        ['key' => 'title', 'label' => 'Title', 'type' => 'text'],
+        ['key' => 'caption', 'label' => 'Caption', 'type' => 'textarea'],
+        ['key' => 'description', 'label' => 'Description', 'type' => 'textarea'],
+        ['key' => 'tags', 'label' => 'Tags', 'type' => 'tags'],
+    ];
+
+    /** Maximum number of entries kept in a `tags` (list) field. */
+    private const MAX_TAGS = 50;
+
+    /**
+     * Maximum number of repeatable `?filter=` clauses accepted on a media list
+     * request. Bounds the per-request query work, mirroring the `batch.max_items`
+     * cap on writes.
+     */
+    private const MAX_FILTER_CLAUSES = 10;
+
+    /**
+     * GET /pages/{route}/media - List all media for a page.
+     */
+    public function pageMedia(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.read');
+
+        $page = $this->findPageOrFail($request, 'read');
+        $pagePath = $page->path();
+
+        // Create fresh Media object to avoid stale page cache
+        $media = new \Grav\Common\Page\Media($pagePath);
+
+        // Optional metadata filter/sort, bound to the configured schema.
+        $collection = $this->applyMediaQuery($media, $request);
+
+        $serialized = $this->getSerializer()->serializeCollection($collection);
+
+        return ApiResponse::create($serialized);
+    }
+
+    /**
+     * POST /pages/{route}/media - Upload file(s) to a page.
+     */
+    public function uploadPageMedia(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $page = $this->findPageOrFail($request, 'media');
+        $pagePath = $page->path();
+
+        if (!$pagePath || !is_dir($pagePath)) {
+            throw new NotFoundException('Page directory does not exist on disk.');
+        }
+
+        $uploadedFiles = $this->flattenUploadedFiles($request->getUploadedFiles());
+
+        if ($uploadedFiles === []) {
+            throw new ValidationException('No files were uploaded.');
+        }
+
+        // A page's Markdown or frontmatter.yaml is the page, not its media, so
+        // a media write may not replace it (checked before anything is stored).
+        foreach ($uploadedFiles as $file) {
+            if (self::isPageContentFile((string) $file->getClientFilename())) {
+                throw new ValidationException(
+                    "'" . basename((string) $file->getClientFilename()) . "' is part of the page, not its media."
+                );
+            }
+        }
+
+        // Honor per-field upload settings (random_name, accept, ...) when the
+        // file field forwards them; absent, this is an inert no-op.
+        $settings = $this->parseUploadFieldSettings($request);
+
+        $uploadedNames = [];
+        foreach ($uploadedFiles as $file) {
+            // Fire before event — plugins can throw to reject specific files
+            $this->fireEvent('onApiBeforeMediaUpload', [
+                'page' => $page,
+                'filename' => $file->getClientFilename(),
+                'type' => $file->getClientMediaType(),
+                'size' => $file->getSize(),
+            ]);
+
+            $uploadedNames[] = $this->processUploadedFile($file, $pagePath, $settings);
+        }
+
+        // Create fresh Media object to pick up newly uploaded files
+        $media = new \Grav\Common\Page\Media($pagePath);
+        $serialized = $this->getSerializer()->serializeCollection($media->all());
+
+        $this->fireAdminEvent('onAdminAfterAddMedia', ['object' => $page, 'page' => $page]);
+        $this->fireEvent('onApiMediaUploaded', [
+            'page' => $page,
+            'filenames' => $uploadedNames,
+        ]);
+
+        $baseUrl = $this->getApiBaseUrl();
+        $route = $this->getRouteParam($request, 'route') ?? '';
+        $location = "{$baseUrl}/pages/{$route}/media";
+
+        return ApiResponse::created(
+            $serialized,
+            $location,
+            $this->invalidationHeaders([
+                'media:update:pages/' . $route,
+                'pages:update:/' . $route,
+            ]),
+        );
+    }
+
+    /**
+     * DELETE /pages/{route}/media/{filename} - Delete a media file from a page.
+     */
+    public function deletePageMedia(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $page = $this->findPageOrFail($request, 'media');
+        $filename = $this->getSafeFilename($request);
+        $pagePath = $page->path();
+
+        if (!$pagePath) {
+            throw new NotFoundException('Page directory does not exist on disk.');
+        }
+
+        // The page's own Markdown and frontmatter.yaml aren't media, and the
+        // media listing never shows them: deleting the page is DELETE /pages.
+        if (self::isPageContentFile($filename)) {
+            throw new NotFoundException("Media file '{$filename}' not found on this page.");
+        }
+
+        // Collect every physical file backing this medium: the base file, its
+        // retina `@Nx` variants, and any `.meta.yaml` siblings. A migrated
+        // image stored only as `photo@2x.jpg` (no base `photo.jpg`) is listed
+        // by Grav under the synthesized base name `photo.jpg`, which has no file
+        // on disk — so a plain `file_exists(photo.jpg)` check 404'd it (admin2#68).
+        // Sweeping the variants also stops a deleted base from leaving an orphan
+        // `@2x` behind (which would reappear as a ghost base in the listing).
+        $targets = $this->mediaFileVariants($pagePath, $filename);
+        if ($targets === []) {
+            throw new NotFoundException("Media file '{$filename}' not found on this page.");
+        }
+
+        $this->fireEvent('onApiBeforeMediaDelete', ['page' => $page, 'filename' => $filename]);
+
+        foreach ($targets as $target) {
+            if (is_file($target)) {
+                unlink($target);
+            }
+        }
+
+        // Build fresh media object for admin event compatibility
+        $media = new \Grav\Common\Page\Media($pagePath);
+        $this->fireAdminEvent('onAdminAfterDelMedia', [
+            'object' => $page, 'page' => $page,
+            'media' => $media, 'filename' => $filename,
+        ]);
+        $this->fireEvent('onApiMediaDeleted', ['page' => $page, 'filename' => $filename]);
+
+        $route = $this->getRouteParam($request, 'route') ?? '';
+        return ApiResponse::noContent(
+            $this->invalidationHeaders([
+                'media:delete:pages/' . $route . '/' . $filename,
+                'media:update:pages/' . $route,
+                'pages:update:/' . $route,
+            ]),
+        );
+    }
+
+    /**
+     * GET /pages/{route}/media/{filename}/meta - Read a page media file's
+     * editable metadata (the `<filename>.meta.yaml` sidecar).
+     */
+    public function getPageMediaMeta(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.read');
+
+        $page = $this->findPageOrFail($request, 'read');
+        $filename = $this->getSafeFilename($request);
+        $filePath = $this->requirePageMediaFile($page->path(), $filename);
+
+        return ApiResponse::create($this->buildMetaResponse($filePath, $filename));
+    }
+
+    /**
+     * PATCH /pages/{route}/media/{filename}/meta - Save a page media file's
+     * editable metadata. Only configured fields present in the body are written;
+     * every other key in the sidecar (EXIF, dimensions, upload info) is kept.
+     */
+    public function savePageMediaMeta(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $page = $this->findPageOrFail($request, 'media');
+        $filename = $this->getSafeFilename($request);
+        $filePath = $this->requirePageMediaFile($page->path(), $filename);
+
+        $this->applyMetaWrite($filePath, $this->extractMetaInput($request));
+
+        $this->fireEvent('onApiMediaMetadataUpdated', ['page' => $page, 'filename' => $filename]);
+
+        $route = $this->getRouteParam($request, 'route') ?? '';
+        return ApiResponse::create(
+            $this->buildMetaResponse($filePath, $filename),
+            200,
+            $this->invalidationHeaders([
+                'media:update:pages/' . $route,
+                'pages:update:/' . $route,
+            ]),
+        );
+    }
+
+    /**
+     * DELETE /pages/{route}/media/{filename}/meta - Clear a page media file's
+     * editable metadata. Reserved/technical keys are preserved; the sidecar is
+     * removed only if nothing else remains in it.
+     */
+    public function deletePageMediaMeta(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $page = $this->findPageOrFail($request, 'media');
+        $filename = $this->getSafeFilename($request);
+        $filePath = $this->requirePageMediaFile($page->path(), $filename);
+
+        $this->clearMetaFields($filePath);
+
+        $this->fireEvent('onApiMediaMetadataDeleted', ['page' => $page, 'filename' => $filename]);
+
+        $route = $this->getRouteParam($request, 'route') ?? '';
+        return ApiResponse::noContent(
+            $this->invalidationHeaders([
+                'media:update:pages/' . $route,
+                'pages:update:/' . $route,
+            ]),
+        );
+    }
+
+    /**
+     * POST /pages/{route}/media/batch/meta - Apply metadata to several page
+     * media files at once. The site media counterpart is the oldest batch
+     * route; this mirrors it so a page gallery does not need one request per
+     * image.
+     *
+     * The shared field map is validated once before anything is written, so an
+     * invalid value (or a `required` field sent empty) fails the whole request
+     * with a 422. Each filename is then handled on its own: a filename that is
+     * invalid or missing is reported in its own `results` row without stopping
+     * the rest.
+     */
+    public function batchPageMediaMeta(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $page = $this->findPageOrFail($request, 'media');
+        $pagePath = $page->path();
+        if (!$pagePath || !is_dir($pagePath)) {
+            throw new NotFoundException('Page directory does not exist on disk.');
+        }
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['files', 'fields']);
+
+        $files = $body['files'];
+        $fields = $body['fields'];
+
+        if (!is_array($files) || $files === []) {
+            throw new ValidationException("The 'files' field must be a non-empty array of media filenames.");
+        }
+        if (!is_array($fields)) {
+            throw new ValidationException("The 'fields' field must be an object of metadata values.");
+        }
+
+        $maxBatch = (int) $this->config->get('plugins.api.batch.max_items', 50);
+        if (count($files) > $maxBatch) {
+            throw new ValidationException("Batch metadata updates are limited to {$maxBatch} files.");
+        }
+
+        // The same fields apply to every file, so validate them once: an
+        // invalid value (or a required field sent empty) fails the whole
+        // request instead of producing one identical error row per file.
+        $changes = $this->sanitizeMetaInput($fields);
+
+        $results = [];
+        foreach ($files as $filename) {
+            $label = is_string($filename) ? $filename : '';
+            try {
+                $filename = $this->sanitizePageMediaFilename($label);
+                $filePath = $this->requirePageMediaFile($pagePath, $filename);
+
+                $this->applyMetaChanges($filePath, $changes);
+                $this->fireEvent('onApiMediaMetadataUpdated', ['page' => $page, 'filename' => $filename]);
+
+                $results[] = ['filename' => $filename, 'status' => 'success'];
+            } catch (\Throwable $e) {
+                $results[] = ['filename' => $label, 'status' => 'error', 'message' => $e->getMessage()];
+            }
+        }
+
+        $route = $this->getRouteParam($request, 'route') ?? '';
+        return ApiResponse::create(
+            [
+                'results' => $results,
+                'total' => count($results),
+                'successful' => count(array_filter($results, static fn($r) => $r['status'] === 'success')),
+                'failed' => count(array_filter($results, static fn($r) => $r['status'] === 'error')),
+            ],
+            200,
+            $this->invalidationHeaders([
+                'media:update:pages/' . $route,
+                'pages:update:/' . $route,
+            ]),
+        );
+    }
+
+    /**
+     * Validate a page media filename supplied in a request body.
+     *
+     * The single-file routes take their filename from the `{filename}` route
+     * parameter, where a slash cannot arrive. The batch takes names from JSON,
+     * so they are checked here rather than joined onto the page path and looked
+     * up: page media is flat, and `../` would otherwise reach a file outside
+     * the page folder.
+     *
+     * Both separators are refused on every platform, where the containment
+     * checks only fold `\` on Windows: an entry here is one flat name, so
+     * refusing both keeps it addressing the same file on Unix and Windows.
+     */
+    private function sanitizePageMediaFilename(mixed $filename): string
+    {
+        if (!is_string($filename) || $filename === '') {
+            throw new ValidationException('Filename is required.');
+        }
+
+        if (
+            str_contains($filename, '/')
+            || str_contains($filename, '\\')
+            || str_contains($filename, '..')
+            || str_contains($filename, "\0")
+            || str_starts_with($filename, '.')
+        ) {
+            throw new ValidationException('Invalid filename.');
+        }
+
+        return $filename;
+    }
+
+    /**
+     * Absolute paths of every file backing a medium in $dir: the base file
+     * `<stem>.<ext>`, its retina variants `<stem>@<N>x.<ext>`, and the
+     * `.meta.yaml` sidecar of each. Used by deletion so retina-only images
+     * (no physical base) are still removed and no `@Nx` orphans are left
+     * behind (admin2#68). Only files that exist are returned.
+     *
+     * @return list<string>
+     */
+    private function mediaFileVariants(string $dir, string $filename): array
+    {
+        $stem = pathinfo($filename, PATHINFO_FILENAME);
+        $ext = pathinfo($filename, PATHINFO_EXTENSION);
+        // <stem>@2x.<ext>, <stem>@3x.<ext>, … (case-insensitive extension)
+        $variantRe = '/^' . preg_quote($stem, '/') . '@\d+x\.' . preg_quote($ext, '/') . '$/i';
+
+        $files = [];
+        foreach (scandir($dir) ?: [] as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            if ($entry !== $filename && !preg_match($variantRe, $entry)) {
+                continue;
+            }
+            $path = $dir . '/' . $entry;
+            if (is_file($path)) {
+                $files[] = $path;
+            }
+            $meta = $path . '.meta.yaml';
+            if (is_file($meta)) {
+                $files[] = $meta;
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * GET /media - List site-level media with folder browsing, search, and type filter.
+     */
+    public function siteMedia(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.read');
+
+        $mediaPath = $this->getSiteMediaPath();
+        $queryParams = $request->getQueryParams();
+
+        // Validate optional path parameter
+        $relativePath = '';
+        if (!empty($queryParams['path'])) {
+            $relativePath = $this->validateRelativePath($queryParams['path'], $mediaPath);
+        }
+
+        $currentPath = $relativePath !== '' ? $mediaPath . '/' . $relativePath : $mediaPath;
+
+        // Is a metadata filter/sort query requested? (mirrors page media, #4210)
+        $hasMetaQuery = isset($queryParams['filter'])
+            || (isset($queryParams['sort']) && $queryParams['sort'] !== '');
+
+        // Search is a recursive filename scan; metadata filter/sort is a
+        // per-folder collection query. Combining them has no coherent meaning,
+        // so reject it rather than silently ignoring one (#4210).
+        if (!empty($queryParams['search']) && $hasMetaQuery) {
+            throw new ValidationException('search cannot be combined with filter or sort.');
+        }
+
+        // Handle search mode
+        if (!empty($queryParams['search'])) {
+            return $this->handleMediaSearch($request, $mediaPath, $queryParams);
+        }
+
+        // Verify directory exists
+        if (!is_dir($currentPath)) {
+            // Return empty result for non-existent paths, echoing the requested
+            // page/per_page like any other empty listing would.
+            $pagination = $this->getPagination($request);
+            $baseUrl = $this->getApiBaseUrl() . '/media';
+            return ApiResponse::paginated([], 0, $pagination['page'], $pagination['per_page'], $baseUrl, 200, [], [
+                'path' => $relativePath,
+                'folders' => [],
+            ],
+            query: $request->getQueryParams()
+        );
+        }
+
+        $result = $this->scanMediaDirectoryWithFolders($currentPath, $relativePath);
+        // Apply the folder's saved manual ordering before filtering/paginating.
+        $result['files'] = $this->applySiteMediaOrder($result['files'], $currentPath);
+        $pagination = $this->getPagination($request);
+
+        $files = $result['files'];
+
+        // Optional metadata filter/sort, bound to the configured schema and
+        // shared with page media (#4210). Only build a real Media collection
+        // when a query is actually requested: constructing Media can trigger an
+        // EXIF `.meta.yaml` auto-write on GET when `system.media.auto_metadata_exif`
+        // is on, so the plain scan path above must stay side-effect-free.
+        if ($hasMetaQuery) {
+            $media = new \Grav\Common\Page\Media($currentPath);
+            // Throws ValidationException on too many clauses / unknown sort
+            // field — let it propagate, matching page media.
+            $collection = $this->applyMediaQuery($media, $request);
+
+            // The collection is keyed by filename ("<basename>.<ext>"), the same
+            // names scanMediaDirectoryWithFolders() produces, so its keys map
+            // straight back onto the scanned list.
+            $queried = [];
+            foreach ($collection as $name => $medium) {
+                $queried[] = is_string($name) && $name !== ''
+                    ? $name
+                    : ($medium->get('filename') ?: basename((string) $medium->path()));
+            }
+
+            if (isset($queryParams['sort']) && $queryParams['sort'] !== '') {
+                // A sort overrides the manual-order sidecar: the collection's
+                // order wins.
+                $files = $queried;
+            } else {
+                // Filter-only: keep the folder's manual order but drop anything
+                // the collection filtered out. Files that don't resolve as media
+                // simply won't appear — acceptable per #4210.
+                $keep = array_flip($queried);
+                $files = array_values(array_filter($files, static fn(string $f) => isset($keep[$f])));
+            }
+        }
+
+        // Apply type filter
+        $typeFilter = $queryParams['type'] ?? null;
+        if ($typeFilter) {
+            $files = array_values(array_filter($files, function (string $file) use ($currentPath, $typeFilter) {
+                $mime = mime_content_type($currentPath . '/' . $file) ?: '';
+                return match ($typeFilter) {
+                    'image' => str_starts_with($mime, 'image/'),
+                    'video' => str_starts_with($mime, 'video/'),
+                    'audio' => str_starts_with($mime, 'audio/'),
+                    'document' => !str_starts_with($mime, 'image/') && !str_starts_with($mime, 'video/') && !str_starts_with($mime, 'audio/'),
+                    default => true,
+                };
+            }));
+        }
+
+        $total = count($files);
+        $pagedFiles = array_slice($files, $pagination['offset'], $pagination['limit']);
+
+        $serialized = array_map(
+            fn(string $file) => $this->serializeSiteFile($currentPath, $file, $relativePath),
+            $pagedFiles,
+        );
+
+        $baseUrl = $this->getApiBaseUrl() . '/media';
+
+        return ApiResponse::paginated(
+            $serialized,
+            $total,
+            $pagination['page'],
+            $pagination['per_page'],
+            $baseUrl,
+            200,
+            [],
+            [
+                'path' => $relativePath,
+                'folders' => $result['folders'],
+                'ordered' => is_file($currentPath . '/' . self::MEDIA_ORDER_FILE),
+            ],
+            query: $request->getQueryParams(),
+        );
+    }
+
+    /**
+     * POST /media - Upload file(s) to the site media folder (with optional subfolder path).
+     */
+    public function uploadSiteMedia(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $mediaPath = $this->getSiteMediaPath();
+        $queryParams = $request->getQueryParams();
+
+        // Validate optional subfolder path
+        $relativePath = '';
+        if (!empty($queryParams['path'])) {
+            $relativePath = $this->validateRelativePath($queryParams['path'], $mediaPath);
+        }
+
+        $targetDir = $relativePath !== '' ? $mediaPath . '/' . $relativePath : $mediaPath;
+
+        if (!is_dir($targetDir) && !@mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+            throw new ValidationException('Unable to create upload directory.');
+        }
+
+        $uploadedFiles = $this->flattenUploadedFiles($request->getUploadedFiles());
+
+        if ($uploadedFiles === []) {
+            throw new ValidationException('No files were uploaded.');
+        }
+
+        $settings = $this->parseUploadFieldSettings($request);
+
+        $created = [];
+        $uploadedNames = [];
+        foreach ($uploadedFiles as $file) {
+            // Fire before event — plugins can throw to reject specific files.
+            // The page-media upload has fired this since day one; site media
+            // never did, so a listener vetting uploads was silently bypassed
+            // by anything added on Admin Next's Media page (#41). `page` is
+            // null and `path` carries the media-root-relative folder, matching
+            // the after-events below.
+            $this->fireEvent('onApiBeforeMediaUpload', [
+                'page' => null,
+                'path' => $relativePath,
+                'filename' => $file->getClientFilename(),
+                'type' => $file->getClientMediaType(),
+                'size' => $file->getSize(),
+            ]);
+
+            $filename = $this->processUploadedFile($file, $targetDir, $settings);
+            $uploadedNames[] = $filename;
+            $created[] = $this->serializeSiteFile($targetDir, $filename, $relativePath);
+        }
+
+        // Site media belongs to no page, so `object` and `page` are null here,
+        // unlike every other emitter of this event, which always has one. A
+        // listener that dereferences them without a check needs updating.
+        // Firing it at all is the point: plugins that watch the admin media
+        // events never heard about an upload to `user://media`, so Git Sync's
+        // "Sync on Media Changes" silently did nothing for a file added on
+        // Admin Next's Media page, and it only reached the remote on the next
+        // page save or scheduled sync (trilbymedia/grav-plugin-git-sync#261).
+        $this->fireAdminEvent('onAdminAfterAddMedia', [
+            'object' => null,
+            'page' => null,
+            'path' => $relativePath,
+        ]);
+        $this->fireEvent('onApiMediaUploaded', [
+            'page' => null,
+            'path' => $relativePath,
+            'filenames' => $uploadedNames,
+        ]);
+
+        $location = $this->getApiBaseUrl() . '/media';
+
+        return ApiResponse::created(
+            $created,
+            $location,
+            $this->invalidationHeaders(['media:update:' . ($relativePath !== '' ? $relativePath : '/'), 'media:list']),
+        );
+    }
+
+    /**
+     * DELETE /media/{filename} - Delete a site media file (supports subfolder paths).
+     */
+    public function deleteSiteMedia(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $mediaPath = $this->getSiteMediaPath();
+        $relativePath = $this->getSafeRelativeFilePath($request, $mediaPath);
+        $filePath = $mediaPath . '/' . $relativePath;
+
+        if (!file_exists($filePath)) {
+            throw new NotFoundException("Media file not found.");
+        }
+
+        // Fire before event — plugins can throw to veto the delete. Same
+        // parity gap as the upload side: only page media used to fire it (#41).
+        $this->fireEvent('onApiBeforeMediaDelete', [
+            'page' => null,
+            'filename' => basename($relativePath),
+            'path' => $relativePath,
+        ]);
+
+        unlink($filePath);
+
+        // Also remove any metadata file
+        $metaPath = $filePath . '.meta.yaml';
+        if (file_exists($metaPath)) {
+            unlink($metaPath);
+        }
+
+        // Keep the folder's order sidecar coherent.
+        $this->removeFromSiteMediaOrder(dirname($filePath), basename($filePath));
+
+        // Same null `object` / `page` caveat as the upload side above.
+        $this->fireAdminEvent('onAdminAfterDelMedia', [
+            'object' => null,
+            'page' => null,
+            'filename' => basename($relativePath),
+            'path' => $relativePath,
+        ]);
+        $this->fireEvent('onApiMediaDeleted', [
+            'page' => null,
+            'filename' => basename($relativePath),
+            'path' => $relativePath,
+        ]);
+
+        $parentDir = ltrim(dirname($relativePath), '.');
+        return ApiResponse::noContent(
+            $this->invalidationHeaders([
+                'media:delete:' . $relativePath,
+                'media:update:' . ($parentDir !== '' ? $parentDir : '/'),
+                'media:list',
+            ]),
+        );
+    }
+
+    /**
+     * GET /media/meta?path=... - Read a site media file's editable metadata.
+     * The file is addressed by `?path=` (relative to the media root) because
+     * site media paths contain slashes and would collide with the greedy
+     * `/media/{filename:.+}` route.
+     */
+    public function getSiteMediaMeta(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.read');
+
+        [$relativePath, $filePath] = $this->requireSiteMediaFile($request);
+
+        return ApiResponse::create($this->buildMetaResponse($filePath, basename($relativePath)));
+    }
+
+    /**
+     * PATCH /media/meta?path=... - Save a site media file's editable metadata.
+     */
+    public function saveSiteMediaMeta(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        [$relativePath, $filePath] = $this->requireSiteMediaFile($request);
+
+        $this->applyMetaWrite($filePath, $this->extractMetaInput($request));
+
+        $this->fireEvent('onApiMediaMetadataUpdated', ['path' => $relativePath, 'filename' => basename($relativePath)]);
+
+        $parentDir = ltrim(dirname($relativePath), '.');
+        return ApiResponse::create(
+            $this->buildMetaResponse($filePath, basename($relativePath)),
+            200,
+            $this->invalidationHeaders([
+                'media:update:' . ($parentDir !== '' ? $parentDir : '/'),
+                'media:list',
+            ]),
+        );
+    }
+
+    /**
+     * POST /media/batch/meta - Apply the same metadata fields to several site
+     * media files at once. Only the fields present in the body are written to
+     * each file; every file keeps its other sidecar values (so a batch that
+     * changes just `tags` leaves each file's own `alt`/`title` untouched).
+     *
+     * Body: `{"files": ["a.jpg", "sub/b.png"], "fields": {"tags": ["hero"]}}`.
+     * Files are listed by path (relative to the media root) rather than via
+     * `?path=` because a batch targets many files.
+     *
+     * The field map is validated once up front, so an invalid value fails the
+     * whole request with a 422 instead of repeating the same error for every
+     * file. Each file is then written independently; a per-file problem such as
+     * a missing file is reported in its own result row without aborting the
+     * rest.
+     */
+    public function batchSiteMediaMeta(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['files', 'fields']);
+
+        $files = $body['files'];
+        $fields = $body['fields'];
+
+        if (!is_array($files) || $files === []) {
+            throw new ValidationException("The 'files' field must be a non-empty array of media paths.");
+        }
+        if (!is_array($fields)) {
+            throw new ValidationException("The 'fields' field must be an object of metadata values.");
+        }
+
+        $maxBatch = (int) $this->config->get('plugins.api.batch.max_items', 50);
+        if (count($files) > $maxBatch) {
+            throw new ValidationException("Batch metadata updates are limited to {$maxBatch} files.");
+        }
+
+        // The same fields apply to every file, so validate them once: an
+        // invalid value (or a required field sent empty) fails the whole
+        // request instead of producing one identical error row per file.
+        $changes = $this->sanitizeMetaInput($fields);
+
+        $mediaPath = $this->getSiteMediaPath();
+        $results = [];
+        $parents = [];
+
+        foreach ($files as $file) {
+            if (!is_string($file) || $file === '') {
+                $results[] = ['path' => (string) $file, 'status' => 'error', 'message' => 'Invalid media path.'];
+                continue;
+            }
+
+            try {
+                $relativePath = $this->validateRelativePath($file, $mediaPath);
+                $filePath = $mediaPath . '/' . $relativePath;
+                if ($relativePath === '' || !is_file($filePath)) {
+                    throw new NotFoundException('Media file not found.');
+                }
+
+                $this->applyMetaChanges($filePath, $changes);
+                $this->fireEvent('onApiMediaMetadataUpdated', ['path' => $relativePath, 'filename' => basename($relativePath)]);
+
+                $results[] = ['path' => $relativePath, 'status' => 'success'];
+                $parents[ltrim(dirname($relativePath), '.')] = true;
+            } catch (\Throwable $e) {
+                $results[] = ['path' => $file, 'status' => 'error', 'message' => $e->getMessage()];
+            }
+        }
+
+        $tags = ['media:list'];
+        foreach (array_keys($parents) as $parentDir) {
+            $tags[] = 'media:update:' . ($parentDir !== '' ? $parentDir : '/');
+        }
+
+        return ApiResponse::create(
+            [
+                'results' => $results,
+                'total' => count($results),
+                'successful' => count(array_filter($results, static fn($r) => $r['status'] === 'success')),
+                'failed' => count(array_filter($results, static fn($r) => $r['status'] === 'error')),
+            ],
+            200,
+            $this->invalidationHeaders($tags),
+        );
+    }
+
+    /**
+     * DELETE /media/meta?path=... - Clear a site media file's editable metadata.
+     */
+    public function deleteSiteMediaMeta(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        [$relativePath, $filePath] = $this->requireSiteMediaFile($request);
+
+        $this->clearMetaFields($filePath);
+
+        $this->fireEvent('onApiMediaMetadataDeleted', ['path' => $relativePath, 'filename' => basename($relativePath)]);
+
+        $parentDir = ltrim(dirname($relativePath), '.');
+        return ApiResponse::noContent(
+            $this->invalidationHeaders([
+                'media:update:' . ($parentDir !== '' ? $parentDir : '/'),
+                'media:list',
+            ]),
+        );
+    }
+
+    /**
+     * POST /media/folders - Create a new folder.
+     */
+    public function createFolder(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $mediaPath = $this->getSiteMediaPath();
+        $body = $this->getRequestBody($request);
+
+        if (empty($body['path'])) {
+            throw new ValidationException('Folder path is required.');
+        }
+
+        $relativePath = $this->validateRelativePath($body['path'], $mediaPath);
+        $absolutePath = $mediaPath . '/' . $relativePath;
+
+        if (is_dir($absolutePath)) {
+            throw new ValidationException('Folder already exists.');
+        }
+
+        // Suppressed so the ValidationException below is what the caller sees,
+        // rather than a raw PHP warning fataling the request first (#30).
+        if (!@mkdir($absolutePath, 0775, true) && !is_dir($absolutePath)) {
+            throw new ValidationException('Unable to create folder.');
+        }
+
+        $name = basename($relativePath);
+        $data = [
+            'name' => $name,
+            'path' => $relativePath,
+            'children_count' => 0,
+            'file_count' => 0,
+        ];
+
+        return ApiResponse::created(
+            $data,
+            $this->getApiBaseUrl() . '/media?path=' . urlencode($relativePath),
+            $this->invalidationHeaders(['media:create:' . $relativePath, 'media:list']),
+        );
+    }
+
+    /**
+     * DELETE /media/folders/{path} - Delete an empty folder.
+     */
+    public function deleteFolder(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $mediaPath = $this->getSiteMediaPath();
+        $path = $this->getRouteParam($request, 'path');
+
+        if ($path === null || $path === '') {
+            throw new ValidationException('Folder path is required.');
+        }
+
+        $relativePath = $this->validateRelativePath($path, $mediaPath);
+        $absolutePath = $mediaPath . '/' . $relativePath;
+
+        if (!is_dir($absolutePath)) {
+            throw new NotFoundException('Folder not found.');
+        }
+
+        // Check if folder is empty (only . and ..)
+        $isEmpty = true;
+        foreach (new \DirectoryIterator($absolutePath) as $item) {
+            if (!$item->isDot()) {
+                $isEmpty = false;
+                break;
+            }
+        }
+
+        if (!$isEmpty) {
+            throw new ValidationException('Folder is not empty. Delete all files first.');
+        }
+
+        if (!rmdir($absolutePath)) {
+            throw new ValidationException('Unable to delete folder.');
+        }
+
+        return ApiResponse::noContent(
+            $this->invalidationHeaders(['media:delete:' . $relativePath, 'media:list']),
+        );
+    }
+
+    /**
+     * POST /media/rename - Rename or move a media file.
+     */
+    public function renameFile(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $mediaPath = $this->getSiteMediaPath();
+        $body = $this->getRequestBody($request);
+
+        if (empty($body['from']) || empty($body['to'])) {
+            throw new ValidationException("Both 'from' and 'to' paths are required.");
+        }
+
+        $from = $this->validateRelativePath($body['from'], $mediaPath);
+
+        // Preserve the source file's extension and clean the requested name so
+        // the result is always a valid, URL-safe media filename. A missing
+        // extension makes later `media://` links fatal in Grav's Excerpts
+        // parser, and spaces / odd characters break the Markdown image URL the
+        // editor generates (getgrav/grav-plugin-admin2#77).
+        $originalExt = pathinfo($from, PATHINFO_EXTENSION);
+        $rawTo = str_replace('\\', '/', (string) $body['to']);
+        $toDir = trim(dirname($rawTo), '/.');
+        $toName = $this->sanitizeMediaFilename(basename($rawTo), $originalExt);
+        $to = $this->validateRelativePath(($toDir !== '' ? $toDir . '/' : '') . $toName, $mediaPath);
+
+        foreach ([$from, $rawTo, $to] as $name) {
+            $basename = strtolower(basename($name));
+            if (str_ends_with($basename, '.meta.yaml') || $basename === 'media_order.yaml') {
+                throw new ValidationException('Media sidecar files cannot be renamed directly.');
+            }
+        }
+
+        $fromAbsolute = $mediaPath . '/' . $from;
+        $toAbsolute = $mediaPath . '/' . $to;
+
+        if (!file_exists($fromAbsolute)) {
+            throw new NotFoundException("Source file not found.");
+        }
+
+        // Sanitizing can map the requested name back onto the source (e.g. only
+        // the extension was dropped) — treat that as a no-op rather than a
+        // "destination exists" error.
+        if ($fromAbsolute === $toAbsolute) {
+            $targetPath = $toDir !== '' ? $mediaPath . '/' . $toDir : $mediaPath;
+            return ApiResponse::ok($this->serializeSiteFile($targetPath, $toName, $toDir));
+        }
+
+        if (file_exists($toAbsolute)) {
+            throw new ValidationException("A file already exists at the destination.");
+        }
+
+        // Ensure target directory exists
+        $targetDir = dirname($toAbsolute);
+        if (!is_dir($targetDir) && !@mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+            throw new ValidationException('Unable to create destination directory.');
+        }
+
+        if (!rename($fromAbsolute, $toAbsolute)) {
+            throw new ValidationException('Unable to rename file.');
+        }
+
+        // Also rename metadata sidecar if it exists
+        $fromMeta = $fromAbsolute . '.meta.yaml';
+        $toMeta = $toAbsolute . '.meta.yaml';
+        if (file_exists($fromMeta)) {
+            rename($fromMeta, $toMeta);
+        }
+
+        // Keep order sidecars coherent across the rename/move.
+        $this->renameInSiteMediaOrder(
+            dirname($fromAbsolute),
+            basename($fromAbsolute),
+            dirname($toAbsolute),
+            basename($toAbsolute),
+        );
+
+        $toDir = ltrim(dirname($to) === '.' ? '' : dirname($to), '/');
+        $toFilename = basename($to);
+
+        $targetPath = $toDir !== '' ? $mediaPath . '/' . $toDir : $mediaPath;
+
+        return ApiResponse::ok(
+            $this->serializeSiteFile($targetPath, $toFilename, $toDir),
+            $this->invalidationHeaders([
+                'media:delete:' . $from,
+                'media:create:' . $to,
+                'media:list',
+            ]),
+        );
+    }
+
+    /**
+     * POST /media/folders/rename - Rename a folder.
+     */
+    public function renameFolder(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $mediaPath = $this->getSiteMediaPath();
+        $body = $this->getRequestBody($request);
+
+        if (empty($body['from']) || empty($body['to'])) {
+            throw new ValidationException("Both 'from' and 'to' paths are required.");
+        }
+
+        $from = $this->validateRelativePath($body['from'], $mediaPath);
+        $to = $this->validateRelativePath($body['to'], $mediaPath);
+
+        $fromAbsolute = $mediaPath . '/' . $from;
+        $toAbsolute = $mediaPath . '/' . $to;
+
+        if (!is_dir($fromAbsolute)) {
+            throw new NotFoundException("Source folder not found.");
+        }
+
+        if (file_exists($toAbsolute)) {
+            throw new ValidationException("A folder already exists at the destination.");
+        }
+
+        if (!rename($fromAbsolute, $toAbsolute)) {
+            throw new ValidationException('Unable to rename folder.');
+        }
+
+        // Same counts the folder listing reports, so a client can patch the
+        // renamed entry in place without a refetch.
+        [$childrenCount, $fileCount] = $this->countFolderEntries($toAbsolute);
+        $data = [
+            'name' => basename($to),
+            'path' => $to,
+            'children_count' => $childrenCount,
+            'file_count' => $fileCount,
+        ];
+
+        return ApiResponse::ok(
+            $data,
+            $this->invalidationHeaders([
+                'media:delete:' . $from,
+                'media:create:' . $to,
+                'media:list',
+            ]),
+        );
+    }
+
+    /**
+     * POST /media/order - Persist a manual ordering of files in a site media
+     * folder. Body: { path?: string, order: string[] }. Writes a per-folder
+     * `media_order.yaml` sidecar that `siteMedia` applies when listing.
+     */
+    public function setSiteMediaOrder(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+
+        $mediaPath = $this->getSiteMediaPath();
+        $body = $this->getRequestBody($request);
+
+        $relativePath = '';
+        if (!empty($body['path'])) {
+            $relativePath = $this->validateRelativePath($body['path'], $mediaPath);
+        }
+
+        $folderAbs = $relativePath !== '' ? $mediaPath . '/' . $relativePath : $mediaPath;
+        if (!is_dir($folderAbs)) {
+            throw new NotFoundException('Folder not found.');
+        }
+
+        if (!isset($body['order']) || !is_array($body['order'])) {
+            throw new ValidationException("An 'order' array of filenames is required.");
+        }
+
+        // Reduce to safe basenames; drop blanks and the sidecar itself.
+        $order = array_values(array_filter(
+            array_map(static fn($n) => is_string($n) ? basename($n) : '', $body['order']),
+            static fn(string $n) => $n !== '' && $n !== self::MEDIA_ORDER_FILE,
+        ));
+
+        $this->writeSiteMediaOrder($folderAbs, $order);
+
+        return ApiResponse::noContent(
+            $this->invalidationHeaders([
+                'media:update:' . ($relativePath !== '' ? $relativePath : '/'),
+                'media:list',
+            ]),
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Site media ordering (per-folder media_order.yaml sidecar)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Read the ordered filename list from a folder's order sidecar.
+     *
+     * @return string[]
+     */
+    private function readSiteMediaOrder(string $folderAbs): array
+    {
+        $file = $folderAbs . '/' . self::MEDIA_ORDER_FILE;
+        if (!is_file($file)) {
+            return [];
+        }
+
+        $data = Yaml::parse((string) file_get_contents($file)) ?: [];
+        $order = $data['media_order'] ?? [];
+
+        return is_array($order)
+            ? array_values(array_filter($order, 'is_string'))
+            : [];
+    }
+
+    /**
+     * Write (or clear) a folder's order sidecar. An empty order removes it.
+     *
+     * @param string[] $order
+     */
+    private function writeSiteMediaOrder(string $folderAbs, array $order): void
+    {
+        $file = $folderAbs . '/' . self::MEDIA_ORDER_FILE;
+
+        if ($order === []) {
+            if (is_file($file)) {
+                @unlink($file);
+            }
+            return;
+        }
+
+        file_put_contents($file, Yaml::dump(['media_order' => array_values($order)], 99, 2));
+    }
+
+    /**
+     * Order a folder's file list by its saved sidecar. Files not listed (e.g.
+     * new uploads) keep their incoming order and follow the ordered ones.
+     *
+     * @param string[] $files
+     * @return string[]
+     */
+    private function applySiteMediaOrder(array $files, string $folderAbs): array
+    {
+        $order = $this->readSiteMediaOrder($folderAbs);
+        if ($order === []) {
+            return $files;
+        }
+
+        $ordered = [];
+        foreach ($order as $name) {
+            $idx = array_search($name, $files, true);
+            if ($idx !== false) {
+                $ordered[] = $files[$idx];
+                unset($files[$idx]);
+            }
+        }
+        foreach ($files as $name) {
+            $ordered[] = $name;
+        }
+
+        return $ordered;
+    }
+
+    /**
+     * Drop a filename from a folder's order sidecar (best-effort, on delete).
+     */
+    private function removeFromSiteMediaOrder(string $folderAbs, string $filename): void
+    {
+        $order = $this->readSiteMediaOrder($folderAbs);
+        if ($order === []) {
+            return;
+        }
+
+        $next = array_values(array_filter($order, static fn(string $n) => $n !== $filename));
+        if ($next !== $order) {
+            $this->writeSiteMediaOrder($folderAbs, $next);
+        }
+    }
+
+    /**
+     * Keep order sidecars coherent across a rename/move (best-effort). Same
+     * folder: rename the entry in place. Cross folder: drop it from the source.
+     */
+    private function renameInSiteMediaOrder(string $fromFolderAbs, string $fromName, string $toFolderAbs, string $toName): void
+    {
+        if ($fromFolderAbs === $toFolderAbs) {
+            $order = $this->readSiteMediaOrder($fromFolderAbs);
+            if ($order === []) {
+                return;
+            }
+            $next = array_map(static fn(string $n) => $n === $fromName ? $toName : $n, $order);
+            if ($next !== $order) {
+                $this->writeSiteMediaOrder($fromFolderAbs, $next);
+            }
+            return;
+        }
+
+        $this->removeFromSiteMediaOrder($fromFolderAbs, $fromName);
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * GET /thumbnails/{hash}.{ext} - Serve a cached thumbnail image.
+     */
+    public function thumbnail(ServerRequestInterface $request): ResponseInterface
+    {
+        $file = $this->getRouteParam($request, 'file');
+        if (!$file) {
+            throw new NotFoundException('Thumbnail not found.');
+        }
+
+        // Only thumbnail filenames (hash.ext) are served. A thumbnail a listing
+        // deferred is generated here on its first request, from the source and
+        // size that listing recorded; nothing else can be generated.
+        $service = $this->getThumbnailService();
+        $name = basename($file);
+        $cachePath = $service->cachedPath($name) ?? $service->generatePending($name);
+
+        if ($cachePath === null) {
+            throw new NotFoundException('Thumbnail not found.');
+        }
+
+        $mime = mime_content_type($cachePath) ?: 'application/octet-stream';
+        $content = file_get_contents($cachePath);
+
+        return new Response(
+            200,
+            [
+                'Content-Type' => $mime,
+                'Content-Length' => (string) strlen($content),
+                'Cache-Control' => 'public, max-age=31536000, immutable',
+            ],
+            $content
+        );
+    }
+
+    /**
+     * GET /media/raw/{path} - Byte-serve a site-media file.
+     *
+     * Only used for files the web server refuses to serve directly (see
+     * {@see isWebServable()}); everything else keeps its cheap static URL. It is
+     * permission-gated like the rest of the site-media routes, and works as an
+     * `<img src>` because the API accepts the site's own session cookie.
+     */
+    public function rawSiteMedia(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.read');
+
+        $mediaPath = $this->getSiteMediaPath();
+        $relative = $this->validateRelativePath((string) $this->getRouteParam($request, 'path'), $mediaPath);
+
+        $filePath = $relative !== '' ? $mediaPath . '/' . $relative : '';
+        if ($filePath === '' || !is_file($filePath)) {
+            throw new NotFoundException('Media file not found.');
+        }
+
+        $mime = mime_content_type($filePath) ?: 'application/octet-stream';
+
+        // Allow-list rather than deny-list: this route steps around the web
+        // server's own rules, so anything not recognisably media stays
+        // unreachable instead of being handed back as readable source.
+        $servable = str_starts_with($mime, 'image/')
+            || str_starts_with($mime, 'video/')
+            || str_starts_with($mime, 'audio/')
+            || str_starts_with($mime, 'font/')
+            || $mime === 'application/pdf';
+
+        if (!$servable) {
+            throw new NotFoundException('Media file not found.');
+        }
+
+        $content = file_get_contents($filePath);
+        if ($content === false) {
+            throw new NotFoundException('Media file not found.');
+        }
+
+        return new Response(
+            200,
+            [
+                'Content-Type' => $mime,
+                'Content-Length' => (string) strlen($content),
+                'Content-Disposition' => 'inline; filename="' . basename($filePath) . '"',
+                // The media folder is user-writable, so an uploaded SVG is a
+                // stored-XSS vector the moment it is navigated to directly. The
+                // sandbox and null default-src neuter it while leaving it
+                // renderable in an <img>; nosniff stops type confusion.
+                'Content-Security-Policy' => "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, max-age=600',
+            ],
+            $content
+        );
+    }
+
+    /**
+     * Resolve a page from the route parameter or throw a 404.
+     */
+    private function findPageOrFail(ServerRequestInterface $request, ?string $pageAction = null): PageInterface
+    {
+        $route = $this->getRouteParam($request, 'route');
+
+        if ($route === null || $route === '') {
+            throw new NotFoundException('Page route is required.');
+        }
+
+        $page = $this->resolvePageByRoute($route);
+
+        if (!$page) {
+            throw new NotFoundException("Page '/{$route}' not found.");
+        }
+
+        // A page's media lives inside the page, so rules in its frontmatter
+        // apply here too (getgrav/grav-plugin-admin2#150). Permission to touch
+        // media at all still comes from `api.media.*`, checked by the caller.
+        //
+        // Changing media needs the right to change THIS page's media: its own
+        // `media` rule, or that block's `update` rule where it says nothing
+        // about media, or the account's `api.pages.write` where it has no rule
+        // at all — so an editor who may only read a page can't change its
+        // attachments either (getgrav/grav-plugin-admin2#209), while a
+        // media-only role can (getgrav/grav-plugin-api#77). Reading media only
+        // honors a deny.
+        if ($pageAction === 'media') {
+            $this->assertPageMediaChangeable($request, $page);
+        } elseif ($pageAction === 'update') {
+            $this->assertPageUpdatable($request, $page);
+        } elseif ($pageAction !== null) {
+            $this->assertPageNotDenied($request, $page, $pageAction);
+        }
+
+        return $page;
+    }
+
+    /**
+     * Clean a user-supplied media filename into one that is safe on disk and
+     * valid inside a Markdown `media://` URL, re-attaching the source file's
+     * extension. Spaces (and runs of whitespace) collapse to a single dash, and
+     * characters outside unicode letters/digits plus `. _ -` are dropped, so
+     * `Test Image` with a `.jpg` source becomes `Test-Image.jpg`. Forcing the
+     * original extension also stops an extension-less rename, which otherwise
+     * produces a `media://` link that fatals in Grav's Excerpts parser
+     * (getgrav/grav-plugin-admin2#77).
+     */
+    private function sanitizeMediaFilename(string $newName, string $extension): string
+    {
+        // Work on the stem only; the source extension is re-attached below so a
+        // rename can never change (or drop) the file type.
+        $stem = pathinfo($newName, PATHINFO_FILENAME);
+        $stem = preg_replace('/\s+/u', '-', trim($stem));
+        $stem = preg_replace('/[^\p{L}\p{N}._-]+/u', '', (string) $stem);
+        $stem = trim((string) preg_replace('/-{2,}/', '-', (string) $stem), '-_.');
+
+        if ($stem === '') {
+            throw new ValidationException('The new name must contain at least one letter or number.');
+        }
+
+        return $extension !== '' ? $stem . '.' . $extension : $stem;
+    }
+
+    /**
+     * Validate a relative path is safe and within the media directory.
+     * Returns the sanitized relative path.
+     */
+    private function validateRelativePath(string $path, string $basePath): string
+    {
+        // Normalize separators
+        $path = str_replace('\\', '/', $path);
+        $path = trim($path, '/');
+
+        if ($path === '') {
+            return '';
+        }
+
+        // Check each segment
+        foreach (explode('/', $path) as $segment) {
+            if (
+                $segment === '' ||
+                $segment === '.' ||
+                $segment === '..' ||
+                str_contains($segment, "\0") ||
+                str_starts_with($segment, '.')
+            ) {
+                throw new ValidationException("Invalid path: '{$path}'.");
+            }
+        }
+
+        // Verify resolved path is within base
+        $absolute = $basePath . '/' . $path;
+
+        // For existing paths, use realpath
+        if (file_exists($absolute)) {
+            $real = realpath($absolute);
+            $realBase = realpath($basePath);
+            if ($real === false || $realBase === false || !PathContainment::isWithin($real, $realBase)) {
+                throw new ValidationException("Invalid path: '{$path}'.");
+            }
+        }
+
+        return $path;
+    }
+
+    /**
+     * Extract and validate a relative file path from route parameters.
+     * Unlike getSafeFilename() which strips directories with basename(),
+     * this preserves path components for subfolder support.
+     */
+    private function getSafeRelativeFilePath(ServerRequestInterface $request, string $basePath): string
+    {
+        $filename = $this->getRouteParam($request, 'filename');
+
+        if ($filename === null || $filename === '') {
+            throw new ValidationException('Filename is required.');
+        }
+
+        // Normalize
+        $filename = str_replace('\\', '/', $filename);
+        $filename = trim($filename, '/');
+
+        // Validate each path segment
+        foreach (explode('/', $filename) as $segment) {
+            if (
+                $segment === '' ||
+                $segment === '.' ||
+                $segment === '..' ||
+                str_contains($segment, "\0") ||
+                str_starts_with($segment, '.')
+            ) {
+                throw new ValidationException('Invalid filename.');
+            }
+        }
+
+        // Verify resolved path is within base
+        $absolute = $basePath . '/' . $filename;
+        if (file_exists($absolute)) {
+            $real = realpath($absolute);
+            $realBase = realpath($basePath);
+            if ($real === false || $realBase === false || !PathContainment::isWithin($real, $realBase)) {
+                throw new ValidationException('Invalid filename.');
+            }
+        }
+
+        return $filename;
+    }
+
+    // -------------------------------------------------------------------------
+    // Media metadata (.meta.yaml) helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Resolve and validate a page media file for a metadata operation, returning
+     * its absolute path. 404s if the file does not exist on disk.
+     */
+    private function requirePageMediaFile(?string $pagePath, string $filename): string
+    {
+        if (!$pagePath) {
+            throw new NotFoundException('Page directory does not exist on disk.');
+        }
+
+        $filePath = $pagePath . '/' . $filename;
+        if (!is_file($filePath)) {
+            throw new NotFoundException("Media file '{$filename}' not found on this page.");
+        }
+
+        return $filePath;
+    }
+
+    /**
+     * Resolve and validate a site media file (addressed by `?path=`) for a
+     * metadata operation. Returns `[relativePath, absolutePath]`.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function requireSiteMediaFile(ServerRequestInterface $request): array
+    {
+        $mediaPath = $this->getSiteMediaPath();
+        $path = $request->getQueryParams()['path'] ?? '';
+
+        if (!is_string($path) || $path === '') {
+            throw new ValidationException("A 'path' query parameter identifying the media file is required.");
+        }
+
+        $relativePath = $this->validateRelativePath($path, $mediaPath);
+        $filePath = $mediaPath . '/' . $relativePath;
+
+        if ($relativePath === '' || !is_file($filePath)) {
+            throw new NotFoundException('Media file not found.');
+        }
+
+        return [$relativePath, $filePath];
+    }
+
+    /**
+     * The configured editable metadata fields, normalized to a list of
+     * `['key' => string, 'label' => string, 'type' => string]` where the type
+     * is `text`, `textarea`, `tags`, `select`, `number`, `date` or `boolean`.
+     * Entries with an unsafe/reserved key are dropped, an unknown type becomes
+     * `text`, a `select` also carries `options` (stored value => display
+     * label) and is dropped when it has no usable options, a `number` may carry
+     * `min`/`max` bounds, and a `required` field carries `required => true`.
+     * The built-in fields are always included unless removed (see
+     * {@see withDefaultMetaFields()}).
+     *
+     * @return list<array{key: string, label: string, type: string, options?: array<string, string>, min?: int|float, max?: int|float, required?: true}>
+     */
+    private function getMetadataFieldDefs(): array
+    {
+        $configured = $this->config->get('plugins.api.media_metadata.fields');
+        $source = $this->withDefaultMetaFields(is_array($configured) ? $configured : []);
+
+        $defs = [];
+        $seen = [];
+        foreach ($source as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $key = trim((string) ($entry['key'] ?? ''));
+            // Safe, non-reserved key only: letters/digits/dot/dash/underscore.
+            if ($key === '' || !preg_match('/^[A-Za-z0-9._-]+$/', $key)) {
+                continue;
+            }
+            if (in_array($key, self::RESERVED_META_KEYS, true) || isset($seen[$key])) {
+                continue;
+            }
+            $type = (string) ($entry['type'] ?? 'text');
+            if (!in_array($type, ['text', 'textarea', 'tags', 'select', 'number', 'date', 'boolean'], true)) {
+                $type = 'text';
+            }
+            $label = trim((string) ($entry['label'] ?? '')) ?: $key;
+
+            $def = ['key' => $key, 'label' => $label, 'type' => $type];
+            if ($type === 'select') {
+                $options = $this->normalizeSelectOptions($entry['options'] ?? null);
+                if ($options === []) {
+                    continue;
+                }
+                $def['options'] = $options;
+            }
+            if ($type === 'number') {
+                $min = $this->normalizeNumberBound($entry['min'] ?? null);
+                if ($min !== null) {
+                    $def['min'] = $min;
+                }
+                $max = $this->normalizeNumberBound($entry['max'] ?? null);
+                if ($max !== null) {
+                    $def['max'] = $max;
+                }
+            }
+            if (!empty($entry['required'])) {
+                $def['required'] = true;
+            }
+
+            $seen[$key] = true;
+            $defs[] = $def;
+        }
+
+        return $defs;
+    }
+
+    /**
+     * The configured field list, in its own order, followed by every built-in
+     * field it doesn't mention, so adding one custom field can't take
+     * alt/title/caption/description/tags out of the editor
+     * (getgrav/grav-plugin-api#76). An entry with `remove: true` takes its key
+     * out wherever it appears: Grav merges this list with the shipped one
+     * position by position, so the same key may also be present further down.
+     *
+     * @param array<mixed> $configured
+     * @return list<array<mixed>>
+     */
+    private function withDefaultMetaFields(array $configured): array
+    {
+        $keyOf = static fn (array $entry): string => trim((string) ($entry['key'] ?? ''));
+
+        $removed = [];
+        $list = [];
+        foreach ($configured as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            if (!empty($entry['remove'])) {
+                $removed[$keyOf($entry)] = true;
+                continue;
+            }
+            $list[] = $entry;
+        }
+        $list = array_values(array_filter($list, static fn (array $entry): bool => !isset($removed[$keyOf($entry)])));
+
+        $present = array_flip(array_map($keyOf, $list));
+        foreach (self::DEFAULT_META_FIELDS as $default) {
+            if (!isset($present[$default['key']]) && !isset($removed[$default['key']])) {
+                $list[] = $default;
+            }
+        }
+
+        return $list;
+    }
+
+    /**
+     * Normalize a `select` field's configured `options` (a map of stored value
+     * to display label) into `array<string, string>`. Entries with an empty
+     * value or a non-scalar label are skipped, a blank label falls back to the
+     * value, and labels are stripped of HTML tags. Anything that is not a map
+     * yields no options.
+     *
+     * @return array<string, string>
+     */
+    private function normalizeSelectOptions(mixed $options): array
+    {
+        if (!is_array($options)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($options as $value => $label) {
+            $value = trim((string) $value);
+            if ($value === '' || !is_scalar($label)) {
+                continue;
+            }
+            $normalized[$value] = trim(strip_tags((string) $label)) ?: $value;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Normalize a `number` field's configured `min`/`max` bound. Accepts an
+     * int, a float, or a numeric string; anything else (including an empty
+     * value or a non-finite number) means "no bound".
+     */
+    private function normalizeNumberBound(mixed $bound): int|float|null
+    {
+        if (is_int($bound) || is_float($bound)) {
+            return is_finite((float) $bound) ? $bound : null;
+        }
+        if (!is_string($bound) || !is_numeric(trim($bound))) {
+            return null;
+        }
+
+        $number = trim($bound) + 0;
+
+        return is_float($number) && !is_finite($number) ? null : $number;
+    }
+
+    /**
+     * Apply the optional metadata filter/sort query params to a media
+     * collection, returning the (possibly filtered/sorted) collection to
+     * serialize. With no query params this is a no-op returning `$media->all()`.
+     * Shared by page media (`GET /pages/{route}/media`) and site media
+     * (`GET /media`); the parameter is typed to the `AbstractMedia` base both
+     * `Page\Media` and `GlobalMedia` extend.
+     *
+     * The filterable/sortable surface is bound to the configured
+     * `media_metadata.fields` schema (via {@see getMetadataFieldDefs()}): only
+     * admin-defined keys are accepted and each field's `type` drives which
+     * operators are legal. Unknown fields are ignored leniently; malformed
+     * clauses and unsupported operators are rejected with a 422 (ValidationException). Filtering rides
+     * the existing `api.media.read` permission and adds no path or file input.
+     *
+     * Supported params:
+     *  - `filter=field:op:value` or `filter=field:value` (repeatable via
+     *    `filter[]=…`). Operators: {@see AbstractMedia::META_OPERATORS}.
+     *  - `sort=field` with `order=asc|desc` (`dir=` accepted as an alias).
+     *
+     * @param \Grav\Common\Page\Medium\AbstractMedia $media
+     * @return iterable<\Grav\Common\Media\Interfaces\MediaObjectInterface>
+     */
+    private function applyMediaQuery(\Grav\Common\Page\Medium\AbstractMedia $media, ServerRequestInterface $request): iterable
+    {
+        // Guard against a core older than the one that shipped the query
+        // methods; degrade to the full unfiltered listing rather than error.
+        if (!method_exists($media, 'filterBy')) {
+            return $media->all();
+        }
+
+        $query = $request->getQueryParams();
+
+        $typeByKey = [];
+        foreach ($this->getMetadataFieldDefs() as $def) {
+            $typeByKey[$def['key']] = $def['type'];
+        }
+        $maxLen = $this->getMetadataMaxLength();
+
+        $collection = $media;
+        $applied = false;
+
+        // --- filters ---
+        $clauses = $this->normalizeFilterParam($query['filter'] ?? null);
+        if (count($clauses) > self::MAX_FILTER_CLAUSES) {
+            throw new ValidationException(
+                sprintf('Too many filter clauses (maximum %d).', self::MAX_FILTER_CLAUSES)
+            );
+        }
+        foreach ($clauses as $clause) {
+            $parsed = $this->parseFilterClause($clause, $typeByKey, $maxLen);
+            if ($parsed === null) {
+                // Unknown/absent field: ignored, never fatal.
+                continue;
+            }
+            [$field, $operator, $value] = $parsed;
+            $collection = $collection->filterBy($field, $value, $operator);
+            $applied = true;
+        }
+
+        // --- sort ---
+        $sort = $query['sort'] ?? null;
+        if (is_string($sort) && $sort !== '') {
+            // Configured metadata keys plus intrinsic keys the list already
+            // exposes (so ?sort=filename etc. leaks nothing new).
+            $sortable = array_merge(array_keys($typeByKey), ['filename', 'size', 'modified']);
+            if (!in_array($sort, $sortable, true)) {
+                throw new ValidationException(sprintf("Invalid sort field '%s'.", $sort));
+            }
+            // Prefer `order` (consistent with the rest of the API); accept `dir`.
+            $dir = strtolower((string) ($query['order'] ?? $query['dir'] ?? 'asc'));
+            if (!in_array($dir, ['asc', 'desc'], true)) {
+                $dir = 'asc';
+            }
+            $collection = $collection->sortBy($sort, $dir);
+            $applied = true;
+        }
+
+        // Return the collection object (not ->all(), which would re-order and
+        // undo an applied sort); it iterates in filtered/sorted order.
+        return $applied ? $collection : $media->all();
+    }
+
+    /**
+     * Normalize the `filter` query param to a list of clause strings. Accepts a
+     * single `filter=…` string or a repeatable `filter[]=…` array.
+     *
+     * @param mixed $raw
+     * @return list<string>
+     */
+    private function normalizeFilterParam(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            $out = [];
+            foreach ($raw as $value) {
+                if (is_string($value) && $value !== '') {
+                    $out[] = $value;
+                }
+            }
+            return $out;
+        }
+
+        return is_string($raw) && $raw !== '' ? [$raw] : [];
+    }
+
+    /**
+     * Parse and validate one `filter` clause into `[field, operator, value]`,
+     * or null if the field is not part of the configured schema (ignored
+     * leniently). Throws {@see ValidationException} for a malformed clause,
+     * unknown operator, or an operator disallowed for the field's type.
+     *
+     * @param array<string, string> $typeByKey field key => field type
+     * @return array{0: string, 1: string, 2: string|bool|list<string|bool>}|null
+     */
+    private function parseFilterClause(string $clause, array $typeByKey, int $maxLen): ?array
+    {
+        $parts = explode(':', $clause, 3);
+        $field = trim($parts[0]);
+
+        if ($field === '' || !preg_match('/^[A-Za-z0-9_.-]+$/', $field)) {
+            throw new ValidationException(sprintf("Malformed filter field in '%s'.", $clause));
+        }
+
+        // Schema-bound: only configured keys are filterable.
+        if (!array_key_exists($field, $typeByKey)) {
+            return null;
+        }
+        $type = $typeByKey[$field];
+
+        if (count($parts) === 3) {
+            $operator = trim($parts[1]);
+            $rawValue = $parts[2];
+        } elseif (count($parts) === 2) {
+            // `field:value` shorthand — operator inferred from the field type.
+            $operator = $type === 'tags' ? 'contains' : '==';
+            $rawValue = $parts[1];
+        } else {
+            throw new ValidationException(
+                sprintf("Malformed filter clause '%s'. Use field:value or field:operator:value.", $clause)
+            );
+        }
+
+        if (!in_array($operator, \Grav\Common\Page\Medium\AbstractMedia::META_OPERATORS, true)) {
+            throw new ValidationException(sprintf("Unsupported filter operator '%s'.", $operator));
+        }
+
+        // Type-aware policy: a tags (list) field only takes membership operators.
+        if ($type === 'tags' && !in_array($operator, ['in', 'contains'], true)) {
+            throw new ValidationException(
+                sprintf("Field '%s' is a tags field; use the 'in' or 'contains' operator.", $field)
+            );
+        }
+
+        if ($operator === 'in') {
+            $value = array_values(array_filter(
+                array_map(fn($v) => $this->sanitizeFilterValue($v, $maxLen), explode(',', $rawValue)),
+                static fn($v) => $v !== ''
+            ));
+        } else {
+            $value = $this->sanitizeFilterValue($rawValue, $maxLen);
+        }
+
+        // A boolean is stored natively, so filter on a real bool too.
+        if ($type === 'boolean') {
+            $value = is_array($value)
+                ? array_map(fn($v) => $this->normalizeFilterBoolean($v), $value)
+                : $this->normalizeFilterBoolean($value);
+        }
+
+        return [$field, $operator, $value];
+    }
+
+    /**
+     * Normalize a `boolean` filter value to a real bool, so
+     * `?filter=featured:true` matches the native `true` stored in the sidecar.
+     */
+    private function normalizeFilterBoolean(string $value): bool
+    {
+        $str = strtolower(trim($value));
+        if (in_array($str, ['true', '1'], true)) {
+            return true;
+        }
+        if (in_array($str, ['false', '0'], true)) {
+            return false;
+        }
+
+        throw new ValidationException('A boolean filter accepts true, false, 1 or 0.');
+    }
+
+    /**
+     * Sanitize a filter value the same way write input is treated: strip tags
+     * and control characters, collapse whitespace, and cap the length. Read-only
+     * — there is no path, regex, or callable surface here.
+     */
+    private function sanitizeFilterValue(string $value, int $maxLen): string
+    {
+        $value = strip_tags($value);
+        $value = (string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $value);
+        $value = trim((string) preg_replace('/\s+/u', ' ', $value));
+
+        if (mb_strlen($value) > $maxLen) {
+            $value = mb_substr($value, 0, $maxLen);
+        }
+
+        return $value;
+    }
+
+    /** Maximum accepted length for a single metadata value. */
+    private function getMetadataMaxLength(): int
+    {
+        return max(1, (int) $this->config->get('plugins.api.media_metadata.max_length', 2000));
+    }
+
+    /**
+     * Sanitize an incoming metadata value. Metadata renders into `<img>`
+     * attributes on the site, so every value is coerced to a scalar string,
+     * stripped of HTML tags and control characters, collapsed (single-line
+     * fields), and capped at the configured maximum length. A `select` value
+     * must be one of its `$options` keys (or empty, which clears it); anything
+     * else is rejected.
+     *
+     * @param array<string, string> $options Allowed values of a `select` field.
+     */
+    private function sanitizeMetadataValue(mixed $value, string $type, int $maxLen, array $options = []): string
+    {
+        if (is_array($value) || is_object($value)) {
+            throw new ValidationException('Metadata values must be plain text.');
+        }
+        if (is_bool($value)) {
+            $value = $value ? '1' : '';
+        }
+
+        $this->assertLiteralMetadata((string) $value);
+
+        if ($type === 'select') {
+            $str = trim((string) $value);
+            if ($str === '') {
+                return '';
+            }
+            // PHP turns numeric option keys into ints, so compare as strings.
+            if (!in_array($str, array_map('strval', array_keys($options)), true)) {
+                throw new ValidationException('Metadata value is not one of the allowed options.');
+            }
+
+            return $str;
+        }
+
+        $str = strip_tags((string) $value);
+
+        if ($type === 'textarea') {
+            // Keep newlines/tabs; drop other control characters.
+            $str = (string) preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $str);
+            $str = trim($str);
+        } else {
+            // Single line: control chars and whitespace runs collapse to a space.
+            $str = (string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $str);
+            $str = trim((string) preg_replace('/\s+/u', ' ', $str));
+        }
+
+        if (mb_strlen($str) > $maxLen) {
+            $str = mb_substr($str, 0, $maxLen);
+        }
+
+        $this->assertLiteralMetadata($str);
+
+        return $str;
+    }
+
+    private function assertLiteralMetadata(string $value): void
+    {
+        if (preg_match('/\{(?:\{|%|#)/', $value)) {
+            throw new ValidationException('Media metadata must contain literal text.');
+        }
+    }
+
+    /**
+     * Whether a field type is stored as a native YAML scalar (or a date string)
+     * rather than sanitized text.
+     */
+    private function isTypedMetadataType(string $type): bool
+    {
+        return $type === 'number' || $type === 'date' || $type === 'boolean';
+    }
+
+    /**
+     * Sanitize a value for a typed (`number`, `date`, `boolean`) field. These
+     * are stored as native YAML scalars so the sidecar reads the way a person
+     * would write it by hand: an int/float for `number`, a quoted `Y-m-d`
+     * string for `date`, and `true` for `boolean`. Returns `null` when the
+     * value clears the field, so `0` and `false` stay valid values.
+     *
+     * @param array<string, mixed> $def Field definition from getMetadataFieldDefs().
+     */
+    private function sanitizeTypedMetadataValue(mixed $value, array $def): mixed
+    {
+        if (is_array($value) || is_object($value)) {
+            throw new ValidationException('Metadata values must be plain text.');
+        }
+
+        $type = $def['type'];
+
+        if ($type === 'boolean') {
+            return $this->sanitizeBooleanValue($value);
+        }
+
+        if ($type === 'date') {
+            $str = trim((string) $value);
+            if ($str === '') {
+                return null;
+            }
+            if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $str, $parts)
+                || !checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])) {
+                throw new ValidationException('Metadata value must be a valid date in YYYY-MM-DD form.');
+            }
+
+            return $str;
+        }
+
+        // number
+        $raw = is_string($value) ? trim($value) : $value;
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        if (is_bool($raw) || !is_numeric($raw)) {
+            throw new ValidationException('Metadata value must be a number.');
+        }
+
+        $number = $raw + 0;
+        if (is_float($number) && !is_finite($number)) {
+            throw new ValidationException('Metadata value must be a finite number.');
+        }
+        if (isset($def['min']) && $number < $def['min']) {
+            throw new ValidationException(sprintf('Metadata value must be at least %s.', $def['min']));
+        }
+        if (isset($def['max']) && $number > $def['max']) {
+            throw new ValidationException(sprintf('Metadata value must be at most %s.', $def['max']));
+        }
+
+        return $number;
+    }
+
+    /**
+     * Normalize a `boolean` write value: `true`/`1` store `true`, while
+     * `false`/`0` and an empty value clear the field — a stored `'false'`
+     * string is truthy in Twig. Anything else is rejected.
+     */
+    private function sanitizeBooleanValue(mixed $value): ?bool
+    {
+        if (is_bool($value)) {
+            return $value ?: null;
+        }
+        if ($value === null) {
+            return null;
+        }
+        if (is_int($value) || is_float($value)) {
+            if ($value == 1) {
+                return true;
+            }
+            if ($value == 0) {
+                return null;
+            }
+        }
+        if (is_string($value)) {
+            $str = strtolower(trim($value));
+            if (in_array($str, ['true', '1'], true)) {
+                return true;
+            }
+            if (in_array($str, ['false', '0', ''], true)) {
+                return null;
+            }
+        }
+
+        throw new ValidationException('Metadata value must be true or false.');
+    }
+
+    /**
+     * Read a typed field's stored value for the response. A `number` comes back
+     * as a JSON number and a `boolean` as a JSON boolean; a `date` comes back as
+     * `Y-m-d`, with a hand-written timestamp integer turned back into its day.
+     * A stored value that does not fit the type is returned as-is rather than
+     * rejected, so a curator can fix it in the editor.
+     */
+    private function readTypedMetadataValue(mixed $raw, string $type): mixed
+    {
+        if ($type === 'boolean') {
+            if (is_bool($raw)) {
+                return $raw;
+            }
+            if ($raw === null || $raw === '') {
+                return false;
+            }
+            if (is_int($raw) || is_float($raw)) {
+                return $raw != 0;
+            }
+            if (is_string($raw)) {
+                $str = strtolower(trim($raw));
+                if (in_array($str, ['true', '1'], true)) {
+                    return true;
+                }
+                if (in_array($str, ['false', '0'], true)) {
+                    return false;
+                }
+            }
+
+            return $raw;
+        }
+
+        if ($type === 'date') {
+            // A hand-written `taken: 2026-10-19` arrives from YAML as a Unix
+            // timestamp; show the day rather than the integer.
+            return is_int($raw) ? gmdate('Y-m-d', $raw) : ($raw ?? '');
+        }
+
+        // number
+        if ($raw === null) {
+            return '';
+        }
+        if (is_int($raw) || is_float($raw)) {
+            return $raw;
+        }
+        if (is_string($raw) && is_numeric(trim($raw))) {
+            return trim($raw) + 0;
+        }
+
+        return $raw;
+    }
+
+    /**
+     * Sanitize an incoming `tags` value into a clean list of strings. Accepts an
+     * array of strings, or a single comma-separated string. Each entry is
+     * single-line-sanitized (tags render into attributes/queries just like other
+     * metadata), commas are dropped (they delimit entries), blanks and
+     * duplicates are removed, and the list is capped at MAX_TAGS.
+     *
+     * @return list<string>
+     */
+    private function sanitizeMetadataList(mixed $value, int $maxLen): array
+    {
+        if (is_string($value)) {
+            $value = explode(',', $value);
+        }
+        if (!is_array($value)) {
+            throw new ValidationException('A tags value must be a list of strings.');
+        }
+
+        $tags = [];
+        $seen = [];
+        foreach ($value as $item) {
+            if (is_array($item) || is_object($item)) {
+                throw new ValidationException('Each tag must be plain text.');
+            }
+            // Reuse single-line sanitization, then strip commas (the delimiter).
+            $tag = str_replace(',', ' ', $this->sanitizeMetadataValue($item, 'text', $maxLen));
+            $tag = trim((string) preg_replace('/\s+/u', ' ', $tag));
+            if ($tag === '') {
+                continue;
+            }
+            $fold = mb_strtolower($tag);
+            if (isset($seen[$fold])) {
+                continue;
+            }
+            $seen[$fold] = true;
+            $tags[] = $tag;
+            if (count($tags) >= self::MAX_TAGS) {
+                break;
+            }
+        }
+
+        return $tags;
+    }
+
+    /**
+     * Pull the incoming metadata field map from a save request body. Accepts
+     * either `{"fields": {key: value}}` or a bare `{key: value}` map.
+     *
+     * @return array<string, mixed>
+     */
+    private function extractMetaInput(ServerRequestInterface $request): array
+    {
+        $body = $this->getRequestBody($request);
+        $fields = array_key_exists('fields', $body) ? $body['fields'] : $body;
+
+        if (!is_array($fields)) {
+            throw new ValidationException('Expected a "fields" object of metadata values.');
+        }
+
+        return $fields;
+    }
+
+    /**
+     * Read a media file's `.meta.yaml` sidecar as a raw associative array.
+     *
+     * @return array<string, mixed>
+     */
+    private function readMetaSidecar(string $filePath): array
+    {
+        $metaFile = $filePath . self::META_SUFFIX;
+        if (!is_file($metaFile)) {
+            return [];
+        }
+
+        $data = Yaml::parse((string) file_get_contents($metaFile));
+
+        return is_array($data) ? $data : [];
+    }
+
+    /**
+     * Build the metadata read response for a media file: the configured fields
+     * with their current values, plus any other (read-only) keys present in the
+     * sidecar so the UI can show what it won't touch.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildMetaResponse(string $filePath, string $filename): array
+    {
+        $stored = $this->readMetaSidecar($filePath);
+        $defs = $this->getMetadataFieldDefs();
+
+        $fields = [];
+        $managedKeys = [];
+        foreach ($defs as $def) {
+            $key = $def['key'];
+            $managedKeys[$key] = true;
+            $raw = $stored[$key] ?? null;
+
+            if ($def['type'] === 'tags') {
+                // Normalize to a clean list of strings for the tag editor.
+                $value = is_array($raw)
+                    ? array_values(array_filter(array_map(
+                        static fn($t) => is_scalar($t) ? (string) $t : '',
+                        $raw,
+                    ), static fn($t) => $t !== ''))
+                    : (is_scalar($raw) && $raw !== '' ? [(string) $raw] : []);
+            } elseif ($this->isTypedMetadataType($def['type'])) {
+                $value = $this->readTypedMetadataValue($raw, $def['type']);
+            } else {
+                $value = is_scalar($raw) ? (string) $raw : '';
+            }
+
+            $field = [
+                'key' => $key,
+                'label' => $def['label'],
+                'type' => $def['type'],
+                'value' => $value,
+            ];
+            if ($def['type'] === 'select') {
+                // An object, so numeric option keys never serialize as a JSON list.
+                $field['options'] = (object) $def['options'];
+            }
+            foreach (['min', 'max'] as $bound) {
+                if (isset($def[$bound])) {
+                    $field[$bound] = $def[$bound];
+                }
+            }
+            if (!empty($def['required'])) {
+                $field['required'] = true;
+            }
+            $fields[] = $field;
+        }
+
+        // Everything else stays read-only in the UI (EXIF, dimensions, upload…).
+        $extra = [];
+        foreach ($stored as $key => $value) {
+            if (!isset($managedKeys[$key])) {
+                $extra[$key] = $value;
+            }
+        }
+
+        return [
+            'filename' => $filename,
+            'has_meta' => is_file($filePath . self::META_SUFFIX),
+            'fields' => $fields,
+            'extra' => $extra,
+        ];
+    }
+
+    /**
+     * Apply an incoming field map to a media file's sidecar. Only configured,
+     * non-reserved fields present in the input are changed (an empty value
+     * clears the key); all other keys are preserved. An emptied sidecar is
+     * removed.
+     *
+     * @param array<string, mixed> $input
+     */
+    private function applyMetaWrite(string $filePath, array $input): void
+    {
+        $this->applyMetaChanges($filePath, $this->sanitizeMetaInput($input));
+    }
+
+    /**
+     * Validate and normalize an incoming field map against the configured
+     * fields. Returns only the keys that were sent, mapped to the value to
+     * store, or `null` when the field is cleared. Throws
+     * {@see ValidationException} for an invalid value, or for a `required`
+     * field that was sent empty.
+     *
+     * A key absent from the map is never touched, so a request that only sends
+     * `alt` leaves a required `copyright` as it was.
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    private function sanitizeMetaInput(array $input): array
+    {
+        $maxLen = $this->getMetadataMaxLength();
+        $changes = [];
+
+        foreach ($this->getMetadataFieldDefs() as $def) {
+            $key = $def['key'];
+            if (!array_key_exists($key, $input) || in_array($key, self::RESERVED_META_KEYS, true)) {
+                continue;
+            }
+
+            if ($def['type'] === 'tags') {
+                $tags = $this->sanitizeMetadataList($input[$key], $maxLen);
+                $value = $tags === [] ? null : $tags;
+            } elseif ($this->isTypedMetadataType($def['type'])) {
+                $value = $this->sanitizeTypedMetadataValue($input[$key], $def);
+            } else {
+                $text = $this->sanitizeMetadataValue($input[$key], $def['type'], $maxLen, $def['options'] ?? []);
+                $value = $text === '' ? null : $text;
+            }
+
+            if ($value === null && !empty($def['required'])) {
+                throw new ValidationException(sprintf("Metadata field '%s' is required and cannot be empty.", $key));
+            }
+
+            $changes[$key] = $value;
+        }
+
+        return $changes;
+    }
+
+    /**
+     * Write an already-sanitized change map (as returned by
+     * {@see sanitizeMetaInput()}) to a media file's sidecar. A `null` value
+     * removes the key.
+     *
+     * @param array<string, mixed> $changes key => value, null to clear
+     */
+    private function applyMetaChanges(string $filePath, array $changes): void
+    {
+        $stored = $this->readMetaSidecar($filePath);
+
+        foreach ($changes as $key => $value) {
+            if ($value === null) {
+                unset($stored[$key]);
+            } else {
+                $stored[$key] = $value;
+            }
+        }
+
+        $this->writeMetaSidecar($filePath, $stored);
+    }
+
+    /**
+     * Clear every configured (managed) field from a media file's sidecar,
+     * leaving reserved/technical keys intact. Removes the sidecar if empty.
+     */
+    private function clearMetaFields(string $filePath): void
+    {
+        $stored = $this->readMetaSidecar($filePath);
+        foreach ($this->getMetadataFieldDefs() as $def) {
+            unset($stored[$def['key']]);
+        }
+
+        $this->writeMetaSidecar($filePath, $stored);
+    }
+
+    /**
+     * Persist (or remove, when empty) a media file's `.meta.yaml` sidecar.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function writeMetaSidecar(string $filePath, array $data): void
+    {
+        $metaFile = $filePath . self::META_SUFFIX;
+
+        if ($data === []) {
+            if (is_file($metaFile)) {
+                @unlink($metaFile);
+            }
+            return;
+        }
+
+        file_put_contents($metaFile, Yaml::dump($data, 99, 2));
+    }
+
+    /**
+     * Resolve the absolute path to the site-level media directory.
+     */
+    private function getSiteMediaPath(): string
+    {
+        /** @var \Grav\Common\Locator $locator */
+        $locator = $this->grav['locator'];
+
+        $path = $locator->findResource('user://media', true, true);
+
+        if (!$path) {
+            throw new NotFoundException('Site media directory could not be resolved.');
+        }
+
+        return $path;
+    }
+
+    /**
+     * Every media file under $dir that the folder listing would show. Hidden
+     * entries are never entered, so a dot-folder at any depth is skipped along
+     * with everything inside it, the same as the listing, the folder counts and
+     * validateRelativePath() treat it (#50). The `.meta.yaml` and
+     * `media_order.yaml` sidecars are skipped too. Shared by search and the
+     * dashboard's media count so both agree with what the user can browse.
+     *
+     * @return \Generator<\SplFileInfo>
+     */
+    public static function walkMediaFiles(string $dir): \Generator
+    {
+        $tree = new \RecursiveIteratorIterator(
+            new \RecursiveCallbackFilterIterator(
+                new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+                static fn (\SplFileInfo $entry): bool => !str_starts_with($entry->getFilename(), '.')
+            )
+        );
+
+        foreach ($tree as $file) {
+            $name = $file->getFilename();
+            if (!$file->isFile() || str_ends_with($name, '.meta.yaml') || $name === self::MEDIA_ORDER_FILE) {
+                continue;
+            }
+            yield $file;
+        }
+    }
+
+    /**
+     * Handle recursive media search across all subfolders.
+     */
+    private function handleMediaSearch(
+        ServerRequestInterface $request,
+        string $mediaPath,
+        array $queryParams
+    ): ResponseInterface {
+        $search = strtolower($queryParams['search']);
+        $typeFilter = $queryParams['type'] ?? null;
+        $pagination = $this->getPagination($request);
+
+        $matches = [];
+
+        if (is_dir($mediaPath)) {
+            foreach (self::walkMediaFiles($mediaPath) as $item) {
+                $name = $item->getFilename();
+
+                // Match filename
+                if (!str_contains(strtolower($name), $search)) {
+                    continue;
+                }
+
+                // Apply type filter
+                if ($typeFilter) {
+                    $mime = mime_content_type($item->getPathname()) ?: '';
+                    $passesFilter = match ($typeFilter) {
+                        'image' => str_starts_with($mime, 'image/'),
+                        'video' => str_starts_with($mime, 'video/'),
+                        'audio' => str_starts_with($mime, 'audio/'),
+                        'document' => !str_starts_with($mime, 'image/') && !str_starts_with($mime, 'video/') && !str_starts_with($mime, 'audio/'),
+                        default => true,
+                    };
+                    if (!$passesFilter) {
+                        continue;
+                    }
+                }
+
+                // Calculate relative path
+                $fullPath = $item->getPathname();
+                $relDir = ltrim(str_replace($mediaPath, '', dirname($fullPath)), '/');
+
+                $matches[] = ['filename' => $name, 'dir' => $relDir, 'fullPath' => $fullPath];
+            }
+        }
+
+        // Sort matches
+        usort($matches, fn($a, $b) => strnatcasecmp($a['filename'], $b['filename']));
+
+        $total = count($matches);
+        $paged = array_slice($matches, $pagination['offset'], $pagination['limit']);
+
+        $serialized = array_map(function (array $match) {
+            return $this->serializeSiteFile(dirname($match['fullPath']), $match['filename'], $match['dir']);
+        }, $paged);
+
+        $baseUrl = $this->getApiBaseUrl() . '/media';
+
+        return ApiResponse::paginated(
+            $serialized,
+            $total,
+            $pagination['page'],
+            $pagination['per_page'],
+            $baseUrl,
+            200,
+            [],
+            [
+                'path' => '',
+                'folders' => [],
+                'search' => $queryParams['search'],
+            ],
+            query: $request->getQueryParams(),
+        );
+    }
+
+    /**
+     * Scan a directory for media files, returning just the filenames sorted alphabetically.
+     *
+     * @return string[]
+     */
+    private function scanMediaDirectory(string $path): array
+    {
+        if (!is_dir($path)) {
+            return [];
+        }
+
+        $files = [];
+
+        /** @var \SplFileInfo $item */
+        foreach (new \DirectoryIterator($path) as $item) {
+            if ($item->isDot() || $item->isDir()) {
+                continue;
+            }
+
+            // Skip hidden files and metadata files
+            $name = $item->getFilename();
+            if (str_starts_with($name, '.') || str_ends_with($name, '.meta.yaml')) {
+                continue;
+            }
+
+            $files[] = $name;
+        }
+
+        sort($files, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $files;
+    }
+
+    /**
+     * Scan a directory for media files and subdirectories.
+     *
+     * @return array{files: string[], folders: array<array{name: string, path: string, children_count: int, file_count: int}>}
+     */
+    private function scanMediaDirectoryWithFolders(string $absolutePath, string $relativePath = ''): array
+    {
+        $files = [];
+        $folders = [];
+
+        if (!is_dir($absolutePath)) {
+            return ['files' => $files, 'folders' => $folders];
+        }
+
+        foreach (new \DirectoryIterator($absolutePath) as $item) {
+            if ($item->isDot()) {
+                continue;
+            }
+
+            $name = $item->getFilename();
+
+            // Skip hidden files/dirs
+            if (str_starts_with($name, '.')) {
+                continue;
+            }
+
+            if ($item->isDir()) {
+                $folderPath = $relativePath !== '' ? $relativePath . '/' . $name : $name;
+                $childPath = $absolutePath . '/' . $name;
+
+                [$childrenCount, $fileCount] = $this->countFolderEntries($childPath);
+
+                $folders[] = [
+                    'name' => $name,
+                    'path' => $folderPath,
+                    'children_count' => $childrenCount,
+                    'file_count' => $fileCount,
+                ];
+            } else {
+                // Skip metadata files and the order sidecar
+                if (str_ends_with($name, '.meta.yaml') || $name === self::MEDIA_ORDER_FILE) {
+                    continue;
+                }
+                $files[] = $name;
+            }
+        }
+
+        sort($files, SORT_NATURAL | SORT_FLAG_CASE);
+        usort($folders, fn(array $a, array $b) => strnatcasecmp($a['name'], $b['name']));
+
+        return ['files' => $files, 'folders' => $folders];
+    }
+
+    /**
+     * Count a folder's immediate subfolders and media files, skipping hidden
+     * entries, `.meta.yaml` sidecars and the manual-order sidecar.
+     *
+     * @return array{0: int, 1: int} [children_count, file_count]
+     */
+    private function countFolderEntries(string $absolutePath): array
+    {
+        $childrenCount = 0;
+        $fileCount = 0;
+        if (!is_dir($absolutePath)) {
+            return [0, 0];
+        }
+
+        foreach (new \DirectoryIterator($absolutePath) as $child) {
+            $name = $child->getFilename();
+            if ($child->isDot() || str_starts_with($name, '.')) {
+                continue;
+            }
+            if ($child->isDir()) {
+                $childrenCount++;
+            } elseif (!str_ends_with($name, '.meta.yaml') && $name !== self::MEDIA_ORDER_FILE) {
+                $fileCount++;
+            }
+        }
+
+        return [$childrenCount, $fileCount];
+    }
+
+    /**
+     * Build the browser-facing URL for a site-media file already resolved to an
+     * absolute filesystem path.
+     *
+     * `user://media` is a stream, so it does not always land in `user/media`: a
+     * multi-site install resolves it per-environment (`user/env/<host>/media`),
+     * and a `user/` folder symlinked outside the install is a supported layout.
+     * A hardcoded `/user/media/` prefix therefore points at a path with nothing
+     * on disk, and every preview 404s (#28).
+     *
+     * The direct URL is derived the way core's `MediaFileTrait::url()` does it —
+     * strip the install root, prefix `base_url` — but only when the result is
+     * something the web server will actually hand over. `user/config` is denied
+     * whatever the file type, and `user/env` was too before Grav 2.2.4, which
+     * nginx, Caddy and IIS sites keep until someone updates the server config by
+     * hand, so those fall back to this plugin's own permission-gated
+     * byte-serving route instead of a possible 403.
+     */
+    private function resolvePublicUrl(string $absolutePath, string $mediaRelativePath): string
+    {
+        $relative = $this->relativeToWebroot($absolutePath);
+
+        if ($relative !== null && $this->isWebServable($relative)) {
+            // `base_url` (not `base_url_relative`) is the key core's own media
+            // URLs use, so this honours the install's `system.absolute_urls`
+            // setting and its subfolder base in exactly the same way.
+            $base = rtrim((string) ($this->grav['base_url'] ?? ''), '/');
+
+            return $base . '/' . $relative;
+        }
+
+        $encoded = implode('/', array_map('rawurlencode', explode('/', $mediaRelativePath)));
+
+        return $this->getApiBaseUrl() . '/media/raw/' . $encoded;
+    }
+
+    /**
+     * Express an absolute path as a webroot-relative URL path, or null when it
+     * does not sit under a root the site is served from.
+     *
+     * Both sides are `realpath()`d and compared with a trailing separator: the
+     * locator is built on `GRAV_WEBROOT` and can hand back a symlink-resolved
+     * path, and a bare prefix compare would let `/var/www/html` swallow
+     * `/var/www/html-backup`. Returning null rather than the input path is
+     * deliberate — a miss must never put a server filesystem path into an
+     * `<img src>`.
+     */
+    private function relativeToWebroot(string $absolutePath): ?string
+    {
+        $real = realpath($absolutePath);
+        if ($real === false) {
+            return null;
+        }
+
+        // USER_DIR is listed separately from the install roots because a `user/`
+        // folder symlinked outside the install is a supported layout; its files
+        // are still served from `/<user-path>/…`, so the prefix is put back.
+        $roots = [
+            [GRAV_WEBROOT, ''],
+            [GRAV_ROOT, ''],
+            [USER_DIR, trim(GRAV_USER_PATH, '/') . '/'],
+        ];
+
+        foreach ($roots as [$root, $urlPrefix]) {
+            $realRoot = realpath($root);
+            if ($realRoot === false) {
+                continue;
+            }
+
+            $realRoot = rtrim($realRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+            if (strncmp($real, $realRoot, strlen($realRoot)) !== 0) {
+                continue;
+            }
+
+            return $urlPrefix . str_replace(DIRECTORY_SEPARATOR, '/', substr($real, strlen($realRoot)));
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the web server will serve a webroot-relative path directly.
+     *
+     * Mirrors the deny rules Grav ships in `.htaccess` and
+     * `webserver-configs/`, which block `user/config` and `user/accounts` for
+     * every file type. Grav 2.2.4 stopped blocking all of `user/env`
+     * (getgrav/grav#4335), but a server config written before it still does, and
+     * only Apache's is updated on upgrade, so a multi-site `user://media` inside
+     * `user/env/<host>/` keeps using the fallback route, which works either way.
+     */
+    private function isWebServable(string $relative): bool
+    {
+        $userPath = preg_quote(trim(GRAV_USER_PATH, '/'), '#');
+
+        return !preg_match('#^' . $userPath . '/(config|env|accounts)(/|$)#i', $relative);
+    }
+
+    /**
+     * Build a serialized array for a raw file in the site media directory.
+     * Used when we don't have Grav Medium objects available.
+     */
+    private function serializeSiteFile(string $basePath, string $filename, string $relativePath = ''): array
+    {
+        $filePath = $basePath . '/' . $filename;
+        $mime = mime_content_type($filePath) ?: 'application/octet-stream';
+
+        $fullRelativePath = $relativePath !== '' ? $relativePath . '/' . $filename : $filename;
+
+        $data = [
+            'filename' => $filename,
+            'path' => $relativePath,
+            'url' => $this->resolvePublicUrl($filePath, $fullRelativePath),
+            'type' => $mime,
+            'size' => (int) filesize($filePath),
+        ];
+
+        // Alt/title from the `.meta.yaml` sidecar so the media panel can insert
+        // `![alt](file)` rather than overwriting alt with the filename.
+        $meta = $this->readMetaSidecar($filePath);
+        if (isset($meta['alt']) && is_scalar($meta['alt']) && (string) $meta['alt'] !== '') {
+            $data['alt'] = (string) $meta['alt'];
+        }
+        if (isset($meta['title']) && is_scalar($meta['title']) && (string) $meta['title'] !== '') {
+            $data['title'] = (string) $meta['title'];
+        }
+
+        if (str_starts_with($mime, 'image/') && $mime !== 'image/svg+xml') {
+            if ($imageSize = @getimagesize($filePath)) {
+                $data['dimensions'] = [
+                    'width' => $imageSize[0],
+                    'height' => $imageSize[1],
+                ];
+            }
+
+            // Thumbnail URL; the image is resized on the first request for it.
+            // The mime is already known, so pass it through to skip the
+            // service's own magic-byte sniff.
+            try {
+                $thumbnailService = $this->getThumbnailService();
+                $thumbFilename = $thumbnailService->thumbnailFilename($filePath, $mime);
+                if ($thumbFilename) {
+                    $data['thumbnail_url'] = $this->getApiBaseUrl() . '/thumbnails/' . $thumbFilename;
+                }
+            } catch (\Throwable) {
+                // Thumbnail generation failed — skip it
+            }
+        }
+
+        $mtime = filemtime($filePath);
+        $data['modified'] = date(\DateTimeInterface::ATOM, $mtime ?: time());
+
+        return $data;
+    }
+}

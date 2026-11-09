@@ -1,0 +1,16 @@
+{
+  "private": true,
+  "scripts": {
+    "test:api": "./tests/newman/run.sh",
+    "test:api:verbose": "./tests/newman/run.sh --reporter-cli-no-summary false",
+    "postman:sync": "php tests/newman/sync-collection.php",
+    "lint:openapi": "npx -y @redocly/cli@latest lint openapi.yaml"
+  },
+  "devDependencies": {
+    "newman": "^6.2.3"
+  },
+  "overrides": {
+    "ip-address": "^10.7.4",
+    "handlebars": "^4.7.10"
+  }
+}

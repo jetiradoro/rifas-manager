@@ -1,0 +1,4711 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Grav\Plugin\Api\Controllers;
+
+use Grav\Common\Filesystem\Folder;
+use Grav\Common\Grav;
+use Grav\Common\Inflector;
+use Grav\Common\Config\Config;
+use Grav\Common\Language\Language;
+use Grav\Common\Language\LanguageCodes;
+use Grav\Common\Page\Interfaces\PageInterface;
+use Grav\Common\Page\Page;
+use Grav\Common\Page\PageOrdering;
+use Grav\Common\Security;
+use Grav\Framework\Flex\FlexDirectory;
+use Grav\Plugin\Api\Demo\DemoPolicy;
+use Grav\Plugin\Api\Exceptions\ApiException;
+use Grav\Plugin\Api\Exceptions\DemoModeException;
+use Grav\Plugin\Api\Exceptions\NotFoundException;
+use Grav\Plugin\Api\Exceptions\TwigContentForbiddenException;
+use Grav\Plugin\Api\Exceptions\ValidationException;
+use Grav\Plugin\Api\Exceptions\ForbiddenException;
+use Grav\Plugin\Api\Auth\JwtAuthenticator;
+use Grav\Plugin\Api\FlexBackend;
+use Grav\Plugin\Api\PageAclIndex;
+use Grav\Plugin\Api\PageListVisibility;
+use Grav\Plugin\Api\Response\ApiResponse;
+use Grav\Plugin\Api\Serializers\MediaSerializer;
+use Grav\Plugin\Api\Serializers\PageSerializer;
+use Grav\Plugin\Api\Services\ModularTemplates;
+use Grav\Plugin\Api\Services\PageTemplate;
+use Grav\Plugin\Api\Services\ThumbnailService;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use RocketTheme\Toolbox\Event\Event;
+use RocketTheme\Toolbox\File\MarkdownFile;
+
+class PagesController extends AbstractApiController
+{
+    use FlexBackend;
+    private const PERMISSION_READ = 'api.pages.read';
+    private const PERMISSION_WRITE = 'api.pages.write';
+
+    /** @var array{data: array<string, mixed>, language: string, root: string}|null see snapshotAclIndex() */
+    private ?array $aclSnapshot = null;
+
+    /** The page-rules index stamp this request's last write set, see clearPagesCache(). */
+    private ?string $aclGeneration = null;
+
+    /**
+     * The order prefix of a page folder, as core strips it before it reads the
+     * slug (PAGE_ORDER_PREFIX_REGEX in Grav\Common\Page\Page, repeated here
+     * because the Flex constant cannot be loaded without the Flex page classes).
+     */
+    private const ORDER_PREFIX_REGEX = '/^[0-9]+\./u';
+
+    private const ALLOWED_FILTERS = ['published', 'template', 'routable', 'visible', 'parent', 'children_of', 'root', 'editable'];
+    private const ALLOWED_SORT_FIELDS = ['date', 'title', 'slug', 'modified', 'order', 'default'];
+
+    /**
+     * What an `ancestor_only` row keeps: enough for a tree to label it, place
+     * it, number a drop next to it and open it, and nothing else of a page the
+     * caller may not read (getgrav/grav-plugin-admin2#209).
+     */
+    private const ANCESTOR_ONLY_FIELDS = ['route', 'raw_route', 'parent_route', 'slug', 'title', 'menu', 'order', 'has_children'];
+
+    private readonly PageSerializer $serializer;
+    private readonly ModularTemplates $templates;
+
+    public function __construct(Grav $grav, Config $config)
+    {
+        parent::__construct($grav, $config);
+        $thumbnailService = ThumbnailService::forGrav($grav);
+        $baseUrl = '/' . trim($config->get('plugins.api.route', '/api'), '/') . '/' . $config->get('plugins.api.version_prefix', 'v1');
+        $mediaSerializer = new MediaSerializer($thumbnailService, $baseUrl);
+        $this->templates = new ModularTemplates($grav);
+        $this->serializer = new PageSerializer($mediaSerializer, $this->templates);
+    }
+
+    /**
+     * GET /pages - List pages with filtering, sorting, and pagination.
+     */
+    public function index(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+        $previousLang = $this->applyLanguage($request);
+
+        try {
+            $directory = $this->getFlexDirectory('pages');
+            if ($directory) {
+                return $this->indexViaFlex($request, $directory);
+            }
+            return $this->indexViaPages($request);
+        } finally {
+            $this->restoreLanguage($previousLang);
+        }
+    }
+
+    /**
+     * List pages using the Flex-Objects backend (indexed, cached).
+     */
+    private function indexViaFlex(ServerRequestInterface $request, FlexDirectory $directory): ResponseInterface
+    {
+        $filters = $this->getFilters($request, self::ALLOWED_FILTERS);
+        $visibility = $this->listVisibility($request, $filters);
+        $sorting = $this->getSorting($request, self::ALLOWED_SORT_FIELDS);
+        $pagination = $this->getPagination($request);
+        $query = $request->getQueryParams();
+        $search = self::searchTerm($query);
+
+        $sortField = $sorting['sort'] ?? 'date';
+        $sortOrder = $sorting['sort'] ? $sorting['order'] : 'desc';
+
+        // 'default' sort with children_of: use native page ordering
+        if ($sortField === 'default' && isset($filters['children_of'])) {
+            return $this->indexViaDefaultSort($request, $filters['children_of'], $filters, $pagination, $search, $visibility);
+        }
+        if ($sortField === 'default') {
+            $sortField = 'order';
+            $sortOrder = 'asc';
+        }
+
+        // Start with full collection
+        $collection = $directory->getCollection();
+
+        // Apply search
+        if ($search !== null) {
+            $collection = $collection->search($search);
+        }
+
+        // Apply every filter (published, visible, routable, template, parent,
+        // children_of, root) by testing each page against matchesFilters().
+        //
+        // We deliberately do NOT use the flex withPublished()/withVisible()/
+        // withRoutable() shortcuts: $directory->getCollection() hands back a
+        // PageIndex, and those methods live only on PageCollection. The old
+        // method_exists() guards therefore never fired for a PageIndex and
+        // silently dropped the published/visible/routable filters, returning
+        // every page unfiltered (getgrav/grav-plugin-admin2#121). matchesFilters()
+        // covers all filter keys and works on any collection/index type.
+        if ($filters) {
+            // A folder listing (children_of, or root=true) only tests that
+            // folder's own children, not every page on the site.
+            $source = $collection;
+            $pageFilters = $filters;
+            $folderParent = $filters['children_of'] ?? (
+                isset($filters['root']) && filter_var($filters['root'], FILTER_VALIDATE_BOOLEAN) ? '/' : null
+            );
+            if (is_string($folderParent)) {
+                $folder = $this->flexFolderChildren($directory, $collection, $folderParent);
+                if ($folder !== null) {
+                    $source = $collection->select($folder['keys']);
+                    // These are the folder's own children, so children_of holds
+                    // for each of them without asking every child for its parent.
+                    unset($pageFilters['children_of']);
+                }
+            }
+
+            $filtered = [];
+            foreach ($source as $page) {
+                if ($page instanceof PageInterface && $this->matchesFilters($page, $pageFilters)) {
+                    $filtered[$page->getKey()] = $page;
+                }
+            }
+            // Re-select from the collection to maintain the flex type
+            $collection = $collection->select(array_keys($filtered));
+        }
+
+        // Map sort fields to flex-compatible field names
+        $flexSortField = match ($sortField) {
+            'date' => 'date',
+            'modified' => 'timestamp',
+            'title' => 'title',
+            'slug' => 'slug',
+            'order' => 'order',
+            default => 'date',
+        };
+        $collection = $collection->sort([$flexSortField => $sortOrder]);
+
+        // Skip the virtual pages-root container (no file on disk). The home
+        // page IS a real file-backed page even though its route is '/', and a
+        // page carrying `routes.default: ''` is a real page whose route is the
+        // empty string, so ask root() rather than testing the route for
+        // truthiness (getgrav/grav-plugin-api#34).
+        $items = [];
+        foreach ($collection as $page) {
+            if ($page instanceof PageInterface && !$page->root() && $page->exists()) {
+                $items[] = $page;
+            }
+        }
+
+        [$items, $ancestorOnly] = $this->applyVisibility($visibility, $items, $filters);
+
+        $total = count($items);
+        $locatedAt = $this->applyLocate($items, $pagination, $query['locate'] ?? null);
+        $slice = array_slice($items, $pagination['offset'], $pagination['limit']);
+
+        $data = $this->attachPageCapabilities($request, $slice, $this->serializer->serializeCollection($slice, $this->listOptions($request)), $visibility, $ancestorOnly);
+
+        return ApiResponse::paginated(
+            data: $data,
+            total: $total,
+            page: $pagination['page'],
+            perPage: $pagination['per_page'],
+            baseUrl: $this->getApiBaseUrl() . '/pages',
+            locatedAtIndex: $locatedAt,
+            query: $request->getQueryParams(),
+        );
+    }
+
+    /**
+     * List pages using the regular Grav Pages service (fallback).
+     */
+    private function indexViaPages(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->enablePages();
+
+        $filters = $this->getFilters($request, self::ALLOWED_FILTERS);
+        $visibility = $this->listVisibility($request, $filters);
+        $sorting = $this->getSorting($request, self::ALLOWED_SORT_FIELDS);
+        $pagination = $this->getPagination($request);
+        $search = self::searchTerm($request->getQueryParams());
+
+        $sortField = $sorting['sort'] ?? 'date';
+        $sortOrder = $sorting['sort'] ? $sorting['order'] : 'desc';
+
+        if ($sortField === 'default' && isset($filters['children_of'])) {
+            return $this->indexViaDefaultSort($request, $filters['children_of'], $filters, $pagination, $search, $visibility);
+        }
+        if ($sortField === 'default') {
+            $sortField = 'order';
+            $sortOrder = 'asc';
+        }
+
+        $pages = $this->grav['pages'];
+        $allPages = $this->collectAndFilterPages($this->candidatePages($pages, $filters), $filters, $search);
+        $allPages = $this->sortPages($allPages, $sortField, $sortOrder);
+
+        [$allPages, $ancestorOnly] = $this->applyVisibility($visibility, $allPages, $filters);
+
+        $total = count($allPages);
+        $locatedAt = $this->applyLocate($allPages, $pagination, $request->getQueryParams()['locate'] ?? null);
+        $slice = array_slice($allPages, $pagination['offset'], $pagination['limit']);
+
+        $data = $this->attachPageCapabilities($request, $slice, $this->serializer->serializeCollection($slice, $this->listOptions($request)), $visibility, $ancestorOnly);
+
+        return ApiResponse::paginated(
+            data: $data,
+            total: $total,
+            page: $pagination['page'],
+            perPage: $pagination['per_page'],
+            baseUrl: $this->getApiBaseUrl() . '/pages',
+            locatedAtIndex: $locatedAt,
+            query: $request->getQueryParams(),
+        );
+    }
+
+    /**
+     * GET /pages/{route} - Get a single page by route.
+     */
+    public function show(ServerRequestInterface $request): ResponseInterface
+    {
+        $previousLang = $this->applyLanguage($request);
+
+        try {
+            $this->enablePages();
+
+            $route = $this->getRouteParam($request, 'route');
+            $page = $this->findPageOrFail('/' . $route, $request, self::PERMISSION_READ);
+            $page = $this->withTranslationOnDisk($page, '/' . $route);
+            $this->authorizePageAction($request, $page, 'read', self::PERMISSION_READ);
+
+            // If the page already has process.twig:true, the same gate that
+            // governs writes also governs reading the full record. Returning
+            // the editor view to a user who can't save it is misleading; let
+            // Admin Next show the toast on the show() failure instead.
+            $this->guardTwigContent($request, $page, []);
+
+            $query = $request->getQueryParams();
+            $summary = filter_var($query['summary'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $options = [
+                'include_content' => !$summary,
+                'render_content' => filter_var($query['render'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'include_summary' => $summary,
+                'summary_size' => isset($query['summary_size']) ? (int) $query['summary_size'] : null,
+                'include_children' => filter_var($query['children'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'children_depth' => max(1, (int) ($query['children_depth'] ?? 1)),
+                'include_media' => true,
+                'include_translations' => filter_var($query['translations'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                // Every nested child passes the same read check as the page
+                // itself, so ?children=true can't return a child the caller
+                // would get a 403 for on its own route (#47).
+                'child_filter' => fn (PageInterface $child): bool => $this->canReadPage($request, $child),
+            ];
+
+            $data = $this->serializer->serialize($page, $options);
+
+            // The ETag is the page's own state — take it BEFORE attaching the
+            // caller's capabilities, which vary per user and would otherwise
+            // make every If-Match on a later PATCH mismatch (see pageEtag()).
+            $etag = $this->pageEtag($page, $data);
+            $data['permissions'] = $this->pageCapabilities($request, $page);
+            $data['delete_recoverable'] = $this->deleteRecoverable($request);
+
+            return $this->respondWithEtag($data, etag: $etag);
+        } finally {
+            $this->restoreLanguage($previousLang);
+        }
+    }
+
+    /**
+     * The ETag of a page: a hash of what a PATCH can overwrite, which is its
+     * frontmatter, body, template and language. show(), update() and move() all
+     * take it from here, so the validator from any one of them is the one the
+     * next PATCH checks (getgrav/grav-plugin-admin2#189).
+     *
+     * Hashing the response itself did not work. The admin's editor loads with
+     * `translations=true`, and that read's ETag never matched what update()
+     * computed from the plain page, so every save with an `If-Match` was
+     * refused. The same went for anything else in a response that is not the
+     * page's own file: the media list (a page save never touches it, yet an
+     * upload would 409 the next save), `has_children` and `order` (a sibling
+     * added or moved), `modified` (Page::save() leaves the in-memory mtime at
+     * the pre-save value, so the response to a PATCH never matched the next
+     * request) and the caller's `permissions`.
+     *
+     * @param array<string, mixed> $data the serialized page, whatever options it was read with
+     */
+    private function pageEtag(PageInterface $page, array $data): string
+    {
+        return $this->generateEtag([
+            'header' => $data['header'] ?? [],
+            // A summary read leaves the body out of its response. Line endings
+            // are compared as LF: a body saved with CRLF reads back with LF.
+            'content' => str_replace(["\r\n", "\r"], "\n", (string) ($data['content'] ?? $page->rawMarkdown())),
+            'template' => $data['template'] ?? null,
+            'language' => $data['language'] ?? null,
+        ]);
+    }
+
+    /**
+     * GET /pages/{route}/neighbors — where a page sits among its siblings, for
+     * the admin's page navigator: its parent, the previous and next sibling,
+     * its first child, its position and the sibling count.
+     *
+     * Siblings are the parent's children in `sort=default` order, exactly as
+     * `GET /pages?children_of=<parent>&sort=default` lists them (`/` for a
+     * top-level page), and every row is a `fields=summary` list row. Only the
+     * parent's and the page's own children are read, never the whole site,
+     * so opening the editor no longer downloads every sibling to find two.
+     *
+     * A page that its parent's listing leaves out (a folder with no content
+     * file) gets `index: -1` and no previous or next sibling.
+     *
+     * Only the pages the parent's folder listing returns as normal rows count
+     * (getgrav/grav-plugin-admin2#209): pages the caller may read and list,
+     * and with `?editable=true` only the ones they may also update. A row the
+     * listing keeps as `ancestor_only` is skipped, as it can't be opened, so
+     * prev/next are the nearest such siblings, index/total count only them,
+     * and first_child is the first such child. The parent comes back when the
+     * caller may read and list it, and null otherwise; under `editable=true`
+     * a parent they can't update is still returned, flagged `ancestor_only`.
+     */
+    public function neighbors(ServerRequestInterface $request): ResponseInterface
+    {
+        $previousLang = $this->applyLanguage($request);
+
+        try {
+            $this->enablePages();
+
+            $route = $this->getRouteParam($request, 'route');
+            $page = $this->findPageOrFail('/' . $route, $request, self::PERMISSION_READ);
+            $this->authorizePageAction($request, $page, 'read', self::PERMISSION_READ);
+
+            $editableOnly = filter_var($request->getQueryParams()['editable'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $visibility = $this->pageVisibility($request, $editableOnly);
+
+            $parent = $page->parent();
+            if ($parent !== null && $parent->root()) {
+                $parent = null;
+            }
+            $parentRoute = $parent !== null ? (string) $parent->rawRoute() : '/';
+
+            // Only pages the caller could open from the listing count: a read
+            // grant on this one page doesn't reveal the pages around it, and
+            // prev/next skip past a hidden sibling instead of stopping (#48).
+            $listed = static fn (array $pages): array => array_values(array_filter(
+                $pages,
+                static fn (PageInterface $candidate): bool => $visibility->matches($candidate),
+            ));
+
+            if ($parent !== null && !$visibility->isVisible($parent)) {
+                $parent = null;
+            }
+
+            $siblings = $listed($this->defaultOrderedChildren(['children_of' => $parentRoute]));
+            $index = -1;
+            foreach ($siblings as $position => $sibling) {
+                if ($sibling->path() === $page->path()) {
+                    $index = $position;
+                    break;
+                }
+            }
+
+            $children = $listed($this->defaultOrderedChildren(['children_of' => (string) $page->rawRoute()]));
+
+            return ApiResponse::create([
+                'parent' => $this->summaryRow($request, $parent, $visibility, $parent !== null && !$visibility->matches($parent)),
+                'prev' => $index > 0 ? $this->summaryRow($request, $siblings[$index - 1], $visibility) : null,
+                'next' => $index >= 0 ? $this->summaryRow($request, $siblings[$index + 1] ?? null, $visibility) : null,
+                'first_child' => $this->summaryRow($request, $children[0] ?? null, $visibility),
+                'index' => $index,
+                'total' => count($siblings),
+            ]);
+        } finally {
+            $this->restoreLanguage($previousLang);
+        }
+    }
+
+    /**
+     * One page serialized exactly like a `GET /pages?fields=summary` row,
+     * including the caller's per-page permissions, or null for no page.
+     */
+    private function summaryRow(
+        ServerRequestInterface $request,
+        ?PageInterface $page,
+        ?PageListVisibility $visibility = null,
+        bool $ancestorOnly = false,
+    ): ?array {
+        if ($page === null) {
+            return null;
+        }
+
+        $options = ['include_header' => false] + $this->listOptions($request);
+        $rows = $this->attachPageCapabilities(
+            $request,
+            [$page],
+            $this->serializer->serializeCollection([$page], $options),
+            $visibility,
+            $ancestorOnly ? [PageAclIndex::keyOf($page) => true] : [],
+        );
+
+        return $rows[0] ?? null;
+    }
+
+    /**
+     * POST /pages/{route}/preview-token — mint a short-lived token that lets the
+     * front-end render this page even when it is unpublished, for the admin page
+     * preview (getgrav/grav-plugin-admin2#100).
+     *
+     * The preview is a plain browser navigation to the real front-end URL, so it
+     * can't carry an auth header and deliberately runs with the front-end session
+     * suppressed (admin2#88/#79). This endpoint is where the authorization
+     * actually happens: it requires read permission on pages and confirms the
+     * page exists, then hands back a signed token pinned to this one route. The
+     * front-end request presents that token and the plugin force-publishes only
+     * this page (see ApiPlugin::onPagesInitialized()). No token, no draft preview
+     * — so `?admin_preview=1` alone can never expose an unpublished page.
+     */
+    public function previewToken(ServerRequestInterface $request): ResponseInterface
+    {
+        if (!$this->config->get('plugins.api.allow_draft_preview', true)) {
+            throw new ForbiddenException('Draft preview is disabled for this site.');
+        }
+
+        $previousLang = $this->applyLanguage($request);
+
+        try {
+            $this->enablePages();
+
+            $route = $this->getRouteParam($request, 'route');
+            $page = $this->findPageOrFail('/' . $route, $request, self::PERMISSION_READ);
+            $this->authorizePageAction($request, $page, 'read', self::PERMISSION_READ);
+
+            // The page the browser must actually load. The same page as the one
+            // asked for, except for a module, which only renders inside its
+            // parent (admin2#170).
+            $target = self::previewRenderTarget($page);
+
+            // Previewing a module unlocks its host page too, so the caller has
+            // to be allowed to read that page in its own right: a per-page ACL
+            // can grant a module without granting its parent.
+            if ($target !== $page) {
+                $this->authorizePageAction($request, $target, 'read', self::PERMISSION_READ);
+            }
+
+            // Pin the token to the page's canonical public route, the same value
+            // the admin builds the preview URL from, so it can only ever unlock
+            // this page. Only super admins and users with page-read reach here.
+            $jwt = new JwtAuthenticator($this->grav, $this->config);
+            $ttl = max(30, (int) $this->config->get('plugins.api.preview_token_ttl', 300));
+            $token = $jwt->generatePreviewToken($this->getUser($request), $page->route(), $ttl);
+
+            return ApiResponse::create([
+                'token' => $token,
+                'expires_in' => $ttl,
+                // The URL path the browser loads: the language prefix the
+                // front end serves this language under, then the route the
+                // page has IN that language. The active language is the one
+                // the page was just resolved in, so a translated slug
+                // (`/typographie`) and its prefix (`/fr`) always agree
+                // (admin2#188).
+                'route' => $this->grav['language']->getLanguageURLPrefix() . $target->route(),
+                // A theme that gives its modules an anchor can scroll straight
+                // to the one being previewed. Advisory only: a theme that emits
+                // no such id simply lands at the top of the parent.
+                'anchor' => $target !== $page ? self::previewAnchor($page) : null,
+            ]);
+        } finally {
+            $this->restoreLanguage($previousLang);
+        }
+    }
+
+    /**
+     * The page a preview of `$page` should actually load.
+     *
+     * Normally the page itself. A module is the exception: it is never a page
+     * in its own right, only a section the theme draws inside its parent.
+     * Requesting one directly renders the module template standalone, with no
+     * `<html>` and no theme assets, and emits the section twice, because a
+     * module's content is already that template's output (Twig::processPage())
+     * and the dispatched page render then wraps it in the very same template
+     * again (admin2#170).
+     *
+     * Resolved by walking the real hierarchy, never by trimming the route:
+     * with `system.home.hide_in_urls` a route can be missing its home segment,
+     * and string-splitting it lands on the wrong page (admin2#132).
+     */
+    private static function previewRenderTarget(PageInterface $page): PageInterface
+    {
+        $seen = [];
+
+        while ($page->isModule()) {
+            $seen[(string) $page->path()] = true;
+            $parent = $page->parent();
+            if ($parent === null || $parent->root() || isset($seen[(string) $parent->path()])) {
+                break;
+            }
+            $page = $parent;
+        }
+
+        return $page;
+    }
+
+    /**
+     * The fragment that scrolls a preview to the module being previewed.
+     *
+     * There is no core convention for this, so it is advisory: our themes give
+     * each module an element whose id is the module's menu label hyphenized
+     * (see Quark 2's `modular.html.twig`), and a theme that emits nothing of
+     * the sort simply lands at the top of the parent page.
+     */
+    private static function previewAnchor(PageInterface $page): ?string
+    {
+        $label = trim((string) $page->menu());
+        if ($label === '') {
+            return null;
+        }
+
+        $anchor = Inflector::hyphenize($label);
+
+        return $anchor === '' ? null : $anchor;
+    }
+
+    /**
+     * Parent route of a page route, always using `/` as the separator.
+     *
+     * PHP's dirname()/basename() use the host OS directory separator, so on
+     * Windows dirname('/foo') returns '\' rather than '/'. That made the
+     * root-level "parent" check below fail with "Parent page not found at
+     * route: \" and broke creating, copying or moving a page at the site root
+     * on Windows (getgrav/grav-plugin-admin2#82). Routes are always `/`-
+     * delimited, so split them ourselves.
+     */
+    private static function routeParent(string $route): string
+    {
+        $route = rtrim($route, '/');
+        $pos = strrpos($route, '/');
+
+        return ($pos === false || $pos === 0) ? '/' : substr($route, 0, $pos);
+    }
+
+    /**
+     * Split a page folder name or route segment into its order prefix and its
+     * slug (`01._hero` into `01.` and `_hero`), with the pattern core strips
+     * the prefix with. The prefix is '' when the name has none.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private static function splitOrderPrefix(string $name): array
+    {
+        $slug = (string) preg_replace(self::ORDER_PREFIX_REGEX, '', $name);
+
+        return [substr($name, 0, strlen($name) - strlen($slug)), $slug];
+    }
+
+    /**
+     * Last segment of a page route, always using `/` as the separator.
+     * See {@see routeParent()} for why dirname()/basename() can't be used.
+     */
+    private static function routeBasename(string $route): string
+    {
+        $route = rtrim($route, '/');
+        $pos = strrpos($route, '/');
+
+        return $pos === false ? $route : substr($route, $pos + 1);
+    }
+
+    /**
+     * Refuse a route whose segments are not page folder names. The last segment
+     * becomes the new folder, joined onto the parent's path, so `.` or `..`
+     * there would put the page file in the parent's folder or the one above it,
+     * outside the page the request was authorized against. A separator or null
+     * byte has no place in a folder name either.
+     *
+     * @throws ValidationException
+     */
+    private static function assertPageRoute(string $route, string $field = 'route'): void
+    {
+        $segments = explode('/', trim($route, '/'));
+        $last = (string) end($segments);
+        $invalid = str_contains($route, '\\')
+            || str_contains($route, "\0")
+            || ($last !== '' && $last[0] === '.');
+        foreach ($segments as $segment) {
+            if ($segment === '.' || $segment === '..') {
+                $invalid = true;
+            }
+        }
+
+        if ($invalid) {
+            $message = "Invalid route: '{$route}' must be made of page folder names.";
+            throw new ValidationException($message, [['field' => $field, 'message' => $message]]);
+        }
+    }
+
+    /**
+     * Whether a page named `$name` under `$parentRoute` would be a module at
+     * the top level of the site. A module (a `_` slug) is only drawn by the
+     * modular page above it, so one with the site root as its parent is a
+     * folder nothing shows. Slashes and numeric prefixes are ignored, and ''
+     * and '/' both mean the root, so `01._hero` under `/` counts.
+     */
+    private static function isRootModule(string $parentRoute, string $name): bool
+    {
+        $segments = array_filter(
+            array_map(
+                static fn (string $segment): string => self::splitOrderPrefix($segment)[1],
+                explode('/', trim($parentRoute, '/')),
+            ),
+            static fn (string $segment): bool => $segment !== '',
+        );
+        if ($segments !== []) {
+            return false;
+        }
+
+        return str_starts_with(self::splitOrderPrefix(trim($name, '/'))[1], '_');
+    }
+
+    /**
+     * Refuse a module at the top level of the site (see {@see isRootModule()}),
+     * on create, move, copy and reorganize alike.
+     *
+     * @throws ValidationException
+     */
+    private function assertNotRootModule(string $parentRoute, string $name, string $field = 'route'): void
+    {
+        if (self::isRootModule($parentRoute, $name)) {
+            $message = 'A module goes inside a modular page. Pick the page it belongs to as its parent.';
+            throw new ValidationException($message, [['field' => $field, 'message' => $message]]);
+        }
+    }
+
+    /**
+     * The page's folder name without its numeric order prefix (`02.typography`
+     * gives `typography`). Not slug(): a `slug:` in the frontmatter changes the
+     * route but never the folder, so a rename built from slug() turned
+     * `02.typography` into `03.my-slug` (getgrav/grav-admin-next#40).
+     *
+     * @param PageInterface $page
+     */
+    private static function folderName(object $page): string
+    {
+        return ltrim(PageOrdering::parse(basename((string) $page->path()))[1], '.');
+    }
+
+    /**
+     * Structural route of a page's parent, resolved from the real hierarchy.
+     *
+     * Never derive a parent by string-splitting the public route(): when
+     * `system.home.hide_in_urls` is on, a child of the home page has its
+     * home segment stripped from route() (e.g. '/child' instead of
+     * '/home/child'), so routeParent(route()) collapses to '/', which the
+     * move/copy/reorganize code then treats as the pages filesystem root —
+     * physically relocating the page out of home (getgrav/grav-plugin-admin2#132).
+     * The parent's rawRoute() carries the real structural segment ('/home'),
+     * and a genuine top-level page reports '/' because its parent is the
+     * pages-root. Mirrors the hierarchy-based logic in {@see isDirectChildOf()}.
+     *
+     * Falls back to string-splitting the public route only for objects with no
+     * materialized parent pointer (e.g. test doubles); real pages always carry
+     * one, so the hidden-home fix always takes the hierarchy path in practice.
+     */
+    private static function structuralParentRoute(object $page): string
+    {
+        if (method_exists($page, 'parent')) {
+            $parent = $page->parent();
+            if ($parent !== null) {
+                if (method_exists($parent, 'root') && $parent->root()) {
+                    return '/';
+                }
+                if (method_exists($parent, 'rawRoute') && $parent->rawRoute()) {
+                    return $parent->rawRoute();
+                }
+            }
+        }
+
+        return self::routeParent($page->route());
+    }
+
+    /**
+     * POST /pages - Create a new page.
+     */
+    public function create(ServerRequestInterface $request): ResponseInterface
+    {
+        // Authorized further down, against the PARENT page: a `create` rule in
+        // frontmatter governs what may be added beneath that page. Until the
+        // parent is known, only the shape of the request is validated.
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['route', 'title']);
+
+        // Language can come from body or query param
+        $lang = $body['lang'] ?? null;
+        $previousLang = $this->applyLanguage($request, $lang);
+
+        try {
+            $this->enablePages();
+
+            $route = '/' . trim($body['route'], '/');
+            $template = $body['template'] ?? 'default';
+            $title = $body['title'];
+            $content = $body['content'] ?? '';
+            $header = $body['header'] ?? [];
+            $order = $body['order'] ?? null;
+
+            // `kind` mirrors classic admin's three-way split:
+            //   - 'page'   (default): folder + <template>.md inside (current behaviour)
+            //   - 'folder': folder only, no .md file written — useful as a
+            //               routing/grouping container
+            //   - 'module': folder for a modular sub-page; the slug is prefixed
+            //               with `_` (per Grav's modular convention) unless the
+            //               caller already supplied that prefix
+            $kind = strtolower((string) ($body['kind'] ?? 'page'));
+            if (!in_array($kind, ['page', 'folder', 'module'], true)) {
+                throw new ValidationException("Invalid 'kind' value: must be one of page, folder, module.");
+            }
+
+            // Ensure parent exists
+            $parentRoute = self::routeParent($route);
+
+            // The last segment may carry an order prefix the way a folder does
+            // (`01._hero`). Grav routes by the slug without it and decides
+            // whether a page is a module from that slug, so the `_` test below
+            // has to see the slug alone (#55). The prefix is kept for the
+            // folder name and left out of the route, which never holds it.
+            self::assertPageRoute($route);
+            [$routePrefix, $slug] = self::splitOrderPrefix(self::routeBasename($route));
+            if ($routePrefix !== '' && $slug === '') {
+                throw new ValidationException("Invalid route: '{$route}' has an order prefix but no page name.");
+            }
+
+            // Modular sub-page convention: folder name starts with `_`.
+            if ($kind === 'module' && !str_starts_with($slug, '_')) {
+                $slug = '_' . $slug;
+            }
+
+            // A module is only ever drawn by the modular page above it, so one
+            // at the top level would be a folder nothing shows. Refused whichever
+            // `kind` asked for it, as a `_` slug makes a module either way.
+            if ($kind !== 'folder') {
+                $this->assertNotRootModule($parentRoute, $slug);
+            }
+            $route = ($parentRoute === '/' ? '' : $parentRoute) . '/' . $slug;
+
+            if ($parentRoute !== '/') {
+                $parent = $this->grav['pages']->find($parentRoute);
+                if (!$parent) {
+                    // Don't confirm which parents exist to a caller who can't
+                    // create pages anywhere.
+                    $this->requirePermission($request, self::PERMISSION_WRITE);
+                    throw new ValidationException("Parent page not found at route: {$parentRoute}");
+                }
+                $parentPath = $parent->path();
+            } else {
+                // Top level: the pages root can still carry rules of its own.
+                $parent = method_exists($this->grav['pages'], 'root')
+                    ? $this->grav['pages']->root()
+                    : null;
+                $parentPath = $this->grav['locator']->findResource('page://', true);
+            }
+
+            $this->authorizePageAction($request, $parent, 'create', self::PERMISSION_WRITE);
+
+            // A page whose folder starts with `_` is a module whichever `kind`
+            // asked for it. A module whose template doesn't exist is still
+            // created, with a warning in the response (#55). A folder writes
+            // no .md, so its template is never used.
+            $warnings = [];
+            $module = $kind !== 'folder' && str_starts_with($slug, '_');
+            if ($kind === 'folder') {
+                $template = is_string($template) ? $template : 'default';
+            } else {
+                $template = $this->resolveTemplate($template, $module);
+            }
+
+            // Resolve `order: "auto"` against existing siblings: if any sibling
+            // carries a numeric prefix, assign the next number; otherwise leave
+            // the new page unprefixed. Mirrors admin-classic's add-page flow.
+            if (is_string($order) && strtolower($order) === 'auto') {
+                $order = $this->nextOrderInParent($parentPath);
+            }
+
+            // Build directory name with optional ordering prefix. Width follows
+            // the parent's existing children when present, so adding a page
+            // under a 3-digit collection stays 3-digit.
+            // An `order` in the body wins over a prefix typed into the route.
+            $dirName = $order !== null
+                ? PageOrdering::key($order, $slug, $this->siblingDigits($parentPath))
+                : $routePrefix . $slug;
+            $pagePath = $parentPath . '/' . $dirName;
+
+            // Grav routes by slug, so `02._dup` and `03._dup` would claim the same
+            // route: refuse the slug when a sibling has it under any order prefix.
+            if (($clash = $this->findSlugClash($parentPath, $dirName)) !== null) {
+                throw new ValidationException("A page already exists at route: {$route} (folder '{$clash}').");
+            }
+
+            // Build header: blueprint field defaults sit lowest, then the
+            // title, then anything the client explicitly sent on top. This
+            // restores Grav 1.7 parity — a new page picks up its template's
+            // `default:` values (e.g. `header.published: false`,
+            // `header.date: ''`) instead of going live with empty frontmatter
+            // (admin2#49).
+            $header = array_replace_recursive(
+                $this->blueprintHeaderDefaults($template),
+                ['title' => $title],
+                $header,
+            );
+
+            // Core renders with the `template` header when there is one, and
+            // with the file's template otherwise, so that is the one to warn
+            // about.
+            if ($module) {
+                $headerTemplate = $header['template'] ?? null;
+                $warning = $headerTemplate === null || (is_string($headerTemplate) && trim($headerTemplate) === '')
+                    ? $this->templates->warning($template)
+                    : $this->headerTemplateWarning($headerTemplate, null);
+                if ($warning !== null) {
+                    $warnings[] = $warning;
+                }
+            }
+
+            // Enforce security.twig_content.* gate before any plugin event can
+            // mutate the header — reject the create up-front if the request
+            // wants process.twig:true and the user isn't allowed.
+            $this->guardTwigContent($request, null, $header);
+            $header = $this->demoSafeHeader($request, (array) $header);
+
+            // Fire before event — plugins can modify $header/$content or throw to cancel
+            $this->fireEvent('onApiBeforePageCreate', [
+                'route' => $route,
+                'header' => &$header,
+                'content' => &$content,
+                'template' => &$template,
+                'lang' => $lang,
+            ]);
+
+            // Allow plugins to inject frontmatter fields (e.g. auto-date plugin)
+            $this->fireAdminEvent('onAdminCreatePageFrontmatter', [
+                'header' => &$header,
+                'data' => $body,
+            ]);
+
+            $this->snapshotAclIndex();
+
+            if ($kind === 'folder') {
+                // Folder-only page: create the directory with no .md inside.
+                // Grav treats such folders as routing/grouping containers.
+                if (!is_dir($pagePath)) {
+                    if (!@mkdir($pagePath, 0775, true) && !is_dir($pagePath)) {
+                        throw new \RuntimeException("Failed to create folder at: {$pagePath}");
+                    }
+                }
+                $page = null;
+            } else {
+                // Build filename with language extension if applicable
+                $filename = $this->buildPageFilename($template, $lang);
+
+                $page = new Page();
+                $page->filePath($pagePath . '/' . $filename);
+                $page->header((object) $header);
+                $page->rawMarkdown($content);
+
+                // Allow plugins to modify the page before save (e.g. SEO Magic, mega-frontmatter)
+                $this->fireAdminEvent('onAdminSave', ['object' => &$page, 'page' => &$page]);
+
+                // Validate the submitted page fields against the blueprint (admin2#30).
+                $this->validatePageChanges($page, ['header' => $header, 'content' => $content], $template);
+
+                $page->save();
+            }
+
+            $this->clearPagesCache();
+
+            // Re-init pages and fetch the newly created page for serialization
+            $this->enablePages(true);
+            $newPage = $this->grav['pages']->find($route);
+            $this->refreshAclIndex([$pagePath], [$pagePath]);
+
+            $resolved = $newPage ?? $page;
+            if ($resolved !== null) {
+                $this->fireAdminEvent('onAdminAfterSave', ['object' => $resolved, 'page' => $resolved]);
+                $this->fireEvent('onApiPageCreated', ['page' => $resolved, 'route' => $route, 'lang' => $lang]);
+            }
+
+            // Folder-only pages (no .md) may not surface as a Page object after
+            // re-init in every theme/setup. Return a minimal payload in that
+            // case rather than 500-ing on the serializer.
+            $data = $resolved !== null
+                ? $this->serializer->serialize($resolved)
+                : ['route' => $route, 'kind' => $kind];
+            if ($resolved !== null) {
+                $data['permissions'] = $this->pageCapabilities($request, $resolved);
+            }
+            if ($warnings) {
+                $data['warnings'] = $warnings;
+            }
+            $location = $this->getApiBaseUrl() . '/pages' . $route;
+
+            return ApiResponse::created(
+                $data,
+                $location,
+                $this->invalidationHeaders(['pages:create:' . $route, 'pages:list']),
+            );
+        } finally {
+            $this->restoreLanguage($previousLang);
+        }
+    }
+
+    /**
+     * Check the `template` a create or a template switch asked for, and return
+     * it the way Grav reports it (`modular/<name>` for a module).
+     *
+     * The page file is named after the template, so anything that is not a
+     * plain name is refused. buildPageFilename() would otherwise quietly turn
+     * `modular/text` on an ordinary page into `text.md`, and an empty value
+     * into a hidden `.md`.
+     *
+     * Whether the template exists on the site is not asked here. A module whose
+     * template is missing is allowed, with a warning (#55): see
+     * {@see ModularTemplates::warning()}.
+     *
+     * @throws ValidationException
+     */
+    private function resolveTemplate(mixed $template, bool $module): string
+    {
+        if (!is_string($template) || trim($template) === '') {
+            throw $this->templateError('template', "The 'template' field must be a non-empty string.");
+        }
+
+        $template = trim($template);
+        // A module's template is named either way: the admin sends the
+        // `modular/text` its type list holds, other callers send `text`.
+        $name = $module && str_starts_with($template, 'modular/') ? substr($template, 8) : $template;
+
+        if ($name === '' || $name[0] === '.' || strpbrk($name, '/\\') !== false) {
+            throw $this->templateError('template', !$module && str_starts_with($template, 'modular/')
+                ? "Template '{$template}' is a modular type, which only a module can use. Create it with kind 'module'."
+                : "Invalid template '{$template}': it must be a template name, not a path.");
+        }
+
+        if (!$module) {
+            return $name;
+        }
+
+        // Returned as registered, so `Hero` is written as `hero.md`.
+        $template = 'modular/' . $name;
+
+        return $this->templates->registered($template) ?? $template;
+    }
+
+    /**
+     * Whether `$template` names the template the page already has, in either
+     * spelling for a module (`text` or `modular/text`).
+     */
+    private function isCurrentTemplate(mixed $template, PageInterface $page): bool
+    {
+        if (!is_string($template)) {
+            return false;
+        }
+
+        $template = trim($template);
+        $current = (string) $page->template();
+
+        return strcasecmp($template, $current) === 0
+            || ($page->isModule() && strcasecmp('modular/' . $template, $current) === 0);
+    }
+
+    /**
+     * The warning for a `template` header a module is being given, when it
+     * names a template Twig cannot find (#55).
+     *
+     * Core reads that header before the file name, and it names any Twig
+     * template, so it is checked as written. Only a header this request sets or
+     * changes is looked at.
+     *
+     * @return array{field: string, code: string, message: string}|null
+     * @throws ValidationException when the header is not text, which core cannot read
+     */
+    private function headerTemplateWarning(mixed $new, mixed $old): ?array
+    {
+        if ($new === null || $new === '' || $new === $old) {
+            return null;
+        }
+
+        if (!is_string($new)) {
+            throw $this->templateError('header.template', "The 'template' header must be a template name, not " . gettype($new) . '.');
+        }
+
+        return $this->templates->warning($new, 'header.template');
+    }
+
+    private function templateError(string $field, string $message): ValidationException
+    {
+        return new ValidationException($message, [['field' => $field, 'message' => $message]]);
+    }
+
+    /**
+     * Resolve the `header.*` portion of a page template's blueprint defaults.
+     *
+     * Loading via Pages::blueprints() fires `onBlueprintCreated`, so theme- and
+     * plugin-supplied blueprints (including `extends@` chains) are fully merged
+     * before defaults are extracted. Only the `header` slice is frontmatter —
+     * field defaults like `content`/`order`/`slug` are intentionally excluded.
+     *
+     * Two filters reproduce Grav 1.7's form-based create, which only persisted
+     * the fields an author explicitly opted in:
+     *
+     *  - `toggleable` fields are skipped. Their `default:` is a placeholder the
+     *    form shows until the field is toggled on, not a value to persist. Core
+     *    and plugin structural fields — `process`, `child_type`,
+     *    `admin.children_display_order`, etc. — are all `toggleable: true`, so
+     *    they stayed out of new frontmatter; honouring the flag does the same.
+     *  - Empty defaults (`null`, `''`, `[]`) are dropped, matching 1.7's filter
+     *    (`keepEmptyValues = false`). This sheds non-toggleable-but-empty plugin
+     *    noise such as sitemap's `lastmod`/`changefreq`/`priority: ''`. `false`
+     *    and `0` are kept — `header.published: { default: false }` must survive.
+     *
+     * Together these stop a new page from inheriting the entire merged schema
+     * (admin2#53) while preserving the author's real defaults (admin2#49).
+     *
+     * @return array<string, mixed>
+     */
+    private function blueprintHeaderDefaults(string $template): array
+    {
+        try {
+            $blueprint = $this->grav['pages']->blueprints($template);
+            $schema = $blueprint->schema();
+            // Force the dynamic fields (`data-default@` etc.) to resolve so the
+            // walk below sees the same `default:` values getDefaults() would.
+            $blueprint->getDefaults();
+            $nested = $schema->getState()['nested'] ?? [];
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $defaults = $this->collectNonToggleableDefaults($nested, $schema);
+
+        return is_array($defaults['header'] ?? null) ? $defaults['header'] : [];
+    }
+
+    /**
+     * Walk a blueprint's nested field map and collect `default:` values,
+     * skipping any field flagged `toggleable: true`.
+     *
+     * Mirrors BlueprintSchema::buildDefaults(), but the toggleable guard keeps
+     * opt-in fields out of the result. Leaves in `$nested` are the dotted field
+     * keys (e.g. `header.published`) used to look the rule up on the schema.
+     *
+     * @param array<string, mixed> $nested
+     * @return array<string, mixed>
+     */
+    private function collectNonToggleableDefaults(array $nested, $schema): array
+    {
+        $defaults = [];
+
+        foreach ($nested as $key => $value) {
+            if ($key === '*') {
+                continue;
+            }
+
+            if (is_array($value)) {
+                $list = $this->collectNonToggleableDefaults($value, $schema);
+                if (!empty($list)) {
+                    $defaults[$key] = $list;
+                }
+                continue;
+            }
+
+            $field = $schema->get($value);
+            if (!is_array($field) || !empty($field['toggleable'])) {
+                continue;
+            }
+
+            if (array_key_exists('default', $field) && !$this->isEmptyDefault($field['default'])) {
+                $defaults[$key] = $field['default'];
+            }
+        }
+
+        return $defaults;
+    }
+
+    /**
+     * Whether a blueprint default should be treated as "no value" and skipped.
+     *
+     * Mirrors Grav 1.7's filter dropping empty values: `null`, an empty string
+     * and an empty array are noise. Crucially `false` and `0` are NOT empty —
+     * `header.published: false` is the whole point of admin2#49.
+     */
+    private function isEmptyDefault(mixed $value): bool
+    {
+        return $value === null || $value === '' || $value === [];
+    }
+
+    /**
+     * PATCH /pages/{route} - Partial update of a page.
+     */
+    public function update(ServerRequestInterface $request): ResponseInterface
+    {
+        $previousLang = $this->applyLanguage($request);
+
+        try {
+            $this->enablePages();
+
+            $route = $this->getRouteParam($request, 'route');
+            $page = $this->findPageOrFail('/' . $route, $request, self::PERMISSION_WRITE);
+            $query = $request->getQueryParams();
+            $requestedLang = $query['lang'] ?? null;
+            // Without ?lang, update the translation GET answers with for a page
+            // that has no file in the default language. Otherwise the ETag from
+            // GET never matched and the save had no file to write to.
+            if (!$requestedLang) {
+                $page = $this->withTranslationOnDisk($page, '/' . $route);
+            }
+            $this->authorizePageAction($request, $page, 'update', self::PERMISSION_WRITE);
+
+            // What the request leaves the caller to know about (#55). Not part
+            // of the page's state, so it is added after the ETag is taken.
+            $warnings = [];
+
+            // Guard against writing to a non-existent translation file. When
+            // ?lang=X is specified but no X translation exists, Grav's fallback
+            // would silently resolve to the source language and clobber it.
+            // Force callers to create the translation via POST /translate first.
+            if ($requestedLang && $this->isMultiLangEnabled()) {
+                $pageLang = $page->language() ?: null;
+                // A default.md file (no language suffix) is treated as the default language
+                $defaultLang = $this->grav['language']->getDefault() ?: 'en';
+                // A page with no file in this language has no language either,
+                // and saving it wrote nothing (admin2#199), so it only counts as
+                // the default language when there is a file behind it.
+                if (!$pageLang && $requestedLang === $defaultLang && self::hasContentFile($page)) {
+                    $pageLang = $defaultLang;
+                }
+                if ($pageLang !== $requestedLang) {
+                    throw new ValidationException(
+                        "No '{$requestedLang}' translation exists for this page. "
+                        . "Use POST /pages/{$route}/translate to create it first."
+                    );
+                }
+            }
+
+            // ETag validation for conflict detection
+            $currentData = $this->serializer->serialize($page);
+            $this->validateEtag($request, $this->pageEtag($page, $currentData));
+
+            $body = $this->getRequestBody($request);
+
+            // Enforce security.twig_content.* gate against the incoming header
+            // and the existing page state, before any plugin event can mutate
+            // either. Covers two cases: user tries to flip process.twig:true,
+            // or user tries to edit a page that already has it on.
+            $this->guardTwigContent($request, $page, (array) ($body['header'] ?? []));
+
+            // Fire before event — plugins can modify $body or throw to cancel
+            $this->fireEvent('onApiBeforePageUpdate', ['page' => $page, 'data' => &$body]);
+
+            if (array_key_exists('content', $body)) {
+                $page->rawMarkdown($body['content']);
+            }
+
+            if (array_key_exists('title', $body)) {
+                $header = $this->headerToArray($page->header());
+                $header['title'] = $body['title'];
+                $page->header((object) $header);
+            }
+
+            if (array_key_exists('header', $body)) {
+                $incoming = (array) $body['header'];
+                $displayTemplate = $this->headerToArray($page->header())['template'] ?? null;
+                if (($body['header_mode'] ?? null) === 'replace') {
+                    // Expert (raw-frontmatter) mode sends the COMPLETE header, so
+                    // replace it wholesale. Merging would preserve keys the user
+                    // deleted from the YAML — including nested ones — so they'd
+                    // reappear after the save (admin2#102). Nulls are still
+                    // stripped so an explicit `key: null` removes rather than sets.
+                    $merged = $this->stripNullValues($incoming);
+                } else {
+                    // Normal mode sends a partial header (blueprint-field deltas),
+                    // so merge over the existing header; a null value signals
+                    // removal of that key (toggleable fields, staged deletions).
+                    $existing = $this->headerToArray($page->header());
+                    $merged = $this->mergePatch($existing, $incoming);
+                    $merged = $this->stripNullValues($merged);
+                }
+                // Only a `template` header this request sets or changes is
+                // reported, so a module that already has one doesn't repeat
+                // the warning on every save.
+                if ($page->isModule() && ($warning = $this->headerTemplateWarning($merged['template'] ?? null, $displayTemplate)) !== null) {
+                    $warnings[] = $warning;
+                }
+                $page->header((object) $merged);
+                // Sync properties that legacy Page caches separately from the
+                // header dict (otherwise they stay stale until reload).
+                if (array_key_exists('published', $incoming)) {
+                    $page->published((bool) $incoming['published']);
+                }
+                if (array_key_exists('visible', $incoming)) {
+                    $page->visible((bool) $incoming['visible']);
+                }
+            }
+
+            if ($this->isDemoUser($request)) {
+                $page->header((object) $this->demoSafeHeader($request, $this->headerToArray($page->header())));
+            }
+
+            // Template change requires renaming the page file (e.g. default.md → post.md)
+            $templateChanged = false;
+            $oldFilePath = null;
+            $previousTemplate = null;
+            // A module reports `modular/text` and callers send either that or
+            // `text`. Its own template in either spelling is not a switch: it
+            // used to be treated as one, and the "old" file removed after the
+            // save was the page's only file (#55). Sending a page's template
+            // back unchanged also has to keep working when that type is no
+            // longer registered, as after a theme switch.
+            if (array_key_exists('template', $body) && !$this->isCurrentTemplate($body['template'], $page)) {
+                $newTemplate = $this->resolveTemplate($body['template'], $page->isModule());
+                // A `template` header wins over the file's name when core
+                // renders, so the switch only matters here without one.
+                $headerTemplate = $this->headerToArray($page->header())['template'] ?? null;
+                if ($page->isModule()
+                    && (!is_string($headerTemplate) || trim($headerTemplate) === '')
+                    && ($warning = $this->templates->warning($newTemplate)) !== null
+                ) {
+                    $warnings[] = $warning;
+                }
+                $previousTemplate = $page->template();
+                // The page FILENAME is the template basename only. For modular
+                // modules Grav's template() returns a `modular/<name>` form, so
+                // feeding that straight into name()/the old path would write
+                // `…/modular/<name>.md` — a phantom "modular" child folder, and
+                // leave the original module untouched (admin2#69). buildPageFilename()
+                // strips the prefix (basename) and handles the language extension.
+                $lang = $page->language() ?: null;
+                // The file the page was loaded from. template() is no guide to
+                // it when a `template` header overrides the display template.
+                $oldFilePath = $page->filePath()
+                    ?: $page->path() . '/' . $this->buildPageFilename($previousTemplate, $lang);
+                $page->template($newTemplate);
+                $page->name($this->buildPageFilename($newTemplate, $lang));
+                $templateChanged = true;
+            }
+
+            if (array_key_exists('published', $body)) {
+                $header = $this->headerToArray($page->header());
+                $header['published'] = (bool) $body['published'];
+                $page->header((object) $header);
+                // Legacy Page caches $this->published at init and doesn't
+                // re-read from the header. Sync the setter so the post-save
+                // serializer reflects the new value (avoids a stale "No" in
+                // the Page Info sidebar until a reload).
+                $page->published((bool) $body['published']);
+            }
+
+            if (array_key_exists('visible', $body)) {
+                $header = $this->headerToArray($page->header());
+                $header['visible'] = (bool) $body['visible'];
+                $page->header((object) $header);
+                $page->visible((bool) $body['visible']);
+            }
+
+            // Allow plugins to modify the page before save
+            $this->fireAdminEvent('onAdminSave', ['object' => &$page, 'page' => &$page]);
+
+            // Validate the submitted page fields against the blueprint before
+            // writing to disk (admin2#30) — a required field sent empty now
+            // returns 422 instead of saving silently.
+            $this->validatePageChanges($page, $body);
+
+            $this->snapshotAclIndex();
+            $page->save();
+
+            // Remove old template file after successful save, unless the save
+            // went to that same file.
+            if ($templateChanged && $oldFilePath && $oldFilePath !== $page->filePath() && file_exists($oldFilePath)) {
+                unlink($oldFilePath);
+            }
+
+            $this->clearPagesCache();
+            $this->refreshAclIndex([$page->path()]);
+
+            $this->fireAdminEvent('onAdminAfterSave', ['object' => $page, 'page' => $page]);
+            // `previous_template` is only present when the template actually
+            // changed. Anything keyed on a page's template - the sync plugin's
+            // collaboration rooms, for one - cannot work out what the page used to
+            // be from the saved page alone, and would otherwise leave whatever it
+            // had built against the old one stranded.
+            $updatedEvent = ['page' => $page];
+            if ($templateChanged) {
+                $updatedEvent['previous_template'] = $previousTemplate;
+            }
+            $this->fireEvent('onApiPageUpdated', $updatedEvent);
+
+            $data = $this->serializer->serialize($page);
+            // ETag from the page state alone — see pageEtag().
+            $etag = $this->pageEtag($page, $data);
+            $data['permissions'] = $this->pageCapabilities($request, $page);
+            if ($warnings) {
+                $data['warnings'] = $warnings;
+            }
+
+            return $this->respondWithEtag($data, 200, ['pages:update:/' . $route, 'pages:list'], $etag);
+        } finally {
+            $this->restoreLanguage($previousLang);
+        }
+    }
+
+    /**
+     * DELETE /pages/{route} - Delete a page.
+     */
+    public function delete(ServerRequestInterface $request): ResponseInterface
+    {
+        $previousLang = $this->applyLanguage($request);
+
+        try {
+            $this->enablePages();
+
+            $route = $this->getRouteParam($request, 'route');
+            $page = $this->findPageOrFail('/' . $route, $request, self::PERMISSION_WRITE);
+            $this->authorizePageAction($request, $page, 'delete', self::PERMISSION_WRITE);
+
+            $query = $request->getQueryParams();
+            $lang = $query['lang'] ?? null;
+            $includeChildren = filter_var($query['children'] ?? true, FILTER_VALIDATE_BOOLEAN);
+
+            // If a specific language is requested, delete only that language file
+            if ($lang && $this->isMultiLangEnabled()) {
+                // Removing the last translation removes the whole folder.
+                if (count($page->translatedLanguages()) <= 1) {
+                    $this->assertDescendantsNotDenied($request, $page, 'delete');
+                }
+
+                $this->fireEvent('onApiBeforePageDelete', ['page' => $page, 'lang' => $lang]);
+
+                $this->deleteLanguageFile($page, $lang, $includeChildren);
+                $this->clearPagesCache();
+
+                $this->fireAdminEvent('onAdminAfterDelete', ['object' => $page, 'page' => $page]);
+                $deleted = $this->fireEvent('onApiPageDeleted', ['route' => '/' . $route, 'lang' => $lang, 'undo' => null]);
+
+                return $this->deletedResponse($deleted, ['pages:delete:/' . $route, 'pages:list']);
+            }
+
+            if (!$includeChildren && $page->children()->count() > 0) {
+                throw new ValidationException(
+                    'This page has children. Use ?children=true to confirm deletion of the page and all its children.'
+                );
+            }
+
+            $this->assertDescendantsNotDenied($request, $page, 'delete');
+
+            $this->fireEvent('onApiBeforePageDelete', ['page' => $page]);
+
+            $pagePath = $page->path();
+            $this->snapshotAclIndex();
+            Folder::delete($pagePath);
+
+            $this->clearPagesCache();
+            $this->refreshAclIndex([], [$pagePath]);
+
+            $this->fireAdminEvent('onAdminAfterDelete', ['object' => $page, 'page' => $page]);
+            $deleted = $this->fireEvent('onApiPageDeleted', ['route' => '/' . $route, 'undo' => null]);
+
+            return $this->deletedResponse($deleted, ['pages:delete:/' . $route, 'pages:list']);
+        } finally {
+            $this->restoreLanguage($previousLang);
+        }
+    }
+
+    /**
+     * The response to a delete: 204, or 200 with `{undo}` when a plugin
+     * attached a way to undo it to `onApiPageDeleted` (see README, "Undo a
+     * page delete"). The invalidation tags go out either way.
+     *
+     * @param array<int, string> $tags
+     */
+    private function deletedResponse(Event $deleted, array $tags): ResponseInterface
+    {
+        $undo = self::normalizeUndo($deleted['undo'] ?? null);
+        if ($undo === null) {
+            return ApiResponse::noContent($this->invalidationHeaders($tags));
+        }
+
+        return $this->respondWithInvalidation(['undo' => $undo], $tags);
+    }
+
+    /**
+     * An undo action a plugin attached, checked: `endpoint` is a path on this
+     * API (relative to its base, never a URL), `method` an HTTP method, `body`
+     * an optional JSON object and `label` an optional button label. Anything
+     * else is dropped, and the delete answers 204 as it would without one.
+     *
+     * @return array{method: string, endpoint: string, body?: array<mixed>, label?: string}|null
+     */
+    public static function normalizeUndo(mixed $undo): ?array
+    {
+        if (!is_array($undo)) {
+            return null;
+        }
+
+        $method = strtoupper((string) ($undo['method'] ?? 'POST'));
+        $endpoint = $undo['endpoint'] ?? null;
+        if (!in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)
+            || !is_string($endpoint)
+            || !preg_match('{^/[A-Za-z0-9._~%!$&\'()*+,;=:@/-]*(\?[^#\s]*)?\z}', $endpoint)
+            || str_starts_with($endpoint, '//')
+            || in_array('..', explode('/', (string) parse_url($endpoint, PHP_URL_PATH)), true)) {
+            return null;
+        }
+
+        $normalized = ['method' => $method, 'endpoint' => $endpoint];
+        if (isset($undo['body']) && is_array($undo['body'])) {
+            $normalized['body'] = $undo['body'];
+        }
+        if (isset($undo['label']) && is_string($undo['label']) && trim($undo['label']) !== '') {
+            $normalized['label'] = trim($undo['label']);
+        }
+
+        return $normalized;
+    }
+
+    /** @var bool|null */
+    private ?bool $deleteRecoverable = null;
+
+    /**
+     * Whether a plugin keeps deleted pages so they can be restored (it says
+     * so on `onApiPageDeleteInfo`). Asked once per request. Page records
+     * carry the answer as `delete_recoverable`, so a client can word its
+     * delete confirmation.
+     */
+    private function deleteRecoverable(ServerRequestInterface $request): bool
+    {
+        if ($this->deleteRecoverable === null) {
+            $event = $this->fireEvent('onApiPageDeleteInfo', ['recoverable' => false, 'user' => $this->getUser($request)]);
+            $this->deleteRecoverable = (bool) ($event['recoverable'] ?? false);
+        }
+
+        return $this->deleteRecoverable;
+    }
+
+    /**
+     * POST /pages/{route}/move - Move a page to a new location.
+     */
+    public function move(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->enablePages();
+
+        $route = $this->getRouteParam($request, 'route');
+        $page = $this->findPageOrFail('/' . $route, $request, self::PERMISSION_WRITE);
+        // Moving a page rewrites it in place, so it takes `update` on the page —
+        // the same action core's Flex listing gates move/copy on — plus
+        // `create` on wherever it lands (checked once the destination is known).
+        $this->authorizePageAction($request, $page, 'update', self::PERMISSION_WRITE);
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['parent']);
+
+        $newParentRoute = '/' . trim($body['parent'], '/');
+
+        // The slug becomes a single page-folder name, never a path. Reject any
+        // separator, parent-traversal or null byte before it reaches the
+        // filesystem: Folder::move() has no containment check of its own, so an
+        // unvalidated slug like '01.home/../../../tmp/evil' would relocate the
+        // page directory outside user/pages (GHSA-qjq4-jp55-4mx2).
+        // Despite its name, `slug` is the folder name without its order prefix;
+        // when it is left out the folder keeps its own name, not the header slug.
+        $rawSlug = $body['slug'] ?? self::folderName($page);
+        $this->assertSinglePathSegment($rawSlug, 'slug');
+        $newSlug = ltrim($rawSlug, '.');
+        if ($newSlug === '') {
+            throw new ValidationException('Invalid slug: must not be empty.');
+        }
+
+        // A module needs the modular page above it. Moving or renaming a page to
+        // a `_` name at the top level of the site would leave it drawn by nothing.
+        // A `_` page already sitting at the top level may still be renumbered.
+        if (!(self::structuralParentRoute($page) === '/' && $newParentRoute === '/' && $newSlug === self::folderName($page))) {
+            $this->assertNotRootModule($newParentRoute, $newSlug, 'parent');
+        }
+        // $page->order() returns the matched prefix INCLUDING the trailing
+        // dot (e.g. '04.'), not a plain number. Concatenating that with the
+        // dot in $dirName produces double-dot folder names like
+        // '04..slug' — which then makes Grav read the slug as '.slug'.
+        // Normalize to an int (or null when no prefix exists) so the
+        // body['order'] contract and the fallback agree on shape.
+        if (array_key_exists('order', $body)) {
+            $newOrder = $body['order'];
+        } else {
+            $currentOrder = $page->order();
+            $newOrder = ($currentOrder === false || $currentOrder === '' || $currentOrder === null)
+                ? null
+                : (int) rtrim((string) $currentOrder, '.');
+        }
+
+        // Resolve new parent path
+        if ($newParentRoute === '/') {
+            $newParent = method_exists($this->grav['pages'], 'root')
+                ? $this->grav['pages']->root()
+                : null;
+            $newParentPath = $this->grav['locator']->findResource('page://', true);
+        } else {
+            $newParent = $this->grav['pages']->find($newParentRoute);
+            if (!$newParent) {
+                throw new ValidationException("Destination parent not found at route: {$newParentRoute}");
+            }
+            $newParentPath = $newParent->path();
+        }
+
+        $this->authorizePageAction($request, $newParent, 'create', self::PERMISSION_WRITE);
+
+        // Build new directory name, keeping the width the folder already uses so a
+        // site on a non-default `system.pages.order_digits` is not silently renumbered.
+        $digits = PageOrdering::digitsFromFolder(basename($page->path() ?? '')) ?? PageOrdering::defaultDigits();
+        $dirName = $newOrder !== null
+            ? str_pad((string) $newOrder, $digits, '0', STR_PAD_LEFT) . '.' . $newSlug
+            : $newSlug;
+
+        $oldPath = $page->path();
+        $newPath = $newParentPath . '/' . $dirName;
+
+        if ($oldPath === $newPath) {
+            throw new ValidationException('Source and destination paths are identical.');
+        }
+
+        // The page's own folder is about to vacate, so it is not a clash (moving
+        // `02.foo` to `05.foo` within one parent).
+        if (($clash = $this->findSlugClash($newParentPath, $dirName, $oldPath)) !== null) {
+            throw new ValidationException("A page already exists at the destination path (folder '{$clash}').");
+        }
+
+        $this->snapshotAclIndex();
+        Folder::move($oldPath, $newPath);
+        $this->clearPagesCache();
+
+        $this->fireAdminEvent('onAdminAfterSaveAs', ['path' => $newPath]);
+
+        // Re-init and find the moved page
+        $this->enablePages(true);
+        $this->refreshAclIndex([], [$oldPath, $newPath]);
+        $newRoute = $newParentRoute === '/' ? '/' . $newSlug : $newParentRoute . '/' . $newSlug;
+        $movedPage = $this->grav['pages']->find($newRoute);
+
+        $this->fireEvent('onApiPageMoved', [
+            'page' => $movedPage,
+            'old_route' => '/' . $route,
+            'new_route' => $newRoute,
+        ]);
+
+        $moveTags = ['pages:move:/' . $route, 'pages:update:' . $newRoute, 'pages:list'];
+
+        if (!$movedPage) {
+            // Fallback: return minimal data if page can't be found at expected route
+            return ApiResponse::create(
+                ['route' => $newRoute, 'slug' => $newSlug],
+                200,
+                $this->invalidationHeaders($moveTags),
+            );
+        }
+
+        $data = $this->serializer->serialize($movedPage);
+        $etag = $this->pageEtag($movedPage, $data);
+        $data['permissions'] = $this->pageCapabilities($request, $movedPage);
+
+        return $this->respondWithEtag($data, 200, $moveTags, $etag);
+    }
+
+    /**
+     * POST /pages/{route}/copy - Copy a page to a new location.
+     */
+    public function copy(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->enablePages();
+
+        $route = $this->getRouteParam($request, 'route');
+        $page = $this->findPageOrFail('/' . $route, $request, self::PERMISSION_WRITE);
+        // Copying reads the source and creates at the destination.
+        $this->authorizePageAction($request, $page, 'read', self::PERMISSION_WRITE);
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['route']);
+
+        $destRoute = '/' . trim($body['route'], '/');
+        $destParentRoute = self::routeParent($destRoute);
+        // An order prefix in the last segment (`02.bar-2`) belongs to the folder,
+        // never the route, the same as on create.
+        self::assertPageRoute($destRoute);
+        [$routePrefix, $destSlug] = self::splitOrderPrefix(self::routeBasename($destRoute));
+        if ($destSlug === '') {
+            throw new ValidationException("Invalid route: '{$destRoute}' has an order prefix but no page name.");
+        }
+        $this->assertNotRootModule($destParentRoute, $destSlug);
+        $destRoute = ($destParentRoute === '/' ? '' : $destParentRoute) . '/' . $destSlug;
+
+        // Resolve destination parent path
+        if ($destParentRoute === '/') {
+            $destParent = method_exists($this->grav['pages'], 'root')
+                ? $this->grav['pages']->root()
+                : null;
+            $destParentPath = $this->grav['locator']->findResource('page://', true);
+        } else {
+            $destParent = $this->grav['pages']->find($destParentRoute);
+            if (!$destParent) {
+                throw new ValidationException("Destination parent not found at route: {$destParentRoute}");
+            }
+            $destParentPath = $destParent->path();
+        }
+
+        $this->authorizePageAction($request, $destParent, 'create', self::PERMISSION_WRITE);
+
+        $destPath = $destParentPath . '/' . $this->copyFolderName($page, $destSlug, $destParentPath, $body, $routePrefix);
+
+        if (($clash = $this->findSlugClash($destParentPath, $destSlug)) !== null) {
+            throw new ValidationException("A page already exists at route: {$destRoute} (folder '{$clash}').");
+        }
+
+        $this->assertDescendantsNotDenied($request, $page, 'read');
+
+        $sourcePath = $page->path();
+        $this->snapshotAclIndex();
+        Folder::copy($sourcePath, $destPath);
+        $this->renewCopiedPageId($destPath);
+        $this->rewriteCopiedSlug($destPath, $destSlug, $page->extension());
+        $this->clearPagesCache();
+
+        // Re-init and find the copied page
+        $this->enablePages(true);
+        $this->refreshAclIndex([], [$destPath]);
+        $copiedPage = $this->grav['pages']->find($destRoute);
+
+        // A copy produces a new page, so it announces itself exactly like
+        // create() does. This endpoint fired nothing at all before (#23).
+        if ($copiedPage) {
+            $this->fireAdminEvent('onAdminAfterSave', ['object' => $copiedPage, 'page' => $copiedPage]);
+        }
+        $this->fireEvent('onApiPageCreated', [
+            'page' => $copiedPage,
+            'route' => $destRoute,
+            'source_route' => '/' . $route,
+            'method' => 'copy',
+        ]);
+
+        $copyTags = ['pages:create:' . $destRoute, 'pages:list'];
+
+        if (!$copiedPage) {
+            return ApiResponse::created(
+                ['route' => $destRoute, 'slug' => $destSlug],
+                $this->getApiBaseUrl() . '/pages' . $destRoute,
+                $this->invalidationHeaders($copyTags),
+            );
+        }
+
+        $data = $this->serializer->serialize($copiedPage);
+        $data['permissions'] = $this->pageCapabilities($request, $copiedPage);
+        $location = $this->getApiBaseUrl() . '/pages' . $destRoute;
+
+        return ApiResponse::created($data, $location, $this->invalidationHeaders($copyTags));
+    }
+
+    /**
+     * GET /pages/{route}/languages - List available and missing translations for a page.
+     */
+    public function languages(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->enablePages();
+
+        $route = $this->getRouteParam($request, 'route');
+        $page = $this->findPageOrFail('/' . $route, $request, self::PERMISSION_READ);
+        $previousLang = $this->grav['language']->getActive() ?? false;
+        $page = $this->withTranslationOnDisk($page, '/' . $route);
+        $this->restoreLanguage($previousLang);
+        $this->authorizePageAction($request, $page, 'read', self::PERMISSION_READ);
+
+        // A draft translation counts as translated in both lists (#57).
+        $translated = $page->translatedLanguages(false);
+        $untranslated = $page->untranslatedLanguages(true);
+
+        /** @var Language $language */
+        $language = $this->grav['language'];
+
+        $data = [
+            'route' => $page->route(),
+            'default_language' => $language->getDefault() ?: null,
+            'translated' => $translated,
+            'untranslated' => $untranslated,
+        ];
+
+        return ApiResponse::create($data);
+    }
+
+    /**
+     * POST /pages/{route}/translate - Create a new translation for an existing page.
+     */
+    public function translate(ServerRequestInterface $request): ResponseInterface
+    {
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['lang']);
+        $sourceLang = $body['source_lang'] ?? null;
+        $targetLang = $body['lang'];
+
+        $previousLang = $this->applyLanguage($request, $sourceLang);
+
+        try {
+            $this->enablePages();
+
+            $route = $this->getRouteParam($request, 'route');
+            $page = $this->findPageOrFail('/' . $route, $request, self::PERMISSION_WRITE);
+            $this->authorizePageAction($request, $page, 'update', self::PERMISSION_WRITE);
+
+            $this->validateLanguageCode($targetLang);
+
+            // Check if translation already exists
+            $translated = $page->translatedLanguages();
+            if (isset($translated[$targetLang])) {
+                throw new ValidationException("A translation already exists for language '{$targetLang}'. Use PATCH to update it.");
+            }
+
+            $title = $body['title'] ?? $page->title();
+            $content = $body['content'] ?? $page->rawMarkdown();
+            $header = $body['header'] ?? $this->headerToArray($page->header());
+
+            // Ensure title is set, and back-fill blueprint defaults underneath so a
+            // minimal explicit header still gets the template's `default:` values
+            // (admin2#49). When no header is supplied the source page's frontmatter
+            // is already complete, so the defaults are a no-op there.
+            $header = array_replace_recursive(
+                $this->blueprintHeaderDefaults($page->template()),
+                ['title' => $title],
+                is_array($header) ? $header : [],
+            );
+
+            // Same Twig-content scope/permission cap create()/update() enforce: an
+            // api.pages.write key scoped below admin.pages_twig must not enable
+            // process.twig on the page it authors here. translate() previously wrote
+            // a caller-supplied header/content without this gate, letting a scoped key
+            // turn on Twig-in-content (SSTI) that create()/update() would reject.
+            // (GHSA-w94c-jmg4-w4c9, follow-up to GHSA-96xv-p87j-58mx)
+            $this->guardTwigContent($request, null, is_array($body['header'] ?? null) ? $body['header'] : []);
+            $header = $this->demoSafeHeader($request, $header);
+
+            $this->fireEvent('onApiBeforePageTranslate', [
+                'page' => $page,
+                'lang' => $targetLang,
+                'header' => &$header,
+                'content' => &$content,
+            ]);
+
+            // Build the language-specific file path. Every language file is
+            // named after the page's file type, not a `template` header.
+            $filename = $this->buildPageFilename(PageTemplate::fileType($page), $targetLang);
+            $template = $page->template();
+            $filePath = $page->path() . '/' . $filename;
+
+            $translatedPage = new Page();
+            $translatedPage->filePath($filePath);
+            $translatedPage->header((object) $header);
+            $translatedPage->rawMarkdown($content);
+
+            // Editor XSS backstop, as run by create()/update(). (GHSA-w94c-jmg4-w4c9)
+            $this->validatePageChanges($translatedPage, ['header' => $header, 'content' => $content], $template);
+
+            // Allow plugins to modify the page before save
+            $this->fireAdminEvent('onAdminSave', ['object' => &$translatedPage, 'page' => &$translatedPage]);
+
+            $translatedPage->save();
+
+            $this->clearPagesCache();
+
+            // Re-init and fetch the translated page
+            // The file was written explicitly above, so this switch only affects
+            // what gets echoed back — but without it the response (and the
+            // events below) carried the source-language page (#24).
+            $this->switchLanguage($targetLang);
+            $newPage = $this->grav['pages']->find('/' . $route);
+
+            $this->fireAdminEvent('onAdminAfterSave', ['object' => $newPage ?? $translatedPage, 'page' => $newPage ?? $translatedPage]);
+            $this->fireEvent('onApiPageTranslated', [
+                'page' => $newPage ?? $translatedPage,
+                'route' => '/' . $route,
+                'lang' => $targetLang,
+            ]);
+
+            $data = $this->serializer->serialize($newPage ?? $translatedPage);
+            $data['permissions'] = $this->pageCapabilities($request, $newPage ?? $translatedPage);
+            $location = $this->getApiBaseUrl() . '/pages/' . $route;
+
+            return ApiResponse::created(
+                $data,
+                $location,
+                $this->invalidationHeaders(['pages:update:/' . $route, 'pages:list']),
+            );
+        } finally {
+            $this->restoreLanguage($previousLang);
+        }
+    }
+
+    /**
+     * POST /pages/{route}/adopt-language — Claim an untyped default page file
+     * (e.g., "default.md") as belonging to a specific language by renaming it
+     * in-place to "{template}.{lang}.md". Does not modify contents; pure
+     * filesystem rename + cache bust.
+     *
+     * Useful for sites that started single-language (bare default.md) and later
+     * enabled multilang — lets the operator declare "this existing content is
+     * the English version" without editing YAML or re-saving the page.
+     *
+     * Fails if the page already has an explicit file for that language, or if
+     * no untyped base file exists.
+     */
+    public function adoptLanguage(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->enablePages();
+
+        $route = $this->getRouteParam($request, 'route');
+        $page = $this->findPageOrFail('/' . $route, $request, self::PERMISSION_WRITE);
+        $this->authorizePageAction($request, $page, 'update', self::PERMISSION_WRITE);
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['lang']);
+
+        $lang = $body['lang'];
+        $this->validateLanguageCode($lang);
+
+        if (!$this->isMultiLangEnabled()) {
+            throw new ValidationException('Multi-language is not enabled for this site.');
+        }
+
+        $template = PageTemplate::fileType($page);
+        $pageDir = $page->path();
+        if (!$pageDir || !is_dir($pageDir)) {
+            throw new NotFoundException("Page directory not found for route: /{$route}");
+        }
+
+        $baseFile = $pageDir . '/' . $template . '.md';
+        if (!is_file($baseFile)) {
+            throw new ValidationException(
+                "No untyped base file ({$template}.md) found for route /{$route}. "
+                . 'Page already uses language-suffixed files — use POST /pages/{route}/translate for new languages.'
+            );
+        }
+
+        // Block only if an EXPLICIT language file already exists. We can't use
+        // $page->translatedLanguages() because Grav reports the default lang
+        // as "translated" whenever default.md exists (the fallback). The
+        // question we actually need to answer is: does default.<lang>.md
+        // exist on disk?
+        $targetFilename = $this->buildPageFilename($template, $lang);
+        $targetFile = $pageDir . '/' . $targetFilename;
+        if (is_file($targetFile)) {
+            throw new ValidationException("A translation file already exists for language '{$lang}'.");
+        }
+
+        // If the config resolves to the same filename (unlikely, but guard),
+        // there's nothing to do — fail cleanly rather than nop-renaming.
+        if (realpath($baseFile) === realpath($targetFile)) {
+            throw new ValidationException(
+                'Target filename resolves to the same path as the base file — '
+                . 'check system.languages.include_default_lang_file_extension.'
+            );
+        }
+
+        $this->fireEvent('onApiBeforePageAdoptLanguage', [
+            'page' => $page,
+            'route' => '/' . $route,
+            'lang' => $lang,
+            'from_file' => $baseFile,
+            'to_file' => $targetFile,
+        ]);
+
+        if (!@rename($baseFile, $targetFile)) {
+            throw new ApiException(500, 'Rename Failed', "Failed to rename '{$baseFile}' to '{$targetFile}'.");
+        }
+
+        $this->clearPagesCache();
+
+        /** @var Language $language */
+        $language = $this->grav['language'];
+        $previousLang = $language->getActive() ?? false;
+
+        try {
+            $this->switchLanguage($lang);
+            $newPage = $this->grav['pages']->find('/' . $route);
+
+            $this->fireEvent('onApiPageLanguageAdopted', [
+                'page' => $newPage ?? $page,
+                'route' => '/' . $route,
+                'lang' => $lang,
+            ]);
+
+            $data = $this->serializer->serialize($newPage ?? $page);
+            $data['permissions'] = $this->pageCapabilities($request, $newPage ?? $page);
+
+            return ApiResponse::create(
+                $data,
+                200,
+                $this->invalidationHeaders(['pages:update:/' . $route, 'pages:list']),
+            );
+        } finally {
+            $this->restoreLanguage($previousLang);
+        }
+    }
+
+    /**
+     * GET /languages - List all configured site languages.
+     */
+    public function siteLanguages(ServerRequestInterface $request): ResponseInterface
+    {
+        return ApiResponse::create($this->siteLanguagesData($request));
+    }
+
+    /**
+     * The payload of GET /languages, shared with GET /admin-next/boot.
+     *
+     * @return array<string, mixed>
+     */
+    public function siteLanguagesData(ServerRequestInterface $request): array
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        /** @var Language $language */
+        $language = $this->grav['language'];
+
+        if (!$language->enabled()) {
+            return [
+                'enabled' => false,
+                'languages' => [],
+                'default' => null,
+                'active' => null,
+            ];
+        }
+
+        $langs = $language->getLanguages();
+        $default = $language->getDefault() ?: null;
+
+        $languageDetails = [];
+        foreach ($langs as $code) {
+            $languageDetails[] = [
+                'code' => $code,
+                'name' => LanguageCodes::getName($code) ?: $code,
+                'native_name' => LanguageCodes::getNativeName($code) ?: $code,
+                'rtl' => LanguageCodes::isRtl($code),
+                'is_default' => $code === $default,
+            ];
+        }
+
+        $data = [
+            'enabled' => true,
+            'languages' => $languageDetails,
+            'default' => $default,
+            'active' => $language->getActive() ?: $default,
+        ];
+
+        return $data;
+    }
+
+    /**
+     * POST /pages/{route}/sync - Sync/reset a translation from another language.
+     * Copies content and header from source language to target language.
+     */
+    public function sync(ServerRequestInterface $request): ResponseInterface
+    {
+        // Authorized against the page itself, once the source language is loaded.
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['source_lang', 'target_lang']);
+
+        $sourceLang = $body['source_lang'];
+        $targetLang = $body['target_lang'];
+        $this->validateLanguageCode($sourceLang);
+        $this->validateLanguageCode($targetLang);
+
+        if ($sourceLang === $targetLang) {
+            throw new ValidationException('Source and target languages must be different.');
+        }
+
+        $route = $this->getRouteParam($request, 'route');
+
+        /** @var Language $language */
+        $language = $this->grav['language'];
+        $previousLang = $language->getActive() ?? false;
+
+        try {
+            // Load the source page
+            $this->switchLanguage($sourceLang);
+            $sourcePage = $this->grav['pages']->find('/' . $route);
+
+            if (!$sourcePage) {
+                $this->requirePermission($request, self::PERMISSION_WRITE);
+                throw new NotFoundException("Page not found at route '/{$route}' for source language '{$sourceLang}'.");
+            }
+
+            $this->authorizePageAction($request, $sourcePage, 'update', self::PERMISSION_WRITE);
+
+            $sourceContent = $sourcePage->rawMarkdown();
+            $sourceHeader = $this->headerToArray($sourcePage->header());
+
+            // Load the target page. The rebuild here is what makes the write
+            // land on the target translation rather than the source file (#24).
+            $this->switchLanguage($targetLang);
+            $targetPage = $this->grav['pages']->find('/' . $route);
+
+            if (!$targetPage) {
+                throw new NotFoundException("Page not found at route '/{$route}' for target language '{$targetLang}'.");
+            }
+
+            // Verify the target translation file actually exists
+            $translated = $targetPage->translatedLanguages();
+            if (!isset($translated[$targetLang])) {
+                throw new ValidationException(
+                    "No translation file exists for language '{$targetLang}'. Use POST /pages/{route}/translate to create one first."
+                );
+            }
+
+            // The write lands on the target translation, which carries its own
+            // frontmatter and so its own rules. Checking only the source let a
+            // translation that denies editing be overwritten from another
+            // language, its permissions block included.
+            $this->authorizePageAction($request, $targetPage, 'update', self::PERMISSION_WRITE);
+
+            $this->fireEvent('onApiBeforePageSync', [
+                'page' => $targetPage,
+                'source_lang' => $sourceLang,
+                'target_lang' => $targetLang,
+                'header' => &$sourceHeader,
+                'content' => &$sourceContent,
+            ]);
+
+            // Parity with translate()/create()/update(): enforce the Twig-content
+            // cap and the editor XSS backstop on this write too. sync() copies from
+            // an already-vetted on-disk source rather than the request body, so it
+            // is not a standalone injection path, but every page-write entry point
+            // should apply the same guards. (GHSA-w94c-jmg4-w4c9)
+            $this->guardTwigContent($request, $targetPage, $sourceHeader);
+            $sourceHeader = $this->demoSafeHeader($request, $sourceHeader);
+
+            // Overwrite the target with source data
+            $targetPage->header((object) $sourceHeader);
+            $targetPage->rawMarkdown($sourceContent);
+
+            $this->validatePageChanges($targetPage, ['header' => $sourceHeader, 'content' => $sourceContent]);
+
+            $this->fireAdminEvent('onAdminSave', ['object' => &$targetPage, 'page' => &$targetPage]);
+            $targetPage->save();
+            $this->clearPagesCache();
+
+            // Re-fetch the updated page
+            $this->enablePages(true);
+            $updatedPage = $this->grav['pages']->find('/' . $route);
+
+            $this->fireAdminEvent('onAdminAfterSave', ['object' => $updatedPage ?? $targetPage, 'page' => $updatedPage ?? $targetPage]);
+            $this->fireEvent('onApiPageSynced', [
+                'page' => $updatedPage ?? $targetPage,
+                'route' => '/' . $route,
+                'source_lang' => $sourceLang,
+                'target_lang' => $targetLang,
+            ]);
+
+            $data = $this->serializer->serialize($updatedPage ?? $targetPage);
+            $data['permissions'] = $this->pageCapabilities($request, $updatedPage ?? $targetPage);
+            return ApiResponse::create(
+                $data,
+                200,
+                $this->invalidationHeaders(['pages:update:/' . $route, 'pages:list']),
+            );
+        } finally {
+            $this->restoreLanguage($previousLang);
+        }
+    }
+
+    /**
+     * GET /pages/{route}/compare - Compare two language versions of a page side-by-side.
+     */
+    public function compare(ServerRequestInterface $request): ResponseInterface
+    {
+        // Account-wide gate up front (this endpoint reads a page that may not
+        // resolve at all); a page-level deny is applied below to each side as
+        // it loads. Each translation carries its own frontmatter, and when the
+        // source doesn't resolve the target is the only page checked at all,
+        // so both sides need their own check.
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        $params = $request->getQueryParams();
+        $sourceLang = $params['source'] ?? null;
+        $targetLang = $params['target'] ?? null;
+
+        if (!$sourceLang || !$targetLang) {
+            throw new ValidationException("Both 'source' and 'target' query parameters are required.");
+        }
+
+        $this->validateLanguageCode($sourceLang);
+        $this->validateLanguageCode($targetLang);
+
+        $route = $this->getRouteParam($request, 'route');
+
+        /** @var Language $language */
+        $language = $this->grav['language'];
+        $previousLang = $language->getActive() ?? false;
+
+        try {
+            // Load source page
+            $this->switchLanguage($sourceLang);
+            $sourcePage = $this->grav['pages']->find('/' . $route);
+
+            $sourceData = null;
+            if ($sourcePage) {
+                $this->assertPageNotDenied($request, $sourcePage, 'read');
+                // Same gate show() applies to a page with Twig in its content.
+                $this->guardTwigContent($request, $sourcePage, []);
+                $translated = $sourcePage->translatedLanguages();
+                $sourceData = [
+                    'lang' => $sourceLang,
+                    'exists' => isset($translated[$sourceLang]),
+                    'title' => $sourcePage->title(),
+                    'content' => $sourcePage->rawMarkdown(),
+                    'header' => $this->headerToArray($sourcePage->header()),
+                    'modified' => $sourcePage->modified() ? date('c', $sourcePage->modified()) : null,
+                ];
+            }
+
+            // Load target page. Without the extension-memo reset inside
+            // switchLanguage() this resolved back to the source file, so the
+            // two sides of the comparison were always identical (#24).
+            $this->switchLanguage($targetLang);
+            $targetPage = $this->grav['pages']->find('/' . $route);
+
+            $targetData = null;
+            if ($targetPage) {
+                $this->assertPageNotDenied($request, $targetPage, 'read');
+                $this->guardTwigContent($request, $targetPage, []);
+                $translated = $targetPage->translatedLanguages();
+                $targetData = [
+                    'lang' => $targetLang,
+                    'exists' => isset($translated[$targetLang]),
+                    'title' => $targetPage->title(),
+                    'content' => $targetPage->rawMarkdown(),
+                    'header' => $this->headerToArray($targetPage->header()),
+                    'modified' => $targetPage->modified() ? date('c', $targetPage->modified()) : null,
+                ];
+            }
+
+            $data = [
+                'route' => '/' . $route,
+                'source' => $sourceData,
+                'target' => $targetData,
+            ];
+
+            return ApiResponse::create($data);
+        } finally {
+            $this->restoreLanguage($previousLang);
+        }
+    }
+
+    /**
+     * POST /pages/{route}/reorder - Reorder child pages under a parent.
+     */
+    public function reorder(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->enablePages();
+
+        $route = $this->getRouteParam($request, 'route');
+        $parent = $this->findPageOrFail('/' . $route, $request, self::PERMISSION_WRITE);
+        // Reordering rewrites the children's folder prefixes, which is an
+        // update of the container they live in.
+        $this->authorizePageAction($request, $parent, 'update', self::PERMISSION_WRITE);
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['order']);
+
+        $order = $body['order'];
+        if (!is_array($order)) {
+            throw new ValidationException("The 'order' field must be an array of child slugs.");
+        }
+
+        $this->fireEvent('onApiBeforePagesReorder', ['parent' => $parent, 'order' => $order]);
+
+        $parentPath = $parent->path();
+        $children = $parent->children();
+
+        // Build a map of slug -> current directory name. Grav routes by slug, so a
+        // slug two children share (under different order prefixes) cannot be told
+        // apart here; keep every folder so it can be refused below instead of
+        // letting the last one win.
+        //
+        // The caller's own folder listing decides which slugs it may name: a
+        // child it can't see is unknown to it, whatever is on disk, so the
+        // errors below can't be used to find out which hidden folders exist
+        // (getgrav/grav-plugin-admin2#209).
+        $visibility = $this->pageVisibility($request, false);
+        $childMap = [];
+        $dirsBySlug = [];
+        $shown = [];
+        $hiddenHolder = [];
+        foreach ($children as $child) {
+            $dir = basename($child->path());
+            $childMap[$child->slug()] = $dir;
+            $dirsBySlug[$child->slug()][] = $dir;
+            if ($this->listedChildRow($visibility, $child) !== null) {
+                $shown[$child->slug()] = true;
+            } else {
+                $hiddenHolder[$child->slug()] = true;
+            }
+        }
+
+        // Validate all slugs exist, are listed once, and name exactly one folder
+        $listed = [];
+        foreach ($order as $slug) {
+            if (!is_string($slug) || !isset($childMap[$slug]) || !isset($shown[$slug])) {
+                throw new ValidationException("Child page with slug '" . (is_string($slug) ? $slug : gettype($slug)) . "' not found under '{$parent->route()}'.");
+            }
+            if (isset($listed[$slug])) {
+                throw new ValidationException("Child page with slug '{$slug}' is listed more than once.");
+            }
+            $listed[$slug] = true;
+            if (count($dirsBySlug[$slug]) > 1) {
+                // Folder names only when every one of them is in the caller's listing.
+                $names = isset($hiddenHolder[$slug]) ? '' : ' (' . implode(', ', $dirsBySlug[$slug]) . ')';
+                throw new ValidationException(
+                    "More than one child of '{$parent->route()}' has the slug '{$slug}'{$names}. Rename or delete one before reordering."
+                );
+            }
+        }
+
+        // Rename directories with new ordering prefixes. Use the widest existing
+        // sibling prefix as the target width so a parent of all-3-digit children
+        // stays 3-digit through reorder; otherwise fall back to system default.
+        $digits = 0;
+        foreach ($childMap as $existingDir) {
+            $w = PageOrdering::digitsFromFolder($existingDir);
+            if ($w !== null && $w > $digits) {
+                $digits = $w;
+            }
+        }
+
+        // Every target name is checked before the first folder moves, and a
+        // failure part-way puts the folders back, so a bad request can no longer
+        // strand children under `_temp_` names.
+        $plan = $this->planReorder(
+            $parentPath,
+            $childMap,
+            self::mergeReorder($childMap, $dirsBySlug, $order),
+            $digits ?: null,
+            $parent->route(),
+            $this->isSuperWithinScope($request),
+        );
+        $this->snapshotAclIndex();
+        $this->applyRenames($plan);
+
+        $this->clearPagesCache();
+
+        $this->fireEvent('onApiPagesReordered', ['parent' => $parent, 'order' => $order]);
+
+        // Re-init and return updated children
+        $this->enablePages(true);
+        $this->refreshAclIndex([], array_merge(...array_map(
+            static fn (array $rename): array => [$rename['old'], $rename['final']],
+            $plan,
+        )));
+        $updatedParent = $this->grav['pages']->find('/' . $route);
+        $childData = [];
+        if ($updatedParent) {
+            // Only the children the caller's own folder listing shows (#209).
+            $visibility = $this->pageVisibility($request, false);
+            foreach ($updatedParent->children() as $child) {
+                $row = $this->listedChildRow($visibility, $child);
+                if ($row !== null) {
+                    $childData[] = $row;
+                }
+            }
+        }
+
+        return ApiResponse::create(
+            $childData,
+            200,
+            $this->invalidationHeaders(['pages:reorder:/' . $route, 'pages:list']),
+        );
+    }
+
+    /**
+     * POST /pages/batch - Batch operations on multiple pages.
+     */
+    public function batch(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_WRITE);
+        $this->enablePages();
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['operation', 'routes']);
+        $this->requireDemoGrant($request, DemoPolicy::batchGrant((string) $body['operation']));
+
+        $operation = $body['operation'];
+        $routes = $body['routes'];
+        $options = $body['options'] ?? [];
+
+        $allowedOps = ['publish', 'unpublish', 'delete', 'copy'];
+        if (!in_array($operation, $allowedOps, true)) {
+            throw new ValidationException(
+                "Invalid operation '{$operation}'. Allowed: " . implode(', ', $allowedOps)
+            );
+        }
+
+        if (!is_array($routes) || empty($routes)) {
+            throw new ValidationException("The 'routes' field must be a non-empty array.");
+        }
+
+        $maxBatch = $this->config->get('plugins.api.batch.max_items', 50);
+        if (count($routes) > $maxBatch) {
+            throw new ValidationException("Batch operations are limited to {$maxBatch} items.");
+        }
+
+        // Validate all routes exist first
+        $pages = [];
+        foreach ($routes as $route) {
+            $normalizedRoute = '/' . trim($route, '/');
+            $page = $this->grav['pages']->find($normalizedRoute);
+            if (!$page) {
+                throw new ValidationException("Page not found at route: {$normalizedRoute}");
+            }
+            $pages[$normalizedRoute] = $page;
+        }
+
+        // Which page-level action each operation exercises, so a page that
+        // denies it is skipped rather than silently swept up in a bulk call.
+        // Only denials are honored here: the caller already cleared the
+        // account-wide write gate above, so there is no grant to fall back on.
+        $pageActions = match ($operation) {
+            'publish', 'unpublish' => ['publish', 'update'],
+            'delete' => ['delete'],
+            'copy' => ['read'],
+        };
+
+        $results = [];
+        $copied = [];
+
+        foreach ($pages as $route => $page) {
+            try {
+                $this->assertPageNotDenied($request, $page, ...$pageActions);
+                // Delete and copy take the whole folder, so every page below
+                // this one has to allow the same action.
+                if ($operation === 'delete' || $operation === 'copy') {
+                    $this->assertDescendantsNotDenied($request, $page, ...$pageActions);
+                }
+                match ($operation) {
+                    'publish' => $this->batchPublish($page, $route, true),
+                    'unpublish' => $this->batchPublish($page, $route, false),
+                    'delete' => $this->batchDelete($page, $route),
+                    'copy' => $copied[$route] = $this->batchCopy($request, $page, $options),
+                };
+                $results[] = ['route' => $route, 'status' => 'success'];
+            } catch (\Throwable $e) {
+                $results[] = ['route' => $route, 'status' => 'error', 'message' => $e->getMessage()];
+            }
+        }
+
+        $this->clearPagesCache();
+
+        // Copies announce themselves once the index knows about them, so
+        // listeners get a real page object rather than a bare route. One
+        // rebuild covers the whole batch (#23).
+        if ($copied !== []) {
+            $this->enablePages(true);
+
+            foreach ($copied as $sourceRoute => $destRoute) {
+                $newPage = $this->grav['pages']->find($destRoute);
+                if ($newPage) {
+                    $this->fireAdminEvent('onAdminAfterSave', ['object' => $newPage, 'page' => $newPage]);
+                }
+                $this->fireEvent('onApiPageCreated', [
+                    'page' => $newPage,
+                    'route' => $destRoute,
+                    'source_route' => $sourceRoute,
+                    'method' => 'batch',
+                ]);
+            }
+        }
+
+        // Build per-route invalidations so listeners on specific pages react too.
+        // A copy creates a page at the DESTINATION, so that is the route whose
+        // cache entry is new — tagging the untouched source instead told
+        // clients to refetch the wrong page.
+        $tags = ['pages:list'];
+        foreach ($results as $r) {
+            if ($r['status'] !== 'success') continue;
+            $tags[] = match ($operation) {
+                'delete' => 'pages:delete:' . $r['route'],
+                'copy' => 'pages:create:' . ($copied[$r['route']] ?? $r['route']),
+                default => 'pages:update:' . $r['route'],
+            };
+        }
+
+        return ApiResponse::create(
+            [
+                'operation' => $operation,
+                'results' => $results,
+                'total' => count($results),
+                'successful' => count(array_filter($results, fn($r) => $r['status'] === 'success')),
+                'failed' => count(array_filter($results, fn($r) => $r['status'] === 'error')),
+            ],
+            200,
+            $this->invalidationHeaders($tags),
+        );
+    }
+
+    /**
+     * Make the numbers a reorganize hands out unique among ALL the children of
+     * each destination folder (getgrav/grav-plugin-admin2#209).
+     *
+     * The admin numbers a drop against the siblings its listing returned, and
+     * a listing leaves out pages the caller may not read, so a position it
+     * picks can be the number a hidden sibling already has. Here the requested
+     * positions and the numbers of the siblings the batch doesn't touch are
+     * merged in number order (a requested position goes first on a tie, as it
+     * is where the caller put the page) and any number that isn't above the
+     * one before it is raised to the next free one. Pages whose number still
+     * fits keep it, gaps included, so a request that clashes with nothing is
+     * carried out exactly as sent. A sibling that has to make room is renamed
+     * with the rest of the batch, as a reorder of the folder always could.
+     *
+     * @param list<array<string, mixed>> $resolved
+     * @param bool $detailed name the sibling that can't be renumbered; false for a caller who may not
+     *                       see every sibling, whose folder could be a hidden one
+     * @return list<array<string, mixed>>
+     */
+    private function keepSiblingNumbersUnique(array $resolved, bool $detailed = true): array
+    {
+        $byParent = [];
+        $inBatch = [];
+        foreach ($resolved as $index => $op) {
+            $inBatch[rtrim((string) $op['oldPath'], '/')] = true;
+            if ($op['position'] !== null && $op['newParentPath'] !== null) {
+                $byParent[rtrim((string) $op['newParentPath'], '/')][] = $index;
+            }
+        }
+
+        foreach ($byParent as $parentPath => $indexes) {
+            $entries = [];
+            foreach ($indexes as $index) {
+                $entries[] = ['number' => (int) $resolved[$index]['position'], 'tie' => 0, 'op' => $index, 'name' => ''];
+            }
+            foreach (scandir($parentPath) ?: [] as $dir) {
+                if ($dir === '.' || $dir === '..' || isset($inBatch[$parentPath . '/' . $dir]) || !is_dir($parentPath . '/' . $dir)) {
+                    continue;
+                }
+                [$number] = PageOrdering::parse($dir);
+                if ($number !== null) {
+                    $entries[] = ['number' => $number, 'tie' => 1, 'op' => null, 'name' => $dir];
+                }
+            }
+
+            usort($entries, static fn (array $a, array $b): int
+                => [$a['number'], $a['tie'], $a['op'] ?? 0, $a['name']] <=> [$b['number'], $b['tie'], $b['op'] ?? 0, $b['name']]);
+
+            $last = 0;
+            foreach ($entries as $entry) {
+                $number = max($entry['number'], $last + 1);
+                $last = $number;
+                if ($number === $entry['number']) {
+                    continue;
+                }
+
+                if ($entry['op'] !== null) {
+                    $op = &$resolved[$entry['op']];
+                    $digits = PageOrdering::digitsFromFolder($op['dirName']) ?? PageOrdering::defaultDigits();
+                    $op['position'] = $number;
+                    $op['dirName'] = str_pad((string) $number, $digits, '0', STR_PAD_LEFT) . '.' . $op['slug'];
+                    $op['actuallyMoves'] = $op['newParentRoute'] !== $op['currentParentRoute']
+                        || $op['dirName'] !== basename((string) $op['oldPath']);
+                    unset($op);
+                    continue;
+                }
+
+                $path = $parentPath . '/' . $entry['name'];
+                $sibling = $this->grav['pages']->get($path);
+                if (!$sibling instanceof PageInterface) {
+                    throw new ValidationException(
+                        $detailed
+                            ? "Cannot renumber '{$entry['name']}' to make room in this folder. Send a position for it too."
+                            : 'Cannot renumber the other pages in this folder to make room. Reload the page list and try again.'
+                    );
+                }
+                [, $folder, $width] = PageOrdering::parse($entry['name']);
+                $parentRoute = self::structuralParentRoute($sibling);
+                $resolved[] = [
+                    'route' => (string) $sibling->rawRoute(),
+                    'page' => $sibling,
+                    'slug' => $folder,
+                    'dirName' => str_pad((string) $number, (int) $width, '0', STR_PAD_LEFT) . '.' . $folder,
+                    'oldPath' => $path,
+                    'currentParentRoute' => $parentRoute,
+                    'newParentRoute' => $parentRoute,
+                    'newParentPath' => $parentPath,
+                    'position' => $number,
+                    'actuallyMoves' => true,
+                    'tempPath' => null,
+                ];
+            }
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * POST /pages/reorganize - Reorganize multiple pages (move and/or reorder) atomically.
+     *
+     * Accepts an array of operations, each specifying a page route and optionally
+     * a new parent and/or position. All operations are validated before any
+     * filesystem changes are applied. Uses a two-phase temp-rename strategy
+     * to avoid conflicts.
+     */
+    public function reorganize(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_WRITE);
+        $this->enablePages();
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['operations']);
+
+        $operations = $body['operations'];
+        if (!is_array($operations) || empty($operations)) {
+            throw new ValidationException("The 'operations' field must be a non-empty array.");
+        }
+
+        $maxBatch = $this->config->get('plugins.api.batch.max_items', 50);
+        if (count($operations) > $maxBatch) {
+            throw new ValidationException("Reorganize operations are limited to {$maxBatch} items.");
+        }
+
+        // --- Phase 1: Validate all operations ---
+        $resolved = [];
+        $seenRoutes = [];
+        $affectedParentRoutes = [];
+
+        foreach ($operations as $index => $op) {
+            if (!is_array($op) || !isset($op['route'])) {
+                throw new ValidationException("Operation at index {$index} must have a 'route' field.");
+            }
+
+            $route = '/' . trim($op['route'], '/');
+
+            if (isset($seenRoutes[$route])) {
+                throw new ValidationException("Duplicate route '{$route}' in operations.");
+            }
+            $seenRoutes[$route] = true;
+
+            $page = $this->grav['pages']->find($route);
+            if (!$page) {
+                throw new ValidationException("Page not found at route: {$route}");
+            }
+
+            // Reorganize is all-or-nothing, so a page that denies being moved
+            // fails the whole request rather than being quietly skipped.
+            $this->assertPageNotDenied($request, $page, 'update');
+
+            $currentParentRoute = self::structuralParentRoute($page);
+            $affectedParentRoutes[$currentParentRoute] = true;
+
+            // Resolve destination parent
+            $newParentRoute = null;
+            $newParentPath = null;
+            if (isset($op['parent'])) {
+                $newParentRoute = '/' . trim($op['parent'], '/');
+                if ($newParentRoute === '/') {
+                    $newParentPath = $this->grav['locator']->findResource('page://', true);
+                } else {
+                    $newParent = $this->grav['pages']->find($newParentRoute);
+                    if (!$newParent) {
+                        throw new ValidationException("Destination parent not found at route: {$newParentRoute} (operation index {$index}).");
+                    }
+                    $this->assertPageNotDenied($request, $newParent, 'create');
+                    $newParentPath = $newParent->path();
+                }
+                $affectedParentRoutes[$newParentRoute] = true;
+
+                // Prevent moving a page into its own subtree
+                if (str_starts_with($newParentRoute . '/', $route . '/')) {
+                    throw new ValidationException("Cannot move '{$route}' into its own subtree '{$newParentRoute}'.");
+                }
+            } else {
+                // Stays under current parent
+                $newParentRoute = $currentParentRoute;
+                if ($currentParentRoute === '/') {
+                    $newParentPath = $this->grav['locator']->findResource('page://', true);
+                } else {
+                    $currentParent = $this->grav['pages']->find($currentParentRoute);
+                    $newParentPath = $currentParent ? $currentParent->path() : null;
+                }
+            }
+
+            $position = isset($op['position']) ? (int) $op['position'] : null;
+
+            // Validate position conflicts: no two ops targeting same parent with same position
+            if ($position !== null) {
+                $posKey = $newParentRoute . ':' . $position;
+                foreach ($resolved as $prev) {
+                    if ($prev['newParentRoute'] === $newParentRoute && $prev['position'] === $position) {
+                        throw new ValidationException(
+                            "Position conflict: both '{$prev['route']}' and '{$route}' target position {$position} under '{$newParentRoute}'."
+                        );
+                    }
+                }
+            }
+
+            // The folder name this op ends with. A page staying in its folder
+            // keeps the width it already used; one landing in another folder
+            // takes the width that folder's numbered pages use, so `005.x`
+            // doesn't arrive among `01.`, `02.` (or the reverse).
+            $slug = self::folderName($page);
+            $ownDigits = PageOrdering::digitsFromFolder(basename($page->path()));
+            $digits = ($newParentRoute !== $currentParentRoute && $newParentPath !== null
+                    ? $this->siblingDigits($newParentPath)
+                    : null)
+                ?? $ownDigits
+                ?? PageOrdering::defaultDigits();
+            $dirName = $position !== null
+                ? str_pad((string) $position, $digits, '0', STR_PAD_LEFT) . '.' . $slug
+                : $slug;
+
+            // Whether this op renames anything on disk. Clients renumbering
+            // every sibling of a drop target send ops for siblings that keep
+            // their number; those change nothing, so they are neither treated
+            // as moved below nor renamed (getgrav/grav-admin-next#36).
+            $parentChanged = $newParentRoute !== $currentParentRoute;
+            $actuallyMoves = $parentChanged || $dirName !== basename($page->path());
+
+            // A page landing at the top level of the site as a module would be
+            // drawn by nothing. One already there keeps its place and may be
+            // renumbered with its siblings.
+            if ($parentChanged) {
+                $this->assertNotRootModule($newParentRoute, $slug, 'parent');
+            }
+
+            $resolved[] = [
+                'route' => $route,
+                'page' => $page,
+                // Strip leading dots so pages whose slug somehow starts with
+                // '.' don't get rebuilt into '04..slug' style folders.
+                // Matches the sanitization the single-page /move endpoint
+                // already applies.
+                'slug' => $slug,
+                'dirName' => $dirName,
+                'oldPath' => $page->path(),
+                'currentParentRoute' => $currentParentRoute,
+                'newParentRoute' => $newParentRoute,
+                'newParentPath' => $newParentPath,
+                'position' => $position,
+                'actuallyMoves' => $actuallyMoves,
+                'tempPath' => null,
+            ];
+        }
+
+        // Positions are numbered by the client against the siblings it was
+        // shown, which leaves out pages the caller can't read (#209). Keep
+        // every folder's numbers unique against ALL its children.
+        $resolved = $this->keepSiblingNumbersUnique($resolved, $this->isSuperWithinScope($request));
+
+        // Reject any op whose destination parent is itself being moved in
+        // this batch. Otherwise Phase 2 would rename the parent mid-batch,
+        // making Phase 3's rename($tempPath, $finalPath) fail because the
+        // captured newParentPath no longer exists on disk. Asking the
+        // client to drop these ops produces a clear error instead of the
+        // confusing "No such file or directory" surface.
+        //
+        // Only routes that actually rename on disk participate — a no-op
+        // renumber (position unchanged, parent unchanged) leaves the folder
+        // path intact, so it cannot invalidate a sibling op's newParentPath.
+        $movedRoutes = [];
+        foreach ($resolved as $op) {
+            if ($op['actuallyMoves']) {
+                $movedRoutes[$op['route']] = true;
+            }
+        }
+        foreach ($resolved as $index => $op) {
+            $parentRoute = $op['newParentRoute'];
+            // The parent itself, or any ancestor of it, being moved is
+            // unsafe — its on-disk path won't match newParentPath after
+            // Phase 2 renames.
+            $check = $parentRoute;
+            while ($check !== '/' && $check !== '') {
+                if (isset($movedRoutes[$check])) {
+                    throw new ValidationException(
+                        "Operation index {$index} targets parent '{$parentRoute}', but '{$check}' is also being moved in the same batch. Reorganize the parent first, or drop one of the ops."
+                    );
+                }
+                $check = self::routeParent($check);
+            }
+        }
+
+        // Grav routes by slug, so a page landing under a new parent must not share
+        // its slug with a page already there, or with another page landing there,
+        // whatever their order prefixes. Folders that move in this batch vacate
+        // their old name. A reorder within one parent creates no new clash, so a
+        // clash that was already on disk never blocks renumbering.
+        $vacating = array_map(static fn (array $op): string => (string) $op['oldPath'], $resolved);
+        $landing = [];
+        foreach ($resolved as $op) {
+            $landingKey = rtrim((string) $op['newParentPath'], '/') . "\0" . $op['slug'];
+            $landing[$landingKey] = ($landing[$landingKey] ?? 0) + 1;
+        }
+        foreach ($resolved as $index => $op) {
+            if ($op['newParentPath'] === null || $op['newParentRoute'] === $op['currentParentRoute']) {
+                continue;
+            }
+            $landingKey = rtrim((string) $op['newParentPath'], '/') . "\0" . $op['slug'];
+            if ($landing[$landingKey] > 1
+                || $this->findSlugClash($op['newParentPath'], $op['slug'], $vacating) !== null) {
+                throw new ValidationException(
+                    "A page with the slug '{$op['slug']}' already exists under '{$op['newParentRoute']}' (operation index {$index})."
+                );
+            }
+        }
+
+        $this->fireEvent('onApiBeforePagesReorganize', ['operations' => $resolved]);
+        $this->snapshotAclIndex();
+
+        // --- Phase 2: Move to temp names ---
+        // Only ops that rename something take part. A no-op sent through a
+        // temp name carried its whole subtree away, so an op for a page inside
+        // it found nothing at its old path and was skipped while the request
+        // still reported success. Deepest folders go first, so a page leaves
+        // its folder before that folder is renamed.
+        $moving = array_keys(array_filter($resolved, static fn (array $op): bool => $op['actuallyMoves']));
+        usort($moving, static fn (int $a, int $b): int
+            => substr_count($resolved[$b]['oldPath'], '/') <=> substr_count($resolved[$a]['oldPath'], '/'));
+        $completedRenames = [];
+
+        try {
+            foreach ($moving as $index) {
+                $op = &$resolved[$index];
+                if (!is_dir($op['oldPath'])) {
+                    throw new \RuntimeException("'{$op['route']}' is no longer at '{$op['oldPath']}'.");
+                }
+
+                $tempPath = $op['newParentPath'] . '/_reorg_temp_' . $index . '_' . $op['slug'];
+                Folder::move($op['oldPath'], $tempPath);
+                $completedRenames[] = ['from' => $op['oldPath'], 'to' => $tempPath];
+                $op['tempPath'] = $tempPath;
+                unset($op);
+            }
+
+            // --- Phase 3: Rename from temp to final names ---
+            foreach ($resolved as &$op) {
+                if (!$op['tempPath']) {
+                    continue;
+                }
+
+                $finalPath = $op['newParentPath'] . '/' . $op['dirName'];
+
+                rename($op['tempPath'], $finalPath);
+                $completedRenames[] = ['from' => $op['tempPath'], 'to' => $finalPath];
+                $op['finalPath'] = $finalPath;
+            }
+            unset($op);
+        } catch (\Throwable $e) {
+            // Best-effort rollback: reverse completed renames
+            foreach (array_reverse($completedRenames) as $rename) {
+                if (is_dir($rename['to'])) {
+                    try {
+                        Folder::move($rename['to'], $rename['from']);
+                    } catch (\Throwable) {
+                        // Can't recover further
+                    }
+                }
+            }
+
+            throw new ValidationException("Reorganize failed during filesystem operations: {$e->getMessage()}");
+        }
+
+        $this->clearPagesCache();
+        $this->enablePages(true);
+        $this->refreshAclIndex([], array_merge(...array_map(
+            static fn (array $op): array => [(string) $op['oldPath'], (string) ($op['finalPath'] ?? $op['oldPath'])],
+            $resolved,
+        )));
+
+        $this->fireEvent('onApiPagesReorganized', ['operations' => $resolved]);
+
+        // Plus one per-page move, so a listener written against the single-page
+        // /move endpoint picks up reorganize moves too instead of quietly
+        // missing them (#23). Ops that didn't actually rename anything on disk
+        // (siblings renumbered to the position they already held) are skipped.
+        foreach ($resolved as $op) {
+            if (empty($op['actuallyMoves'])) {
+                continue;
+            }
+
+            $parentRoute = (string) $op['newParentRoute'];
+            $newRoute = ($parentRoute === '/' ? '' : rtrim($parentRoute, '/')) . '/' . $op['slug'];
+
+            $this->fireEvent('onApiPageMoved', [
+                'page' => $this->grav['pages']->find($newRoute),
+                'old_route' => $op['route'],
+                'new_route' => $newRoute,
+                'method' => 'reorganize',
+            ]);
+        }
+
+        // --- Phase 4: Build response with all affected pages ---
+        // Only the children the caller's own folder listings show (#209).
+        $visibility = $this->pageVisibility($request, false);
+        $affectedData = [];
+        foreach (array_keys($affectedParentRoutes) as $parentRoute) {
+            // '/' means the pages-root (genuine top-level pages), NOT the home
+            // page — find('/') resolves to home when it's the default route, so
+            // reporting its children would list home's children instead of the
+            // real top-level set (getgrav/grav-plugin-admin2#132).
+            $parent = $parentRoute === '/'
+                ? $this->grav['pages']->root()
+                : $this->grav['pages']->find($parentRoute);
+
+            if (!$parent) {
+                continue;
+            }
+
+            foreach ($parent->children() as $child) {
+                $row = $this->listedChildRow($visibility, $child);
+                if ($row !== null) {
+                    $affectedData[] = $row + ['parent' => $parentRoute];
+                }
+            }
+        }
+
+        // Emit one update/move tag per reorganized page plus list invalidation
+        $tags = ['pages:list'];
+        foreach ($resolved as $op) {
+            $tags[] = 'pages:move:' . $op['route'];
+        }
+
+        return ApiResponse::create(
+            $affectedData,
+            200,
+            $this->invalidationHeaders($tags),
+        );
+    }
+
+    /**
+     * GET /taxonomy - List all taxonomy types and their values.
+     */
+    public function taxonomy(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+        $this->enablePages();
+
+        $raw = $this->grav['taxonomy']->taxonomy();
+
+        // Seed every declared taxonomy type (site.taxonomies) so the admin can
+        // add categories/tags even when no page uses them yet. Without this the
+        // list is empty on fresh pages/sites and nothing can be added.
+        $taxonomy = [];
+        foreach ((array) $this->grav['config']->get('site.taxonomies', []) as $type) {
+            $taxonomy[$type] = [];
+        }
+
+        // Simplify: return just taxonomy type => [values] without internal file paths
+        foreach ($raw as $type => $values) {
+            $taxonomy[$type] = self::taxonomyValueList((array) $values);
+        }
+
+        return ApiResponse::create($taxonomy);
+    }
+
+    /**
+     * The values in use for one taxonomy type, as a list of strings.
+     *
+     * Core keys its taxonomy map by value, and PHP turns a key that looks like
+     * an integer ("2024") into an int. array_keys() alone therefore sent year
+     * tags and the like as JSON numbers, where the documented response and its
+     * clients expect strings (getgrav/grav-plugin-admin2#186).
+     *
+     * @param array<int|string, mixed> $values Core's map for one type, keyed by value.
+     * @return list<string>
+     */
+    private static function taxonomyValueList(array $values): array
+    {
+        return array_map('strval', array_keys($values));
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Enable the Pages subsystem. API disables pages on init for performance,
+     * so we re-enable when page endpoints are actually called.
+     */
+    private function enablePages(bool $forceReinit = false): void
+    {
+        $pages = $this->grav['pages'];
+
+        if ($forceReinit) {
+            $pages->reset();
+        }
+
+        // Pages::enablePages() flips the flag and calls init()
+        $pages->enablePages();
+    }
+
+    /**
+     * Stamp each serialized listing row with what this caller may do to that
+     * page, so a client can hide the edit/delete affordances a page's own
+     * frontmatter denies (getgrav/grav-plugin-admin2#150).
+     *
+     * Every row also carries `ancestor_only`: true for a folder-listing row
+     * the caller can't open (or, under `editable=true`, can't edit) that is
+     * listed only because a page below it can be (getgrav/grav-plugin-admin2#209),
+     * false for every other row. An `ancestor_only` row the caller can't read
+     * is cut down to ANCESTOR_ONLY_FIELDS plus `permissions`; one they can read
+     * (a page they can't edit, under `editable=true`) keeps every field.
+     *
+     * Only the paginated slice is annotated. Which pages make it into the
+     * listing at all is decided earlier, by PageListVisibility.
+     *
+     * @param list<PageInterface> $pages Pages in the same order they were serialized.
+     * @param list<array<string, mixed>> $data
+     * @param array<string, true> $ancestorOnly keys (PageAclIndex::keyOf()) of the rows kept only as a way down
+     * @return list<array<string, mixed>>
+     */
+    private function attachPageCapabilities(
+        ServerRequestInterface $request,
+        array $pages,
+        array $data,
+        ?PageListVisibility $visibility = null,
+        array $ancestorOnly = [],
+    ): array {
+        $pages = array_values($pages);
+        $recoverable = $this->deleteRecoverable($request);
+
+        foreach ($data as $index => $item) {
+            $page = $pages[$index] ?? null;
+            if ($page instanceof PageInterface) {
+                $permissions = $visibility !== null
+                    ? $visibility->capabilities($page)
+                    : $this->pageCapabilities($request, $page, false);
+
+                $wayDown = isset($ancestorOnly[PageAclIndex::keyOf($page)]);
+                if ($wayDown && !($permissions['read'] ?? false)) {
+                    // A page the caller can't read: only what the tree needs.
+                    $item = array_intersect_key($item, array_flip(self::ANCESTOR_ONLY_FIELDS));
+                    $item['permissions'] = $permissions;
+                    $item['ancestor_only'] = true;
+                } else {
+                    // Under `editable=true` a page the caller can read but not
+                    // edit is a way down as well, and opens like any other.
+                    $item['permissions'] = $permissions;
+                    $item['delete_recoverable'] = $recoverable;
+                    $item['ancestor_only'] = $wayDown;
+                }
+                $data[$index] = $item;
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * A reorder/reorganize response row for a child, or null when the caller's
+     * folder listing would leave it out. A row kept only as a way down is
+     * flagged `ancestor_only`, as in the listing.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function listedChildRow(PageListVisibility $visibility, PageInterface $child): ?array
+    {
+        $ancestorOnly = !$visibility->matches($child);
+        if ($ancestorOnly && !$visibility->leadsToMatch($child)) {
+            return null;
+        }
+
+        return [
+            'route' => $child->route(),
+            'slug' => $child->slug(),
+            'title' => $child->title(),
+            'order' => $child->order(),
+            'ancestor_only' => $ancestorOnly,
+        ];
+    }
+
+    /**
+     * Which pages this caller's listing may return (getgrav/grav-plugin-admin2#209).
+     *
+     * Takes the `editable` filter out of $filters, as it is applied here rather
+     * than by matchesFilters(). Only `editable=true` (or 1/yes/on) does anything.
+     *
+     * @param array<string, mixed> $filters
+     */
+    private function listVisibility(ServerRequestInterface $request, array &$filters): PageListVisibility
+    {
+        $editableOnly = isset($filters['editable']) && filter_var($filters['editable'], FILTER_VALIDATE_BOOLEAN);
+        unset($filters['editable']);
+
+        return $this->pageVisibility($request, $editableOnly);
+    }
+
+    private function pageVisibility(ServerRequestInterface $request, bool $editableOnly): PageListVisibility
+    {
+        $policy = $this->pageCapabilityPolicy($request);
+
+        // Super admins (and accounts page rules can't affect) get the same
+        // capabilities on every page, so there is no index to load.
+        $index = $policy['fixed'] === null
+            ? PageAclIndex::load($this->grav, $this->getFlexDirectory('pages'), $this->getPageAcl())
+            : null;
+
+        return new PageListVisibility(
+            $index,
+            $this->getPageAcl(),
+            $this->getUser($request),
+            $policy['fixed'],
+            $policy['base'],
+            $policy['deny'],
+            $editableOnly,
+            fn (PageInterface $page): array => $this->pageCapabilities($request, $page, false),
+        );
+    }
+
+    /**
+     * Drop what the caller may not see from a listing: a folder listing
+     * (`children_of`, or `root=true`) keeps the way down to pages below that
+     * the caller may see, a flat listing doesn't.
+     *
+     * @param list<PageInterface> $items
+     * @param array<string, mixed> $filters
+     * @return array{0: list<PageInterface>, 1: array<string, true>}
+     */
+    private function applyVisibility(PageListVisibility $visibility, array $items, array $filters): array
+    {
+        $folder = isset($filters['children_of'])
+            || (isset($filters['root']) && filter_var($filters['root'], FILTER_VALIDATE_BOOLEAN));
+
+        return $folder ? $visibility->filterFolder($items) : [$visibility->filterFlat($items), []];
+    }
+
+    /**
+     * Find a page by route or throw NotFoundException.
+     *
+     * Page-level permissions can only be evaluated once the page is in hand, so
+     * the endpoints that honor them authorize AFTER this lookup. Pass the
+     * request and the endpoint's account-wide permission and a miss is gated
+     * too — otherwise a caller with no page permission at all could probe which
+     * routes exist by reading 404 vs 403.
+     */
+    private function findPageOrFail(
+        string $route,
+        ?ServerRequestInterface $request = null,
+        ?string $permission = null,
+    ): PageInterface {
+        $page = $this->resolvePageByRoute($route);
+
+        if (!$page) {
+            if ($request !== null && $permission !== null) {
+                $this->requirePermission($request, $permission);
+            }
+            throw new NotFoundException("Page not found at route: {$route}");
+        }
+
+        return $page;
+    }
+
+    /**
+     * Collect all page instances and apply filters, plus the free-text search
+     * when one is given.
+     *
+     * @param iterable<string, PageInterface> $instances
+     * @return list<PageInterface>
+     */
+    private function collectAndFilterPages(iterable $instances, array $filters, ?string $search = null): array
+    {
+        $pages = [];
+
+        foreach ($instances as $page) {
+            // Skip the virtual pages-root container (no file on disk). The home
+            // page is a real file-backed page with route '/', and a page
+            // carrying `routes.default: ''` is a real page whose route is the
+            // empty string, so ask root() rather than testing the route for
+            // truthiness (getgrav/grav-plugin-api#34).
+            if ($page->root() || !self::hasContentFile($page)) {
+                continue;
+            }
+
+            if (!$this->matchesFilters($page, $filters)) {
+                continue;
+            }
+
+            if ($search !== null && !self::matchesSearch($page, $search)) {
+                continue;
+            }
+
+            $pages[] = $page;
+        }
+
+        return $pages;
+    }
+
+    /**
+     * The `search` query parameter, trimmed, or null when there is none.
+     *
+     * @param array<string, mixed> $query
+     */
+    private static function searchTerm(array $query): ?string
+    {
+        $search = $query['search'] ?? null;
+        if (!is_string($search)) {
+            return null;
+        }
+        $search = trim($search);
+
+        return $search === '' ? null : $search;
+    }
+
+    /**
+     * Free-text page search for sites without Flex pages.
+     *
+     * Mirrors what the Flex pages directory does with `?search=` (its
+     * `data.search` config in `system/blueprints/flex/pages.yaml`): a
+     * case-insensitive substring match on the title, the menu label, the slug
+     * and the route (the Flex config's `key` entry). Both the public route and
+     * the raw one (`/home` for a hidden home page) are tested. Without this the
+     * regular-pages path ignored `search` and returned every page.
+     */
+    private static function matchesSearch(PageInterface $page, string $search): bool
+    {
+        foreach ([$page->title(), $page->menu(), $page->slug(), $page->route(), $page->rawRoute()] as $value) {
+            // What Utils::contains($value, $search, false) does, which Flex uses.
+            if (is_string($value) && $value !== '' && mb_stripos($value, $search) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a page matches all active filters.
+     */
+    private function matchesFilters(PageInterface $page, array $filters): bool
+    {
+        foreach ($filters as $filter => $value) {
+            $matches = match ($filter) {
+                'published' => $page->published() === filter_var($value, FILTER_VALIDATE_BOOLEAN),
+                'template' => PageTemplate::of($page) === $value,
+                'routable' => $page->routable() === filter_var($value, FILTER_VALIDATE_BOOLEAN),
+                'visible' => $page->visible() === filter_var($value, FILTER_VALIDATE_BOOLEAN),
+                'parent' => self::routeStartsWith($page, '/' . trim($value, '/')),
+                'children_of' => $this->isDirectChildOf($page, $value),
+                // Root-level = direct child of the pages-root, resolved from the
+                // real hierarchy (see isDirectChildOf) so home-page children
+                // aren't mistaken for top-level pages. Compared like the other
+                // boolean filters, so root=false means "non-root pages only"
+                // rather than `false && …`, which excluded every page.
+                'root' => $this->isDirectChildOf($page, '/') === filter_var($value, FILTER_VALIDATE_BOOLEAN),
+                default => true,
+            };
+
+            if (!$matches) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if a page is a direct child of the given parent route.
+     *
+     * Resolves the relationship from Grav's real page hierarchy
+     * ($page->parent()) rather than by string-matching the public route. The
+     * home page's children have the home segment stripped from their public
+     * route (e.g. '/child' instead of '/home/child' when home.hide_in_urls is
+     * on), so a route-string comparison wrongly lists them as children of root
+     * — the cause of the tree/columns hierarchy bug
+     * (getgrav/grav-plugin-admin2#32). Comparing against the actual parent
+     * page, like admin-classic's tree does, keeps the hierarchy correct.
+     */
+    /**
+     * Does either of the page's routes start with the given prefix?
+     *
+     * The `parent` filter matches on the public route, which a route alias can
+     * rewrite. A page carrying `routes.default: ''` has an empty public route
+     * and so could never prefix-match anything, which left it unreachable
+     * through this filter (getgrav/grav-plugin-api#34). The structural route is
+     * always present, so testing both keeps existing public-route matches
+     * working while letting an aliased page still be found by where it actually
+     * lives in the tree.
+     */
+    private static function routeStartsWith(PageInterface $page, string $prefix): bool
+    {
+        foreach ([$page->route(), $page->rawRoute()] as $route) {
+            if (is_string($route) && $route !== '' && str_starts_with($route, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isDirectChildOf(PageInterface $page, string $parentValue): bool
+    {
+        $parent = $page->parent();
+        if ($parent === null) {
+            // The virtual pages-root itself has no parent; it's nobody's child.
+            return false;
+        }
+
+        $parentRoute = '/' . trim($parentValue, '/');
+
+        if ($parentRoute === '/') {
+            // Direct child of root: the page's parent IS the pages-root. This
+            // correctly excludes children of the home page (whose parent is the
+            // home page, a real page), which would otherwise leak into root.
+            return $parent->root();
+        }
+
+        // Match the real parent by its structural route first (the home page's
+        // public route is '/', but its rawRoute is e.g. '/home'), then fall
+        // back to the public route for everything else.
+        return $parentRoute === $parent->rawRoute()
+            || $parentRoute === $parent->route();
+    }
+
+    private function indexViaDefaultSort(ServerRequestInterface $request, string $parentRoute, array $filters, array $pagination, ?string $search, PageListVisibility $visibility): ResponseInterface
+    {
+        $items = $this->defaultOrderedChildren($filters, $search);
+        [$items, $ancestorOnly] = $visibility->filterFolder($items);
+
+        $total = count($items);
+        $locatedAt = $this->applyLocate($items, $pagination, $request->getQueryParams()['locate'] ?? null);
+        $slice = array_slice($items, $pagination['offset'], $pagination['limit']);
+
+        $data = $this->attachPageCapabilities($request, $slice, $this->serializer->serializeCollection($slice, $this->listOptions($request)), $visibility, $ancestorOnly);
+
+        return ApiResponse::paginated(
+            data: $data,
+            total: $total,
+            page: $pagination['page'],
+            perPage: $pagination['per_page'],
+            baseUrl: $this->getApiBaseUrl() . '/pages',
+            locatedAtIndex: $locatedAt,
+            query: $request->getQueryParams(),
+        );
+    }
+
+    /**
+     * The direct children of `$filters['children_of']` that pass the other
+     * filters and the search, in the folder's own order: the parent's
+     * collection ordering when it sets one, otherwise numbered folders first
+     * (ascending) and then unnumbered ones by slug. This is `sort=default`.
+     *
+     * @return list<PageInterface>
+     */
+    private function defaultOrderedChildren(array $filters, ?string $search = null): array
+    {
+        // Collect direct children and find parent using Flex or Pages service
+        $directory = $this->getFlexDirectory('pages');
+        $parent = null;
+        $childRoute = '/' . trim($filters['children_of'], '/');
+
+        $items = [];
+        if ($directory) {
+            // The search narrows the children, not the parent lookup below, so
+            // take the matching keys from Flex's own search up front.
+            $searchKeys = null;
+            if ($search !== null) {
+                $searchKeys = [];
+                foreach ($directory->getCollection()->search($search) as $match) {
+                    if ($match instanceof PageInterface) {
+                        $searchKeys[(string) $match->getKey()] = true;
+                    }
+                }
+            }
+
+            // Read the folder's own children rather than walking every page to
+            // find them (and the folder). When the folder can't be resolved
+            // that way, fall back to the walk.
+            $collection = $directory->getCollection();
+            $folder = $this->flexFolderChildren($directory, $collection, $childRoute);
+            $pageFilters = $filters;
+            if ($folder !== null) {
+                $parent = $folder['parent'];
+                $source = $collection->select($folder['keys']);
+                // Every page in $source is one of the folder's own children, so
+                // children_of already holds. Testing it again asks each child
+                // for its parent, which reloads the folder object once per child.
+                unset($pageFilters['children_of']);
+            } else {
+                $source = $collection;
+            }
+
+            foreach ($source as $page) {
+                if (!$page instanceof PageInterface) {
+                    continue;
+                }
+                // Match by rawRoute too: the home page's public route is '/'
+                // while the frontend asks for its structural route (e.g. '/home').
+                if ($folder === null && ($page->route() === $childRoute || $page->rawRoute() === $childRoute)) {
+                    $parent = $page;
+                }
+                // matchesFilters() covers children_of (via isDirectChildOf) *and*
+                // the published/visible/routable/template filters. Testing only
+                // isDirectChildOf here silently dropped those boolean filters on
+                // the default-sort path used by the tree and columns views —
+                // the same class of bug as getgrav/grav-plugin-admin2#121.
+                if (
+                    $this->matchesFilters($page, $pageFilters)
+                    && ($searchKeys === null || isset($searchKeys[(string) $page->getKey()]))
+                ) {
+                    $items[] = $page;
+                }
+            }
+        } else {
+            $this->enablePages();
+            $pages = $this->grav['pages'];
+            $parent = $pages->find($childRoute);
+            $items = $this->collectAndFilterPages($this->candidatePages($pages, $filters), $filters, $search);
+        }
+
+        // Check parent's collection ordering (e.g. blog ordered by date desc)
+        $collectionSort = null;
+        $collectionDir = 'asc';
+        if ($parent) {
+            $header = $parent->header();
+
+            // Use ->get() for nested dot-notation access (works for both stdClass and Header objects)
+            $getVal = function (string $key, $default = null) use ($header) {
+                if (method_exists($header, 'get')) {
+                    return $header->get($key, $default);
+                }
+                // Fallback for stdClass: walk dot-path
+                $parts = explode('.', $key);
+                $current = $header;
+                foreach ($parts as $part) {
+                    if (is_object($current) && isset($current->$part)) {
+                        $current = $current->$part;
+                    } elseif (is_array($current) && isset($current[$part])) {
+                        $current = $current[$part];
+                    } else {
+                        return $default;
+                    }
+                }
+                return $current;
+            };
+
+            $displayOrder = $getVal('admin.children_display_order', 'collection');
+
+            if ($displayOrder === 'collection') {
+                $collectionSort = $getVal('content.order.by');
+                $collectionDir = $getVal('content.order.dir', 'asc');
+            }
+        }
+
+        if ($collectionSort) {
+            // Use collection ordering from parent header
+            $sortField = match ($collectionSort) {
+                'title' => 'title',
+                'date' => 'date',
+                'modified', 'timestamp' => 'modified',
+                'publish_date' => 'publish_date',
+                'unpublish_date' => 'unpublish_date',
+                'slug', 'basename' => 'slug',
+                default => 'order',
+            };
+            $items = $this->sortPages($items, $sortField, $collectionDir);
+        } else {
+            // Filesystem order: ordered pages first (ascending), then unordered (alpha by slug)
+            $ordered = [];
+            $unordered = [];
+            foreach ($items as $page) {
+                // Flex pages return false for unordered folders and an int (incl. 0 for "00.")
+                // for ordered ones — so test for false explicitly, not truthiness.
+                if ($page->order() !== false) {
+                    $ordered[] = $page;
+                } else {
+                    $unordered[] = $page;
+                }
+            }
+            usort($ordered, function ($a, $b) {
+                return (int) $a->order() <=> (int) $b->order();
+            });
+            usort($unordered, function ($a, $b) {
+                return strcasecmp($a->slug() ?? '', $b->slug() ?? '');
+            });
+            $items = array_merge($ordered, $unordered);
+        }
+
+        return $items;
+    }
+
+    /**
+     * The Flex pages directly under a folder, read from the folder's own list of
+     * children instead of asking every page on the site for its parent.
+     *
+     * Returns the page whose route or structural route is the folder's (the
+     * one a `sort=default` listing takes its collection ordering from: for `/`
+     * that is the home page, whose public route is `/`) and the children's
+     * keys in the collection's own order, limited to what is in $collection.
+     * Callers still apply every filter to those children, so the result is the
+     * same as a full walk. Null when the folder doesn't resolve by its key to a
+     * page with that route (an alias, a canonical URL, no page at all); the
+     * caller then walks every page, as before.
+     *
+     * @return array{parent: ?PageInterface, keys: list<string>}|null
+     */
+    private function flexFolderChildren(FlexDirectory $directory, iterable $collection, string $parentValue): ?array
+    {
+        if (!method_exists($collection, 'getKeys')) {
+            return null;
+        }
+
+        $parentRoute = '/' . trim($parentValue, '/');
+        if ($parentRoute === '/') {
+            $index = $directory->getIndex();
+            $folder = method_exists($index, 'getRoot') ? $index->getRoot() : null;
+
+            $alias = trim((string) $this->config->get('system.home.alias', '/home'), '/');
+            $parent = $alias !== '' ? $directory->getObject($alias) : null;
+            if (!$parent instanceof PageInterface || $parent->route() !== '/') {
+                return null;
+            }
+        } else {
+            $folder = $directory->getObject(ltrim($parentRoute, '/'));
+            if (!$folder instanceof PageInterface
+                || ($folder->rawRoute() !== $parentRoute && $folder->route() !== $parentRoute)) {
+                return null;
+            }
+            $parent = $folder;
+        }
+
+        if (!$folder instanceof PageInterface || !method_exists($folder, 'getMetaData') || !method_exists($folder, 'getMasterKey')) {
+            return null;
+        }
+
+        $meta = $folder->getMetaData();
+        $master = (string) $folder->getMasterKey();
+        $storageKeys = [];
+        foreach (array_keys((array) ($meta['children'] ?? [])) as $child) {
+            $storageKeys[] = $master !== '' ? $master . '/' . $child : (string) $child;
+        }
+
+        // Map the storage keys to page keys from the index entries. Iterating
+        // the index would load (and unserialize) every child object just to
+        // read its key; the caller loads the ones it needs anyway.
+        $wanted = [];
+        if ($storageKeys !== []) {
+            foreach ($directory->getIndex($storageKeys, 'storage_key')->getIndexMap('key') as $key) {
+                if ($key !== null && $key !== '') {
+                    $wanted[(string) $key] = true;
+                }
+            }
+        }
+
+        $keys = [];
+        foreach ($collection->getKeys() as $key) {
+            if (isset($wanted[(string) $key])) {
+                $keys[] = $key;
+            }
+        }
+
+        return ['parent' => $parent, 'keys' => $keys];
+    }
+
+    /**
+     * The pages a listing on the regular Pages service has to look at.
+     *
+     * A `children_of` (or `root=true`) listing only needs the parent's own
+     * children, so it reads them from the children index instead of walking
+     * every page and asking each one for its parent. The filters still run on
+     * the result, so what comes back is the same. When the route doesn't
+     * resolve to a page whose route or structural route is that value (an
+     * alias, a canonical URL, or no page at all), it falls back to every page,
+     * which is what the filter has always been tested against.
+     *
+     * @return iterable<PageInterface>
+     */
+    private function candidatePages(\Grav\Common\Page\Pages $pages, array $filters): iterable
+    {
+        $parentValue = $filters['children_of'] ?? null;
+        if ($parentValue === null && isset($filters['root']) && filter_var($filters['root'], FILTER_VALIDATE_BOOLEAN)) {
+            $parentValue = '/';
+        }
+        if (!is_string($parentValue)) {
+            return $pages->instances();
+        }
+
+        $parentRoute = '/' . trim($parentValue, '/');
+        if ($parentRoute === '/') {
+            $parent = $pages->root();
+        } else {
+            $parent = $pages->find($parentRoute, true);
+            if (!$parent instanceof PageInterface
+                || $parent->root()
+                || ($parent->rawRoute() !== $parentRoute && $parent->route() !== $parentRoute)
+            ) {
+                return $pages->instances();
+            }
+        }
+
+        $path = $parent->path();
+        if ($path === null || $path === '') {
+            return $pages->instances();
+        }
+
+        $children = [];
+        foreach ($pages->children($path) as $childPath => $child) {
+            if ($child instanceof PageInterface) {
+                $children[$childPath] = $child;
+            }
+        }
+
+        return $children;
+    }
+
+    /**
+     * Whether a listed page has a content file, i.e. is a page rather than a
+     * bare folder.
+     *
+     * A regular page in the pages index was built by a scan that found its
+     * content file, so knowing it has one is enough; the stat that exists()
+     * makes for every page in a listing is skipped. A folder with no content
+     * file has no file object at all. Anything else still asks exists().
+     */
+    private static function hasContentFile(PageInterface $page): bool
+    {
+        if (get_class($page) === Page::class) {
+            return $page->file() !== null;
+        }
+
+        return $page->exists();
+    }
+
+    /**
+     * The page as one of its translations, when it has no file in the active
+     * language.
+     *
+     * Grav falls back to the default language for a page that is missing in
+     * another one, but nothing falls back for the default language itself. A
+     * page whose only file is `mission.en.md` on a site that keeps the default
+     * language in `mission.md` comes back as an empty folder page: no language,
+     * no content and no translations, as every translation lookup starts from
+     * the file name. The admin read that as the default-language file, offered
+     * to create the translation that exists, and deleted with the wrong
+     * language (admin2#199). Answering with a translation that exists, the way
+     * a missing non-default language already does, lets the editor show its
+     * "not translated yet" notice and act on the file it shows.
+     *
+     * The active language is left on the translation, so the caller restores
+     * it as usual.
+     */
+    private function withTranslationOnDisk(PageInterface $page, string $route): PageInterface
+    {
+        if (!$this->isMultiLangEnabled() || self::hasContentFile($page)) {
+            return $page;
+        }
+
+        $path = $page->path();
+        $files = $path && is_dir($path) ? (scandir($path) ?: []) : [];
+        /** @var Language $language */
+        $language = $this->grav['language'];
+
+        foreach ($language->getLanguages() as $code) {
+            $suffix = '.' . $code . '.md';
+            foreach ($files as $file) {
+                if (strlen($file) > strlen($suffix) && str_ends_with($file, $suffix)) {
+                    $this->switchLanguage($code);
+                    // By folder, as the translation may carry its own slug.
+                    $translation = $this->grav['pages']->get($path) ?? $this->resolvePageByRoute($route);
+
+                    return $translation instanceof PageInterface ? $translation : $page;
+                }
+            }
+        }
+
+        return $page;
+    }
+
+    /**
+     * Serializer options for page-list rows.
+     *
+     * `fields=summary` leaves out `header` (the page's full frontmatter), which
+     * the admin's tree, list and columns views never read and which is about
+     * half of a 500-row listing. Every other key is unchanged, and without the
+     * parameter the rows are exactly as before.
+     */
+    private function listOptions(ServerRequestInterface $request): array
+    {
+        $query = $request->getQueryParams();
+        $fields = $query['fields'] ?? null;
+
+        return [
+            'include_content' => false,
+            'render_content' => false,
+            'include_children' => false,
+            'include_media' => false,
+            'include_translations' => filter_var($query['translations'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'include_header' => !(is_string($fields) && strtolower(trim($fields)) === 'summary'),
+            // A Twig lookup per module is not worth it in a list (#55).
+            'include_template_state' => false,
+        ];
+    }
+
+    /**
+     * If `$locateRoute` is set, find that page's index in the (already-sorted)
+     * $items list and rewrite $pagination to point at the chunk containing it.
+     * Returns the absolute index of the located page, or null if not found /
+     * not requested. Locate takes precedence over any explicit `page` param —
+     * the contract is "give me the chunk holding this route".
+     *
+     * @param list<PageInterface> $items
+     * @param array{page:int,per_page:int,offset:int,limit:int} $pagination
+     */
+    private function applyLocate(array $items, array &$pagination, ?string $locateRoute): ?int
+    {
+        if ($locateRoute === null || $locateRoute === '') {
+            return null;
+        }
+        $needle = '/' . trim($locateRoute, '/');
+        foreach ($items as $idx => $page) {
+            if (!$page instanceof PageInterface) {
+                continue;
+            }
+            if ($page->route() === $needle || $page->rawRoute() === $needle) {
+                $perPage = $pagination['per_page'];
+                $newPage = $perPage > 0 ? ((int) floor($idx / $perPage)) + 1 : 1;
+                $pagination['page'] = $newPage;
+                $pagination['offset'] = ($newPage - 1) * $perPage;
+                return $idx;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Sort pages by the given field and direction.
+     *
+     * @param list<PageInterface> $pages
+     * @return list<PageInterface>
+     */
+    private function sortPages(array $pages, string $field, string $order): array
+    {
+        usort($pages, function (PageInterface $a, PageInterface $b) use ($field, $order): int {
+            $result = match ($field) {
+                'date' => ($a->date() ?? 0) <=> ($b->date() ?? 0),
+                'modified' => ($a->modified() ?? 0) <=> ($b->modified() ?? 0),
+                'publish_date' => ($a->publishDate() ?? 0) <=> ($b->publishDate() ?? 0),
+                'unpublish_date' => ($a->unpublishDate() ?? 0) <=> ($b->unpublishDate() ?? 0),
+                'title' => strcasecmp($a->title() ?? '', $b->title() ?? ''),
+                'slug' => strcmp($a->slug() ?? '', $b->slug() ?? ''),
+                'order' => ($a->order() ?? PHP_INT_MAX) <=> ($b->order() ?? PHP_INT_MAX),
+                default => 0,
+            };
+
+            return $order === 'desc' ? -$result : $result;
+        });
+
+        return $pages;
+    }
+
+    /**
+     * Batch helper: set published state on a page.
+     *
+     * Fires the same before/after pair as PATCH /pages/{route}. Bulk actions
+     * used to run silently, so anything tracking per-page state — a search
+     * index, a redirect map, and the plugin's own audit trail and webhook
+     * dispatcher, which both subscribe to these events — simply missed them
+     * (#23). The `method` hint lets a listener tell a bulk edit from a
+     * single-page one without changing the payload shape.
+     */
+    private function batchPublish(PageInterface $page, string $route, bool $published): void
+    {
+        $header = $this->headerToArray($page->header());
+        $header['published'] = $published;
+
+        $data = ['header' => $header];
+        $this->fireEvent('onApiBeforePageUpdate', ['page' => $page, 'data' => &$data, 'method' => 'batch']);
+
+        $page->header((object) ($data['header'] ?? $header));
+
+        $this->fireAdminEvent('onAdminSave', ['object' => &$page, 'page' => &$page]);
+        $page->save();
+
+        $this->fireAdminEvent('onAdminAfterSave', ['object' => $page, 'page' => $page]);
+        $this->fireEvent('onApiPageUpdated', ['page' => $page, 'route' => $route, 'method' => 'batch']);
+    }
+
+    /**
+     * Batch helper: delete a page.
+     *
+     * Event parity with DELETE /pages/{route} (#23). This is the one that hurt
+     * most: the page was gone and no delete hook had ever run, so listeners
+     * never got to clean up after it and nothing was written to the audit log.
+     */
+    private function batchDelete(PageInterface $page, string $route): void
+    {
+        $this->fireEvent('onApiBeforePageDelete', ['page' => $page, 'method' => 'batch']);
+
+        Folder::delete($page->path());
+
+        $this->fireAdminEvent('onAdminAfterDelete', ['object' => $page, 'page' => $page]);
+        $this->fireEvent('onApiPageDeleted', ['route' => $route, 'method' => 'batch']);
+    }
+
+    /**
+     * Batch helper: copy a page.
+     */
+    /**
+     * Reject any value that is not a single path segment. A slug/suffix becomes a
+     * page-folder name, never a path: a separator, parent-traversal or null byte
+     * lets it escape user/pages once concatenated into a filesystem path (e.g.
+     * Folder::copy()'s recursive mkdir resolves `..`). Shared by move() and
+     * batchCopy(). (GHSA-qjq4-jp55-4mx2, GHSA-g6j3-8jv9-ch5f)
+     *
+     * @param mixed $value
+     * @param string $field
+     * @return string
+     */
+    private function assertSinglePathSegment(mixed $value, string $field): string
+    {
+        if (!is_string($value)
+            || $value === ''
+            || preg_match('#[/\\\\]#', $value)
+            || str_contains($value, '..')
+            || str_contains($value, "\0")) {
+            throw new ValidationException("Invalid {$field}: must be a single path segment.");
+        }
+
+        return $value;
+    }
+
+    /**
+     * Batch helper: copy a page. Returns the destination route so batch() can
+     * fire one created-event per copy after a single index rebuild — resolving
+     * each new page inside this loop would mean a full filesystem walk per
+     * item (#23).
+     */
+    private function batchCopy(ServerRequestInterface $request, PageInterface $page, array $options): string
+    {
+        $destParent = $options['destination'] ?? self::structuralParentRoute($page);
+        $suffix = $options['suffix'] ?? '-copy';
+        // The suffix becomes part of the destination folder name; reject any
+        // separator or traversal before it reaches Folder::copy() (whose
+        // recursive mkdir resolves `..`). (GHSA-g6j3-8jv9-ch5f)
+        $this->assertSinglePathSegment($suffix, 'suffix');
+        $destSlug = $page->slug() . $suffix;
+
+        if ($destParent === '/') {
+            $parent = method_exists($this->grav['pages'], 'root') ? $this->grav['pages']->root() : null;
+            $destParentPath = $this->grav['locator']->findResource('page://', true);
+        } else {
+            $parent = $this->grav['pages']->find($destParent);
+            if (!$parent) {
+                throw new ValidationException("Destination parent not found: {$destParent}");
+            }
+            $destParentPath = $parent->path();
+        }
+
+        // A copy creates a page under the destination, so the destination's own
+        // `create` rule applies, exactly as it does for POST /pages/{route}/copy.
+        if ($parent !== null) {
+            $this->assertPageNotDenied($request, $parent, 'create');
+        }
+
+        $destPath = $destParentPath . '/' . $this->copyFolderName($page, $destSlug, $destParentPath, $options);
+        if ($this->findSlugClash($destParentPath, $destSlug) !== null) {
+            throw new ValidationException("A page already exists at the copy destination for: {$page->route()}");
+        }
+
+        Folder::copy($page->path(), $destPath);
+        $this->renewCopiedPageId($destPath);
+        $this->rewriteCopiedSlug($destPath, $destSlug, $page->extension());
+
+        return ($destParent === '/' ? '' : rtrim($destParent, '/')) . '/' . $destSlug;
+    }
+
+    /**
+     * A copied page never keeps the original's id: with page ids on (Grav
+     * 2.2.15+) the copy gets a new one, otherwise any copied `.page-id` goes.
+     */
+    private function renewCopiedPageId(string $destPath): void
+    {
+        if (class_exists(\Grav\Common\Page\PageIdentity::class)) {
+            \Grav\Common\Page\PageIdentity::onCopied($destPath);
+        }
+    }
+
+    /**
+     * Folder name for a copy answering to $slug under $parentPath.
+     *
+     * A copy of a numbered page is numbered after the last numbered sibling,
+     * as admin-classic's taskCopy() did. Without it, duplicating `01.bar` gave
+     * `bar-2`, which drops out of the menu (getgrav/grav#4367). A copy of an
+     * unnumbered page stays unnumbered. An `order` in the request wins (a
+     * number, `"auto"` as on create, or null for none), then a prefix typed
+     * into the route.
+     *
+     * @param PageInterface        $page    The source page.
+     * @param array<string, mixed> $options Request body or batch options.
+     */
+    private function copyFolderName(object $page, string $slug, string $parentPath, array $options, string $routePrefix = ''): string
+    {
+        if (array_key_exists('order', $options)) {
+            $order = $options['order'];
+            if (is_string($order) && strtolower($order) === 'auto') {
+                $order = $this->nextOrderInParent($parentPath);
+            }
+        } elseif ($routePrefix !== '') {
+            return $routePrefix . $slug;
+        } else {
+            $order = PageOrdering::parse(basename((string) $page->path()))[0] !== null
+                ? ($this->nextOrderInParent($parentPath) ?? 1)
+                : null;
+        }
+
+        return $order !== null
+            ? PageOrdering::key($order, $slug, $this->siblingDigits($parentPath))
+            : $slug;
+    }
+
+    /**
+     * Point a freshly copied page's `slug:` at its own folder.
+     *
+     * Folder::copy() reproduces the source byte for byte, so an explicit `slug:`
+     * in the frontmatter travels with it and the copy claims the source's route:
+     * slug() prefers the header value over the folder name, and route() is just
+     * the parent route plus slug(). Grav does not reject that — Pages::buildRoutes()
+     * logs "Route already exists" and lets whichever page is indexed last win, so
+     * the listing shows two pages on one route, admin-next's keyed page tree
+     * aborts on the duplicate, and the title bump the admin sends straight after a
+     * copy can resolve to the ORIGINAL page and overwrite it. Admin-classic has
+     * always rewritten the header slug when duplicating a page
+     * (AdminController::taskCopy()); this gives the API the same behaviour.
+     * (#25, getgrav/grav-plugin-admin2#154)
+     *
+     * Rewritten in place, before the index is rebuilt, so the copy already sits on
+     * its own route by the time we resolve and serialize it. Doing it afterwards
+     * would not be enough: Page::route() is memoized during buildRoutes(), so the
+     * response would still echo the source's route.
+     *
+     * Only a page that already declared a slug gets one written back, so we never
+     * add frontmatter the source did not have. Every language variant in the folder
+     * is rewritten, because each carries its own frontmatter. Child folders are
+     * left alone: their slugs are relative to this page, so they become unique
+     * again as soon as the parent's does.
+     *
+     * @param string $destPath  Filesystem path of the copied page folder.
+     * @param string $destSlug  Slug the copy should answer to.
+     * @param string $extension Page file extension, including the leading dot.
+     */
+    private function rewriteCopiedSlug(string $destPath, string $destSlug, string $extension): void
+    {
+        // A translated page's extension carries its language (`.en.md`), but
+        // every language file of the copy holds the source slug, so match on
+        // the markdown extension alone.
+        $extension = '.' . pathinfo('page.' . ltrim($extension, '.'), PATHINFO_EXTENSION);
+
+        // scandir rather than glob: a page folder name may legitimately contain
+        // `[` or `*`, which glob would read as a pattern.
+        foreach (scandir($destPath) ?: [] as $filename) {
+            if (!str_ends_with($filename, $extension)) {
+                continue;
+            }
+
+            $file = MarkdownFile::instance($destPath . '/' . $filename);
+
+            try {
+                $header = $file->header();
+                if (!is_array($header) || !array_key_exists('slug', $header)) {
+                    continue;
+                }
+
+                $header['slug'] = $destSlug;
+                $file->header($header);
+                $file->save();
+            } finally {
+                // AbstractFile::instance() keeps a static instance cache, and the
+                // index rebuild that follows must not read a stale one.
+                $file->free();
+            }
+        }
+    }
+
+    /**
+     * The folder under $parentPath that already holds the slug of $dirName, or
+     * null. The order prefix is ignored: Grav routes by slug, so `02.foo` and
+     * `03.foo` answer to the same route and one of them never shows in listings.
+     *
+     * @param string      $parentPath Filesystem path of the parent folder.
+     * @param string      $dirName    Folder name about to be created, prefix included.
+     * @param list<string>|string|null $ignorePaths Folder(s) about to vacate (the page being moved).
+     */
+    private function findSlugClash(string $parentPath, string $dirName, array|string|null $ignorePaths = null): ?string
+    {
+        if (!is_dir($parentPath)) {
+            return null;
+        }
+
+        $slug = PageOrdering::parse($dirName)[1];
+        $ignore = array_flip(array_map(
+            static fn (string $path): string => rtrim($path, '/'),
+            (array) $ignorePaths
+        ));
+
+        foreach (scandir($parentPath) ?: [] as $entry) {
+            if ($entry[0] === '.' || !is_dir($parentPath . '/' . $entry)) {
+                continue;
+            }
+            if (isset($ignore[rtrim($parentPath, '/') . '/' . $entry])) {
+                continue;
+            }
+            if (PageOrdering::parse($entry)[1] === $slug) {
+                return $entry;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The full order of a folder's children for a reorder that may list only
+     * some of them (getgrav/grav-plugin-admin2#209: a caller's listing leaves
+     * out the pages it may not read, so the order it sends does too).
+     *
+     * The children keep the order they have now (numbered folders by number,
+     * then unnumbered ones by name). The listed ones are put in the requested
+     * order in the places listed children held, and every other child stays
+     * where it was, so the result numbers ALL children and no number is
+     * handed out twice. An unlisted child without a number keeps having none,
+     * and one that shares its slug with another child can't be addressed by
+     * slug, so it is left as it is. When every child is listed this is the
+     * requested order unchanged.
+     *
+     * @param array<string, string> $childMap slug => folder name
+     * @param array<string, list<string>> $dirsBySlug slug => every folder with that slug
+     * @param list<string> $order requested slugs
+     * @return list<string> slugs to number 1..n, in order
+     */
+    private static function mergeReorder(array $childMap, array $dirsBySlug, array $order): array
+    {
+        $current = [];
+        foreach ($childMap as $slug => $dir) {
+            if (count($dirsBySlug[$slug] ?? []) !== 1) {
+                continue;
+            }
+            [$number] = PageOrdering::parse($dir);
+            $current[] = ['slug' => (string) $slug, 'number' => $number, 'dir' => $dir];
+        }
+        usort($current, static fn (array $a, array $b): int
+            => [$a['number'] === null, $a['number'] ?? 0, strtolower($a['dir'])] <=> [$b['number'] === null, $b['number'] ?? 0, strtolower($b['dir'])]);
+
+        $listed = array_flip($order);
+        $requested = array_values($order);
+        $next = 0;
+        $merged = [];
+        foreach ($current as $child) {
+            if (isset($listed[$child['slug']])) {
+                $merged[] = $requested[$next++];
+            } elseif ($child['number'] !== null) {
+                $merged[] = $child['slug'];
+            }
+        }
+
+        // Listed slugs a shared-slug folder kept out of $current (refused
+        // earlier, but keep the request whole regardless).
+        for (; $next < count($requested); $next++) {
+            $merged[] = $requested[$next];
+        }
+
+        return $merged;
+    }
+
+    /**
+     * Work out the renames a reorder needs, refusing the request when a target
+     * name is taken by a folder that is not part of it.
+     *
+     * @param array<string, string> $childMap slug => current folder name
+     * @param list<string>          $order    slugs in their new order
+     * @param bool                  $detailed name the folder in the way; false for a caller who may not see every
+     *                                        sibling, whose folder could be one of the hidden ones
+     * @return list<array{old: string, temp: string, final: string}>
+     */
+    private function planReorder(string $parentPath, array $childMap, array $order, ?int $digits, string $parentRoute, bool $detailed = true): array
+    {
+        $existing = array_flip(array_filter(
+            scandir($parentPath) ?: [],
+            static fn (string $entry): bool => $entry !== '.' && $entry !== '..'
+        ));
+
+        $plan = [];
+        $vacated = [];
+        $position = 1;
+
+        foreach ($order as $slug) {
+            $currentDir = $childMap[$slug];
+            // Renumber the folder's own name: `order` lists slugs, and a `slug:`
+            // header must not rename the folder (getgrav/grav-admin-next#40).
+            $newDir = PageOrdering::key($position, PageOrdering::parse($currentDir)[1], $digits);
+
+            if ($currentDir !== $newDir && is_dir($parentPath . '/' . $currentDir)) {
+                $tempDir = '_temp_' . $position . '_' . $slug;
+                $plan[] = [
+                    'old' => $parentPath . '/' . $currentDir,
+                    'temp' => $parentPath . '/' . $tempDir,
+                    'final' => $parentPath . '/' . $newDir,
+                ];
+                $vacated[$currentDir] = true;
+            }
+
+            $position++;
+        }
+
+        // A folder that moves away frees its name; anything else already sitting
+        // on a temp or final name is in the way.
+        foreach ($plan as $rename) {
+            foreach (['temp', 'final'] as $kind) {
+                $name = basename($rename[$kind]);
+                if (isset($existing[$name]) && !isset($vacated[$name])) {
+                    throw new ValidationException(
+                        $detailed
+                            ? "Cannot reorder '{$parentRoute}': the folder '{$name}' already exists and is not part of this reorder."
+                            : "Cannot reorder '{$parentRoute}': a folder in the way already exists and is not part of this reorder."
+                    );
+                }
+            }
+        }
+
+        return $plan;
+    }
+
+    /**
+     * Carry out planned renames through temp names, and put every folder back
+     * if any step fails.
+     *
+     * @param list<array{old: string, temp: string, final: string}> $plan
+     */
+    private function applyRenames(array $plan): void
+    {
+        $done = [];
+
+        try {
+            // Temp names first, so a folder can take a name another one is leaving.
+            foreach ($plan as $rename) {
+                $this->renameOrFail($rename['old'], $rename['temp']);
+                $done[] = [$rename['old'], $rename['temp']];
+            }
+            foreach ($plan as $rename) {
+                $this->renameOrFail($rename['temp'], $rename['final']);
+                $done[] = [$rename['temp'], $rename['final']];
+            }
+        } catch (\Throwable $e) {
+            foreach (array_reverse($done) as [$from, $to]) {
+                if (is_dir($to) && !file_exists($from)) {
+                    @rename($to, $from);
+                }
+            }
+
+            throw new \RuntimeException('Reorder failed and was rolled back: ' . $e->getMessage(), 0, $e);
+        }
+    }
+
+    private function renameOrFail(string $from, string $to): void
+    {
+        if (!@rename($from, $to)) {
+            $reason = error_get_last()['message'] ?? 'rename failed';
+            throw new \RuntimeException($reason);
+        }
+    }
+
+    /**
+     * Take the page-rules index as it is before this request writes pages, so
+     * refreshAclIndex() can bring it up to date afterwards instead of the next
+     * listing reading every page's frontmatter again (#209).
+     */
+    private function snapshotAclIndex(): void
+    {
+        $this->aclSnapshot = PageAclIndex::snapshot($this->grav, $this->getFlexDirectory('pages'));
+    }
+
+    /**
+     * Update the page-rules index for the pages this request wrote, once the
+     * pages cache has been cleared (see PageAclIndex::refresh()). Never needed
+     * for correctness: whatever it can't do, the next listing builds instead.
+     *
+     * Pages are named by their folder (absolute path), which is all a page the
+     * API loaded through the Pages service has in common with the Flex object
+     * the index is built from.
+     *
+     * @param list<string|null> $saved folders of pages whose own file this request saved
+     * @param list<string|null> $changed folders this request created, deleted, moved, copied or renamed,
+     *                                   old and new places alike, with everything below them
+     */
+    private function refreshAclIndex(array $saved = [], array $changed = []): void
+    {
+        $snapshot = $this->aclSnapshot;
+        $this->aclSnapshot = null;
+        if ($snapshot === null) {
+            return;
+        }
+
+        $root = rtrim((string) $this->grav['locator']->findResource('page://', true), '/');
+        $keys = static function (array $folders) use ($root): array {
+            $keys = [];
+            foreach ($folders as $folder) {
+                $folder = rtrim((string) $folder, '/');
+                if ($root !== '' && str_starts_with($folder, $root . '/')) {
+                    $keys[] = substr($folder, strlen($root));
+                }
+            }
+
+            return $keys;
+        };
+
+        PageAclIndex::refresh($this->grav, $this->getFlexDirectory('pages'), $snapshot, $this->aclGeneration, $keys($saved), $keys($changed));
+    }
+
+    /**
+     * Clear the pages cache after a mutation.
+     */
+    private function clearPagesCache(): void
+    {
+        // The page-rules index behind filtered listings (#209) follows the
+        // same writes, including two within the same second. A write that
+        // calls refreshAclIndex() afterwards hands the index over to the new
+        // state instead of leaving it to be rebuilt.
+        $this->aclGeneration = PageAclIndex::invalidate($this->grav);
+
+        // Grav 2.2+ can rebuild just the pages index on the next request.
+        // A standard clear also drops compiled config, languages and Twig,
+        // so every save (autosave included) left the next request fully cold.
+        $pages = $this->grav['pages'];
+        if (method_exists($pages, 'markChanged')) {
+            $pages->markChanged();
+
+            // markChanged() only moves core's pages cache id. The listing reads
+            // the Flex pages directory, which keeps its storage keys in its own
+            // index cache for `system.flex.cache.index.lifetime` (60s), so a move,
+            // reorder, copy or delete made by renaming folders would list the old
+            // state until that expires. Page::save() clears the directory itself,
+            // which is why create and update were never affected.
+            $this->getFlexDirectory('pages')?->clearCache();
+
+            return;
+        }
+
+        $this->grav['cache']->clearCache('standard');
+    }
+
+    /**
+     * Resolve `order: "auto"` for a new page. Returns highest existing numeric
+     * prefix among direct children + 1, or null when no sibling carries a
+     * numeric prefix (so the new page stays unprefixed).
+     */
+    private function nextOrderInParent(string $parentPath): ?int
+    {
+        if (!is_dir($parentPath)) {
+            return null;
+        }
+
+        $highest = 0;
+        $hasNumeric = false;
+        $dh = @opendir($parentPath);
+        if ($dh === false) {
+            return null;
+        }
+        try {
+            while (($entry = readdir($dh)) !== false) {
+                if ($entry === '.' || $entry === '..' || $entry[0] === '.') {
+                    continue;
+                }
+                [$o] = PageOrdering::parse($entry);
+                if ($o !== null) {
+                    $hasNumeric = true;
+                    if ($o > $highest) {
+                        $highest = $o;
+                    }
+                }
+            }
+        } finally {
+            closedir($dh);
+        }
+
+        return $hasNumeric ? $highest + 1 : null;
+    }
+
+    /**
+     * Widest existing order-prefix digit width across direct child folders of
+     * $parentPath. Returns null when no children carry a numeric prefix, so
+     * callers fall back to PageOrdering's configured default.
+     *
+     * Single readdir; no Page object instantiation. Safe for hot paths.
+     */
+    private function siblingDigits(string $parentPath): ?int
+    {
+        if (!is_dir($parentPath)) {
+            return null;
+        }
+
+        $max = 0;
+        $dh = @opendir($parentPath);
+        if ($dh === false) {
+            return null;
+        }
+        try {
+            while (($entry = readdir($dh)) !== false) {
+                if ($entry === '.' || $entry === '..' || $entry[0] === '.') {
+                    continue;
+                }
+                $w = PageOrdering::digitsFromFolder($entry);
+                if ($w !== null && $w > $max) {
+                    $max = $w;
+                }
+            }
+        } finally {
+            closedir($dh);
+        }
+
+        return $max ?: null;
+    }
+
+    /**
+     * Make a language active for page lookups, and optionally rebuild the pages
+     * index against it.
+     *
+     * Every language switch must go through here. `setActive()` on its own is
+     * not enough: Grav memoizes the language→file-extension priority list the
+     * first time `Pages::recurse()` asks for it, under a key that does not
+     * include the language ("<ext>-default-0" in
+     * `Language::getFallbackPageExtensions()`). So a request that activates a
+     * second language gets a fresh filesystem walk resolved with the FIRST
+     * language's priorities, and every page binds to the wrong translation
+     * file — the target of a sync resolves to the source's file, so the write
+     * lands there and the translation is never touched (#24), and a compare
+     * returns the source content on both sides. Core spells out the required
+     * sequence in `Language::resetFallbackPageExtensions()`'s own docblock:
+     * setActive → reset → rebuild.
+     *
+     * This also matters beyond the request: the index built with the stale
+     * priorities is cached under the legitimate per-language cache id, so a
+     * poisoned build can leak into ordinary front-end requests for that
+     * language until the pages hash changes.
+     */
+    private function switchLanguage(string $lang, bool $rebuild = true): void
+    {
+        /** @var Language $language */
+        $language = $this->grav['language'];
+
+        $language->setActive($lang);
+        $language->resetFallbackPageExtensions();
+
+        if ($rebuild) {
+            $this->enablePages(true);
+        }
+    }
+
+    /**
+     * Apply language from ?lang= query parameter or an explicit language code.
+     * Returns the previous active language so it can be restored.
+     */
+    private function applyLanguage(ServerRequestInterface $request, ?string $explicitLang = null): string|false
+    {
+        /** @var Language $language */
+        $language = $this->grav['language'];
+        $previousLang = $language->getActive() ?? false;
+
+        $lang = $explicitLang ?? ($request->getQueryParams()['lang'] ?? null);
+
+        if ($lang !== null && $language->enabled()) {
+            $this->validateLanguageCode($lang);
+
+            $changed = $language->getActive() !== $lang;
+
+            // Grav builds (and caches) the pages index for whichever language
+            // is active at init time; enablePages()/init() are then no-ops. If
+            // the index was already built for another language — or gets built
+            // later at the default — find()/save() resolve to the wrong
+            // translation file, so a PATCH/DELETE silently clobbers the default
+            // language and a GET returns the wrong content. Force a rebuild
+            // against the now-active language so route lookups target the
+            // requested translation. See getgrav/grav-plugin-api#6.
+            $this->switchLanguage($lang, $changed);
+        }
+
+        return $previousLang;
+    }
+
+    /**
+     * Restore the previously active language.
+     *
+     * The pages index is deliberately left as the endpoint built it (rebuilding
+     * it again would cost a full filesystem walk for nothing), but the
+     * extension-priority memo is dropped so anything later in the request
+     * resolves page files against the language that is actually active again.
+     */
+    private function restoreLanguage(string|false $previousLang): void
+    {
+        if ($previousLang === false) {
+            // No language was active before — nothing to restore
+            return;
+        }
+
+        $this->switchLanguage($previousLang, false);
+    }
+
+    /**
+     * Validate that a language code is configured in the site.
+     */
+    private function validateLanguageCode(mixed $lang): void
+    {
+        // Codes arrive straight from the body or query string, so a JSON number
+        // or a `lang[]=` array can land here. Reject those as a 422 instead of
+        // letting a string type hint turn them into a TypeError (500).
+        if (!is_string($lang) || $lang === '') {
+            throw new ValidationException('Language code must be a non-empty string.');
+        }
+
+        /** @var Language $language */
+        $language = $this->grav['language'];
+
+        if (!$language->enabled()) {
+            throw new ValidationException('Multi-language is not enabled on this site.');
+        }
+
+        if (!$language->validate($lang)) {
+            $supported = implode(', ', $language->getLanguages());
+            throw new ValidationException("Invalid language code '{$lang}'. Supported languages: {$supported}");
+        }
+    }
+
+    /**
+     * Check if multi-language is enabled.
+     */
+    private function isMultiLangEnabled(): bool
+    {
+        /** @var Language $language */
+        $language = $this->grav['language'];
+        return $language->enabled();
+    }
+
+    /**
+     * Build the page filename with optional language extension.
+     * e.g., "default.md" or "default.fr.md".
+     *
+     * Templates may be namespaced with a directory prefix (e.g. modular
+     * templates come back from Grav core as `modular/hero`). Only the basename
+     * is used for the on-disk filename — the directory prefix is purely for
+     * template lookup. Without this, a modular sub-page would write a file at
+     * `<folder>/modular/hero.md` rather than the expected `<folder>/hero.md`.
+     */
+    private function buildPageFilename(string $template, ?string $lang): string
+    {
+        $base = basename($template);
+
+        if ($lang === null || !$this->isMultiLangEnabled()) {
+            return $base . '.md';
+        }
+
+        /** @var Language $language */
+        $language = $this->grav['language'];
+
+        // For the default language, use plain .md (Grav convention)
+        // unless include_default_lang is configured
+        $default = $language->getDefault();
+        $includeDefault = $this->grav['config']->get('system.languages.include_default_lang_file_extension', true);
+
+        if ($lang === $default && !$includeDefault) {
+            return $base . '.md';
+        }
+
+        return $base . '.' . $lang . '.md';
+    }
+
+    /**
+     * Delete only a specific language file for a page, preserving other translations.
+     */
+    private function deleteLanguageFile(PageInterface $page, string $lang, bool $includeChildren = true): void
+    {
+        $this->validateLanguageCode($lang);
+
+        $translated = $page->translatedLanguages();
+        if (!isset($translated[$lang])) {
+            throw new NotFoundException("No translation found for language '{$lang}' at route: {$page->route()}");
+        }
+
+        // If this is the only translation, delete the entire page directory.
+        // That removes the children too, so honour ?children=false exactly
+        // like a plain delete does instead of wiping the subtree regardless.
+        if (count($translated) <= 1) {
+            if (!$includeChildren && $page->children()->count() > 0) {
+                throw new ValidationException(
+                    'This page has children. Use ?children=true to confirm deletion of the page and all its children.'
+                );
+            }
+            Folder::delete($page->path());
+            return;
+        }
+
+        // Find and delete the specific language file. It is named after the
+        // page's file type: a module's template() is `modular/<name>` and a
+        // `template` header names no file, but the file is `<name>.<lang>.md`.
+        $template = PageTemplate::fileType($page);
+        $pagePath = $page->path();
+
+        /** @var Language $language */
+        $language = $this->grav['language'];
+        $default = $language->getDefault();
+
+        // Try language-specific filename first, then plain .md for default lang
+        $candidates = [
+            $pagePath . '/' . $template . '.' . $lang . '.md',
+        ];
+
+        if ($lang === $default) {
+            $candidates[] = $pagePath . '/' . $template . '.md';
+        }
+
+        foreach ($candidates as $filePath) {
+            if (file_exists($filePath)) {
+                unlink($filePath);
+                return;
+            }
+        }
+
+        throw new NotFoundException("Could not locate the language file for '{$lang}' at route: {$page->route()}");
+    }
+
+    /**
+     * Convert a page header into a plain array.
+     *
+     * Flex pages (Grav's default since 1.7) return a Header/Data object from
+     * header(), not a stdClass. Casting that object with (array) leaks its
+     * protected properties as NUL-prefixed keys ("\0*\0items",
+     * "\0*\0nestedSeparator"), which then get merged back in and persisted into
+     * the frontmatter — corrupting the file a little more on every save (see
+     * grav-plugin-admin2#31, triggered by Expert-mode frontmatter edits).
+     *
+     * Going through JSON invokes the object's jsonSerialize() and yields the
+     * clean field keys, matching how PageSerializer reads headers. Legacy pages
+     * (stdClass header) and already-plain arrays round-trip cleanly too.
+     *
+     * @param object|array|null $header
+     * @return array
+     */
+    private function headerToArray($header): array
+    {
+        if ($header === null) {
+            return [];
+        }
+        if (is_array($header)) {
+            return $header;
+        }
+        return json_decode(json_encode($header), true) ?: [];
+    }
+
+    /**
+     * Validate the submitted page fields against the page blueprint.
+     *
+     * Page blueprints name their fields `header.*` (plus `content`, `slug`,
+     * `folder`), so we re-key the incoming body into that shape and let
+     * validateChangedFields() flatten + check only what was submitted. A flat
+     * `title` in the body maps to `header.title`.
+     *
+     * @param object $page  The page being saved (legacy Page or Flex PageObject).
+     * @param array  $body  The request body / built create payload.
+     */
+    private function validatePageChanges(object $page, array $body, ?string $template = null): void
+    {
+        if (!method_exists($page, 'getBlueprint')) {
+            return;
+        }
+
+        // A page built in memory from a filePath alone (create/translate) has no
+        // folder or language context, so its template is the bare filename
+        // (`features.pt-br`). That matches no blueprint, and Page::blueprints()
+        // falls back to `default`, whose single-line `subtitle` text field rejects
+        // a multi-paragraph subtitle. The caller knows the real template
+        // (`modular/features`), so resolve the blueprint from that.
+        $blueprint = $template !== null && $template !== ''
+            ? $this->grav['pages']->blueprints($template)
+            : $page->getBlueprint();
+
+        $changes = [];
+        if (array_key_exists('header', $body) && is_array($body['header'])) {
+            $changes['header'] = $body['header'];
+        }
+        if (array_key_exists('title', $body)) {
+            $changes['header']['title'] = $body['title'];
+        }
+        if (array_key_exists('content', $body)) {
+            $changes['content'] = $body['content'];
+        }
+
+        $this->validateChangedFields($changes, $blueprint);
+
+        // Render-time XSS backstop for assembled content Twig. The core save path
+        // (PageObject::onBeforeSave) enforces this unconditionally; surfacing it
+        // here as a field-level error lets admin-next report it cleanly instead of
+        // a bare save exception. (GHSA-2c4f-86xc-cr74)
+        if (array_key_exists('content', $changes) && $page instanceof PageInterface) {
+            $found = Security::detectXssInEditorContent((string) $changes['content'], $page);
+            if ($found !== null) {
+                throw new ValidationException(
+                    'The submitted data did not pass blueprint validation.',
+                    [[
+                        'field' => 'content',
+                        'message' => sprintf('Page content resolves to disallowed markup (%s) after Twig processing.', $found),
+                    ]]
+                );
+            }
+        }
+    }
+
+    /**
+     * Recursively strip null values from an array.
+     * Used to remove header fields that were toggled off (sent as null).
+     */
+    private function stripNullValues(array $data): array
+    {
+        foreach ($data as $key => $value) {
+            if ($value === null) {
+                unset($data[$key]);
+            } elseif (is_array($value)) {
+                $data[$key] = $this->stripNullValues($value);
+                // Remove empty arrays left after stripping
+                if (empty($data[$key])) {
+                    unset($data[$key]);
+                }
+            }
+        }
+        return $data;
+    }
+
+    /**
+     * Whether the caller may read this page on its own route, the same check
+     * show() runs. Used to filter nested children.
+     */
+    private function canReadPage(ServerRequestInterface $request, PageInterface $page): bool
+    {
+        try {
+            $this->authorizePageAction($request, $page, 'read', self::PERMISSION_READ);
+            return true;
+        } catch (ForbiddenException) {
+            return false;
+        }
+    }
+
+    /**
+     * Refuse a folder-level operation (delete, copy) when any page below this
+     * one denies the action. The parent was already authorized, but the
+     * operation takes the whole subtree with it, so a child's own rule would
+     * otherwise be skipped (#47).
+     */
+    private function assertDescendantsNotDenied(ServerRequestInterface $request, PageInterface $page, string ...$actions): void
+    {
+        foreach ($page->children() as $child) {
+            try {
+                $this->assertPageNotDenied($request, $child, ...$actions);
+            } catch (ForbiddenException) {
+                throw new ForbiddenException(
+                    "Page permissions deny '{$actions[0]}' on {$child->rawRoute()}, which is inside this page."
+                );
+            }
+            $this->assertDescendantsNotDenied($request, $child, ...$actions);
+        }
+    }
+
+    /**
+     * The header a page saved by a demo account is written with.
+     *
+     * A public demo that lets visitors edit pages lets them put anything on
+     * those pages, so a demo account never saves a page that would run Twig,
+     * whether its own header asks for it or the site runs Twig in every page
+     * or in frontmatter. With `plugins.api.demo.escape_html` on (the default)
+     * the page renders its raw HTML as text, which needs Markdown processing,
+     * so a page that turns Markdown off is refused too. Markdown, code blocks
+     * and images work as before. Only pages a demo account saves are
+     * affected, and the next reset puts the owner's own header back.
+     *
+     * @param array<mixed> $header
+     * @return array<mixed>
+     */
+    private function demoSafeHeader(ServerRequestInterface $request, array $header): array
+    {
+        if (!$this->isDemoUser($request)) {
+            return $header;
+        }
+
+        $process = is_array($header['process'] ?? null) ? $header['process'] : [];
+        $gate = (bool) $this->config->get('security.twig_content.process_enabled', false);
+        $defaults = (array) $this->config->get('system.pages.process', []);
+        $defaults = method_exists(Security::class, 'applyTwigContentDefault')
+            ? Security::applyTwigContentDefault($defaults)
+            : $defaults + ['twig' => $gate];
+        $twig = (bool) ($process['twig'] ?? $defaults['twig'] ?? $gate);
+
+        // Without the gate Grav renders no editor-authored Twig, so only a page
+        // asking for it outright is refused there.
+        if ((bool) ($process['twig'] ?? false) || ($gate && $twig)) {
+            throw new DemoModeException('Pages that run Twig cannot be saved in this demo.');
+        }
+        if ($gate && $this->config->get('system.pages.frontmatter.process_twig') === true) {
+            throw new DemoModeException('This site runs Twig in page frontmatter, so pages cannot be saved in this demo.');
+        }
+
+        if ((bool) $this->config->get('plugins.api.demo.escape_html', true)) {
+            if (!(bool) ($process['markdown'] ?? $this->config->get('system.pages.process.markdown', true))) {
+                throw new DemoModeException('Pages that skip Markdown cannot be saved in this demo.');
+            }
+            $header['markdown'] = ['escape_markup' => true];
+        }
+
+        return $header;
+    }
+
+    /**
+     * Enforce the `security.twig_content.*` gate when a request touches a page
+     * with `process: { twig: true }` (either incoming, existing, or both).
+     *
+     * Three rejection cases:
+     *   - REASON_DISABLED       — site-wide gate is off; nobody can save twig:true.
+     *   - REASON_PAGE_FORBIDDEN — page already has twig:true and the user can't edit it.
+     *   - REASON_FORBIDDEN      — user is trying to enable twig but lacks permission.
+     *
+     * The `admin.pages_twig` permission is deliberately named outside the
+     * `admin.pages` hierarchy so granting `admin.pages` does NOT implicitly
+     * grant twig-toggle (the Flex ACL walks parent prefixes).
+     */
+    private function guardTwigContent(ServerRequestInterface $request, ?PageInterface $existingPage, array $incomingHeader): void
+    {
+        $user = $this->getUser($request);
+        $existingTwig = false;
+        if ($existingPage !== null) {
+            $existingHeader = $this->headerToArray($existingPage->header());
+            $existingTwig = (bool) (($existingHeader['process']['twig'] ?? false));
+        }
+
+        $incomingTwig = null;
+        if (array_key_exists('process', $incomingHeader) && is_array($incomingHeader['process'])
+            && array_key_exists('twig', $incomingHeader['process'])) {
+            $incomingTwig = (bool) $incomingHeader['process']['twig'];
+        }
+
+        $touchesTwig = $existingTwig || $incomingTwig === true;
+        if (!$touchesTwig) {
+            return;
+        }
+
+        $config = $this->grav['config'];
+
+        if ((bool) $config->get('security.twig_content.process_enabled', false) === false) {
+            throw new TwigContentForbiddenException(TwigContentForbiddenException::REASON_DISABLED);
+        }
+
+        $editorEnabled = (bool) $config->get('security.twig_content.editor_enabled', false);
+        if ($editorEnabled) {
+            return;
+        }
+
+        // The scope cap runs here too: a key scoped to api.pages.write on a super
+        // account must also carry admin.pages_twig in its scopes, otherwise the
+        // bare isSuperAdmin() branch would re-grant a capability the key was scoped
+        // out of and let it enable Twig-in-content (GHSA-96xv-p87j-58mx).
+        // @scope-cap-exempt: the cap is the scopeAllows() conjunct on this same
+        // condition, so the super branch cannot be reached uncapped.
+        if ($this->scopeAllows($request, 'admin.pages_twig')
+            && ($this->isSuperAdmin($user) || $this->hasPermission($user, 'admin.pages_twig'))) {
+            return;
+        }
+
+        // Distinguish between "you can't edit this twig page" and "you can't
+        // enable twig" so the UI can render the right toast.
+        $reason = $existingTwig
+            ? TwigContentForbiddenException::REASON_PAGE_FORBIDDEN
+            : TwigContentForbiddenException::REASON_FORBIDDEN;
+        throw new TwigContentForbiddenException($reason);
+    }
+}

@@ -1,0 +1,798 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Grav\Plugin\Api\Auth;
+
+use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
+use Grav\Common\Config\Config;
+use Grav\Common\Grav;
+use Grav\Common\User\Interfaces\UserCollectionInterface;
+use Grav\Common\User\Interfaces\UserInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use RocketTheme\Toolbox\File\YamlFile;
+use Throwable;
+
+class JwtAuthenticator implements AuthenticatorInterface
+{
+    /**
+     * Path segments/suffixes on which the `?token=` URL fallback is honored.
+     * These are the only routes that stream a file body to a browser element
+     * that can't attach an auth header. See {@see isTokenQueryAllowed()}.
+     */
+    protected const TOKEN_QUERY_ROUTES = [
+        '/download',     // e.g. /system/backups/{filename}/download
+        '/thumbnails',   // e.g. /thumbnails/{file}
+        '/media/raw',    // e.g. /media/raw/{path}
+    ];
+
+    /**
+     * HMAC algorithms the signing/verification path supports. The signing key
+     * is a single shared secret (see {@see getSecret()}), so only the symmetric
+     * HS variants apply; the RS and ES families would need a key pair this
+     * plugin never provisions. Any other value (most notably the unsigned
+     * `none` algorithm)
+     * is rejected by {@see resolveAlgorithm()} and falls back to the default.
+     */
+    protected const ALLOWED_ALGORITHMS = ['HS256', 'HS384', 'HS512'];
+
+    /** Algorithm used when none is configured, or the configured one is unsupported. */
+    protected const DEFAULT_ALGORITHM = 'HS256';
+
+    /** @var string|null in-process cache for the JWT signing secret */
+    protected ?string $secret = null;
+
+    public function __construct(
+        protected readonly Grav $grav,
+        protected readonly Config $config,
+    ) {}
+
+    public function authenticate(ServerRequestInterface $request): ?UserInterface
+    {
+        $token = $this->extractBearerToken($request);
+        if (!$token) {
+            return null;
+        }
+
+        return $this->validateToken($token);
+    }
+
+    /**
+     * Generate an access token for a user.
+     */
+    public function generateAccessToken(UserInterface $user): string
+    {
+        $secret = $this->getSecret();
+        $algorithm = $this->resolveAlgorithm();
+        $expiry = (int) $this->config->get('plugins.api.auth.jwt_expiry', 3600);
+
+        $payload = [
+            'iss' => 'grav-api',
+            'sub' => $user->username,
+            'iat' => time(),
+            'exp' => time() + $expiry,
+            'type' => 'access',
+            // Like refresh tokens, access tokens carry a unique id so a single
+            // token can be killed via the revocation list (e.g. on logout) and
+            // so validateToken() can reject it before its natural expiry.
+            // GHSA-m8g9-wxhx-6f86.
+            'jti' => bin2hex(random_bytes(16)),
+        ];
+
+        return JWT::encode($payload, $secret, $algorithm);
+    }
+
+    /**
+     * Generate a refresh token for a user.
+     */
+    public function generateRefreshToken(UserInterface $user): string
+    {
+        $secret = $this->getSecret();
+        $algorithm = $this->resolveAlgorithm();
+        $expiry = (int) $this->config->get('plugins.api.auth.jwt_refresh_expiry', 604800);
+
+        $payload = [
+            'iss' => 'grav-api',
+            'sub' => $user->username,
+            'iat' => time(),
+            'exp' => time() + $expiry,
+            'type' => 'refresh',
+            'jti' => bin2hex(random_bytes(16)),
+        ];
+
+        return JWT::encode($payload, $secret, $algorithm);
+    }
+
+    /**
+     * Generate a short-lived, single-use challenge token for flows like 2FA
+     * verification or password reset handoff. The $purpose field is stored in
+     * the token's `type` claim and must match on validation.
+     */
+    public function generateChallengeToken(UserInterface $user, string $purpose, int $ttl = 300): string
+    {
+        $secret = $this->getSecret();
+        $algorithm = $this->resolveAlgorithm();
+
+        $payload = [
+            'iss' => 'grav-api',
+            'sub' => $user->username,
+            'iat' => time(),
+            'exp' => time() + $ttl,
+            'type' => $purpose,
+            'jti' => bin2hex(random_bytes(16)),
+        ];
+
+        return JWT::encode($payload, $secret, $algorithm);
+    }
+
+    /**
+     * Mint a short-lived, route-scoped token that authorizes rendering ONE
+     * unpublished page as a front-end preview (getgrav/grav-plugin-admin2#100).
+     *
+     * The admin preview points a plain browser navigation (iframe / new tab) at
+     * the real front-end URL, which can't attach an auth header and — by design
+     * (admin2#88/#79) — runs with the shared front-end session suppressed. So it
+     * carries no identity of its own. This signed token is that identity: only an
+     * authenticated caller with page-read permission can obtain one (see
+     * {@see \Grav\Plugin\Api\Controllers\PagesController::previewToken()}), it is
+     * pinned to a single page `route`, and it expires in minutes. On the front-end
+     * request the plugin validates it and force-publishes only that one route, so
+     * a leaked token unlocks nothing but its own already-authorized page.
+     */
+    public function generatePreviewToken(UserInterface $user, string $route, int $ttl = 300): string
+    {
+        $secret = $this->getSecret();
+        $algorithm = $this->resolveAlgorithm();
+
+        $payload = [
+            'iss' => 'grav-api',
+            'sub' => $user->username,
+            'iat' => time(),
+            'exp' => time() + $ttl,
+            'type' => 'preview',
+            // The page this token unlocks. Validation rejects the token for any
+            // other route, so it can never be replayed against a different draft.
+            'route' => $route,
+            'jti' => bin2hex(random_bytes(16)),
+        ];
+
+        return JWT::encode($payload, $secret, $algorithm);
+    }
+
+    /**
+     * Validate a preview token and return the single page route it authorizes,
+     * or null if the token is invalid. Valid means: the signature verifies, it is
+     * a non-expired `preview` token carrying a `route` claim, it has not been
+     * revoked, and the account it was minted for still exists and is enabled.
+     *
+     * Returning the route (rather than a bool) makes the token itself the sole
+     * source of truth for which page to unlock — the caller force-publishes
+     * exactly that route and nothing else, so there is no fragile matching of the
+     * request URL against a route claim. This runs on a session-less front-end
+     * request, so authorization rests entirely on the signature: the token is
+     * unforgeable without the per-site signing secret and was only ever issued to
+     * a caller who already had read access to this page.
+     */
+    public function validatePreviewToken(string $token): ?string
+    {
+        try {
+            $secret = $this->getSecret();
+            $algorithm = $this->resolveAlgorithm();
+
+            $decoded = JWT::decode($token, new Key($secret, $algorithm));
+
+            if (($decoded->type ?? null) !== 'preview') {
+                return null;
+            }
+
+            $route = $decoded->route ?? null;
+            if (!is_string($route) || $route === '') {
+                return null;
+            }
+
+            if ($this->isTokenRevoked($decoded->jti ?? '')) {
+                return null;
+            }
+
+            /** @var UserCollectionInterface $accounts */
+            $accounts = $this->grav['accounts'];
+            $user = $accounts->load($decoded->sub ?? '');
+
+            if (!$user->exists() || !$this->userTokenStillValid($user, $decoded)) {
+                return null;
+            }
+
+            return $route;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Validate a challenge token and return the associated user. The token must
+     * carry the expected purpose in its `type` claim and must not have been
+     * revoked. Returns null if invalid, expired, or revoked.
+     */
+    public function validateChallengeToken(string $token, string $expectedPurpose): ?UserInterface
+    {
+        try {
+            $secret = $this->getSecret();
+            $algorithm = $this->resolveAlgorithm();
+
+            $decoded = JWT::decode($token, new Key($secret, $algorithm));
+
+            if (($decoded->type ?? null) !== $expectedPurpose) {
+                return null;
+            }
+
+            if ($this->isTokenRevoked($decoded->jti ?? '')) {
+                return null;
+            }
+
+            /** @var UserCollectionInterface $accounts */
+            $accounts = $this->grav['accounts'];
+            $user = $accounts->load($decoded->sub);
+
+            return $user->exists() ? $user : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Validate a refresh token and return the associated user.
+     */
+    public function validateRefreshToken(string $token): ?UserInterface
+    {
+        try {
+            $secret = $this->getSecret();
+            $algorithm = $this->resolveAlgorithm();
+
+            $decoded = JWT::decode($token, new Key($secret, $algorithm));
+
+            if (($decoded->type ?? null) !== 'refresh') {
+                return null;
+            }
+
+            // Check if token has been revoked
+            if ($this->isTokenRevoked($decoded->jti ?? '')) {
+                return null;
+            }
+
+            /** @var UserCollectionInterface $accounts */
+            $accounts = $this->grav['accounts'];
+            $user = $accounts->load($decoded->sub);
+
+            // Same per-user kill switch as access tokens: a password change or
+            // account disable invalidates outstanding refresh tokens too, so a
+            // stolen refresh token can't be traded in for a fresh access token.
+            if (!$user->exists() || !$this->userTokenStillValid($user, $decoded)) {
+                return null;
+            }
+
+            return $user;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Revoke a refresh token by its JTI.
+     */
+    public function revokeToken(string $token): bool
+    {
+        try {
+            $secret = $this->getSecret();
+            $algorithm = $this->resolveAlgorithm();
+
+            $decoded = JWT::decode($token, new Key($secret, $algorithm));
+            $jti = $decoded->jti ?? null;
+
+            if (!$jti) {
+                return false;
+            }
+
+            $this->addRevokedToken($jti, $decoded->exp ?? time() + 604800);
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Revoke a single-use token (refresh or challenge) and report whether this
+     * call is the one that used it up.
+     *
+     * Validating a token and revoking it are two steps, so concurrent requests
+     * carrying the same token can all pass validation before any of them has
+     * written the revocation. The check here happens again under the
+     * revocation list's exclusive lock: exactly one caller adds the jti and
+     * gets true, every other caller sees it already listed and gets false.
+     * Callers must issue nothing unless this returns true.
+     */
+    public function consumeToken(string $token): bool
+    {
+        try {
+            $secret = $this->getSecret();
+            $algorithm = $this->resolveAlgorithm();
+
+            $decoded = JWT::decode($token, new Key($secret, $algorithm));
+            $jti = $decoded->jti ?? null;
+
+            if (!$jti) {
+                return false;
+            }
+
+            $file = $this->getRevokedTokensFile();
+            $dir = dirname($file);
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+
+            return $this->updateRevokedTokens($file, $jti, $decoded->exp ?? time() + 604800, true);
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Public accessor for the bearer token attached to a request, used by the
+     * logout flow to revoke the caller's current access token alongside its
+     * refresh token. Returns null when no usable token is present.
+     */
+    public function extractRequestToken(ServerRequestInterface $request): ?string
+    {
+        return $this->extractBearerToken($request);
+    }
+
+    protected function extractBearerToken(ServerRequestInterface $request): ?string
+    {
+        // Primary: `X-API-Token` custom header. Preferred because it survives
+        // FPM / FastCGI / CGI setups that silently strip the `Authorization`
+        // header (MAMP's mod_fastcgi being the common trigger). Accepts either
+        // a bare JWT or the traditional `Bearer <jwt>` form.
+        $custom = trim($request->getHeaderLine('X-API-Token'));
+        if ($custom !== '') {
+            return str_starts_with($custom, 'Bearer ') ? substr($custom, 7) : $custom;
+        }
+
+        // Legacy / standards-compliant: `Authorization: Bearer <jwt>`.
+        // Kept for external clients (curl, Postman, CI) and backward compat.
+        $header = $request->getHeaderLine('Authorization');
+        if (str_starts_with($header, 'Bearer ')) {
+            return substr($header, 7);
+        }
+
+        // Fallback: query parameter for direct links (e.g. file downloads
+        // where a browser `<a download>` / `<img src>` can't attach a header).
+        //
+        // A token in the URL leaks into access logs, the `Referer` header, and
+        // browser history, so we accept it only where a browser genuinely can't
+        // send a header: safe (GET/HEAD) requests to the handful of routes that
+        // actually stream a file. Every state-changing method and every JSON
+        // route ignores `?token=`, which keeps the access token out of URLs for
+        // the API surface that matters (`/me`, `/users`, `/config`, `/pages`, …)
+        // and removes the cross-origin account-takeover primitive. GHSA-hqm9-5xxw-4qxp.
+        $params = $request->getQueryParams();
+        if (!empty($params['token']) && $this->isTokenQueryAllowed($request)) {
+            return $params['token'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the `?token=` URL fallback may authenticate this request.
+     *
+     * Restricted to safe methods on file-streaming routes (backup downloads and
+     * thumbnails) — the only places a browser element can't attach an auth
+     * header. The match is on the request path suffix so it is independent of
+     * the install's base path and configured API route/version prefix.
+     */
+    protected function isTokenQueryAllowed(ServerRequestInterface $request): bool
+    {
+        if (!in_array(strtoupper($request->getMethod()), ['GET', 'HEAD'], true)) {
+            return false;
+        }
+
+        $path = rtrim($request->getUri()->getPath(), '/');
+        foreach (self::TOKEN_QUERY_ROUTES as $needle) {
+            if (str_ends_with($path, $needle) || str_contains($path . '/', $needle . '/')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function validateToken(string $token): ?UserInterface
+    {
+        try {
+            $secret = $this->getSecret();
+            $algorithm = $this->resolveAlgorithm();
+
+            $decoded = JWT::decode($token, new Key($secret, $algorithm));
+
+            // Only accept access tokens for API authentication
+            if (($decoded->type ?? null) !== 'access') {
+                return null;
+            }
+
+            // A logged-out (or otherwise revoked) access token is dead even
+            // before it expires. Tokens issued before this plugin added a `jti`
+            // have none, so `?? ''` simply means "nothing to revoke" and they
+            // keep working until they expire — the upgrade doesn't sign anyone
+            // out. GHSA-m8g9-wxhx-6f86.
+            if ($this->isTokenRevoked($decoded->jti ?? '')) {
+                return null;
+            }
+
+            /** @var UserCollectionInterface $accounts */
+            $accounts = $this->grav['accounts'];
+            $user = $accounts->load($decoded->sub);
+
+            if (!$user->exists() || !$this->userTokenStillValid($user, $decoded)) {
+                return null;
+            }
+
+            return $user;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether a decoded token still passes the per-user gates that live on the
+     * account rather than on the token: the account must not be disabled, and
+     * the token must have been issued after the user's invalidation cutoff.
+     *
+     * The cutoff (`api_tokens_valid_after`) is a single timestamp bumped on
+     * password change, account disable, or any "log out everywhere" action;
+     * every token minted before it is rejected at once, which is the kill
+     * switch a bearer JWT otherwise lacks. GHSA-m8g9-wxhx-6f86.
+     */
+    protected function userTokenStillValid(UserInterface $user, object $decoded): bool
+    {
+        if ($user->get('state', 'enabled') === 'disabled') {
+            return false;
+        }
+
+        $cutoff = (int) $user->get('api_tokens_valid_after', 0);
+        if ($cutoff > 0 && (int) ($decoded->iat ?? 0) < $cutoff) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * The configured JWT signing algorithm, constrained to {@see ALLOWED_ALGORITHMS}.
+     *
+     * `auth.jwt_algorithm` is a free-form config key, so an operator (or a
+     * config-write API call) can set it to an unsupported value such as the
+     * unsigned `none` algorithm. firebase/php-jwt already fails closed on `none`
+     * (it refuses to decode rather than accepting unsigned tokens), but a bad
+     * value would still silently break all token auth for the whole site. We
+     * coerce any unrecognised value back to the HS256 default so a config typo
+     * cannot brick authentication. (GHSA-rg95-28fh-8gj4 hardening.)
+     */
+    protected function resolveAlgorithm(): string
+    {
+        $algorithm = $this->config->get('plugins.api.auth.jwt_algorithm', self::DEFAULT_ALGORITHM);
+
+        if (is_string($algorithm) && in_array($algorithm, self::ALLOWED_ALGORITHMS, true)) {
+            return $algorithm;
+        }
+
+        return self::DEFAULT_ALGORITHM;
+    }
+
+    /**
+     * Per-site HMAC secret used to sign and verify every API JWT (access,
+     * refresh, and challenge tokens). Backed by a local PHP file outside the
+     * Config tree, so sandboxed Twig cannot read it via
+     * `grav.config.get('plugins.api.auth.jwt_secret')` or `Config::toArray()`.
+     * This mirrors how Grav core stores the security salt in
+     * `security-private.php` (GHSA-3f29-pqwf-v4j4). Storing it as executable PHP
+     * (rather than YAML) also means the secret is never emitted as plaintext if
+     * the file is ever served directly.
+     *
+     * Migration: if the legacy `auth.jwt_secret` key is present in the loaded
+     * Config (i.e. from an older install's `user/config/plugins/api.yaml`), its
+     * value is copied into the private file on first call and scrubbed from both
+     * the live Config and the on-disk YAML (GitHub #4150). Existing tokens keep
+     * validating because the secret value is preserved.
+     *
+     * To rotate the secret manually, delete `user/config/plugins/api-private.php`;
+     * the next request generates a fresh value, invalidating all outstanding
+     * access and refresh tokens.
+     */
+    protected function getSecret(): string
+    {
+        if ($this->secret !== null) {
+            return $this->secret;
+        }
+
+        $locator = $this->grav['locator'];
+        $configFolder = $locator->findResource('config://', true) ?: $locator->findResource('config://', true, true);
+        // One secret per site, in base user/config. `config://` resolves to the
+        // environment overlay first, so keeping it there gave every new
+        // user/env/<host>/ folder a fresh secret and signed everyone out.
+        $baseFolder = $locator->findResource('user://config', true) ?: $configFolder;
+        $privateFile = "{$baseFolder}/plugins/api-private.php";
+
+        $value = $this->readSecretFile($privateFile);
+        if ($value !== null) {
+            return $this->secret = $value;
+        }
+
+        // Earlier versions wrote the secret into the environment overlay when
+        // one existed. Move that copy to base so tokens it signed stay valid.
+        foreach ((array) $locator->findResources('config://', true) as $folder) {
+            if (realpath((string) $folder) === realpath((string) $baseFolder)) {
+                continue;
+            }
+            $copy = "{$folder}/plugins/api-private.php";
+            $value = $this->readSecretFile($copy);
+            if ($value !== null) {
+                if ($this->writeSecret($privateFile, $value)) {
+                    @unlink($copy);
+                }
+
+                return $this->secret = $value;
+            }
+        }
+
+        // One-time migration out of Config for installs that persisted the
+        // secret into plugins/api.yaml (GitHub #4150). Preserving the value
+        // keeps every previously issued token valid across the upgrade.
+        $legacy = $this->config->get('plugins.api.auth.jwt_secret');
+        if (is_string($legacy) && $legacy !== '') {
+            if ($this->writeSecret($privateFile, $legacy)) {
+                $this->config->set('plugins.api.auth.jwt_secret', null);
+
+                $apiYaml = "{$configFolder}/plugins/api.yaml";
+                if (is_file($apiYaml)) {
+                    $file = YamlFile::instance($apiYaml);
+                    $content = (array) $file->content();
+                    if (isset($content['auth']) && is_array($content['auth'])
+                        && array_key_exists('jwt_secret', $content['auth'])) {
+                        unset($content['auth']['jwt_secret']);
+                        if ($content['auth'] === []) {
+                            unset($content['auth']);
+                        }
+                        $file->content($content);
+                        $file->save();
+                    }
+                    $file->free();
+                }
+            }
+
+            return $this->secret = $legacy;
+        }
+
+        // Fresh install: generate and persist a new secret so subsequent
+        // requests can verify tokens signed with it. Without persistence every
+        // request re-mints a different secret, producing the classic "login
+        // succeeds, next request 401" reauth loop.
+        $generated = bin2hex(random_bytes(32));
+        if (!$this->writeSecret($privateFile, $generated) && isset($this->grav['log'])) {
+            $this->grav['log']->warning(sprintf(
+                'api.auth: could not persist JWT secret to %s — tokens will be valid for this request only until the file is writable.',
+                $privateFile
+            ));
+        }
+
+        return $this->secret = $generated;
+    }
+
+    /**
+     * Atomically write the signing secret to a PHP file that `return`s it as a
+     * string. Mirrors Grav core's Security::writeNonceKey(). Returns false on
+     * any I/O failure so the caller can degrade to a per-request secret rather
+     * than failing the login outright.
+     */
+    /**
+     * The secret a private file returns, or null when it is missing, corrupt
+     * or empty (which then counts as no secret and is regenerated).
+     */
+    protected function readSecretFile(string $path): ?string
+    {
+        if (!is_file($path)) {
+            return null;
+        }
+        $value = @include $path;
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    protected function writeSecret(string $path, string $value): bool
+    {
+        $escaped = var_export($value, true);
+        $contents = "<?php\n\n// Auto-generated private secret. Do NOT commit to version control.\n// Used to sign and verify API JWTs. Regenerate by deleting this file; the\n// next request will write a new value (invalidating all existing tokens).\n\nreturn {$escaped};\n";
+
+        $dir = dirname($path);
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            return false;
+        }
+
+        // Atomic write: stage to a temp file, then rename into place. The temp
+        // file is created under a 0077 umask so it is never readable by other
+        // users, not even between the write and the chmod() below.
+        $tmp = $path . '.tmp';
+        $umask = umask(0077);
+        try {
+            $written = @file_put_contents($tmp, $contents, LOCK_EX);
+        } finally {
+            umask($umask);
+        }
+        if ($written === false) {
+            return false;
+        }
+        @chmod($tmp, 0600);
+        if (!@rename($tmp, $path)) {
+            @unlink($tmp);
+            return false;
+        }
+
+        return true;
+    }
+
+    protected function isTokenRevoked(string $jti): bool
+    {
+        $file = $this->getRevokedTokensFile();
+        if (!is_file($file)) {
+            return false;
+        }
+
+        $revoked = $this->readRevokedTokens($file);
+        $now = time();
+
+        // Rewrite the list only when an entry has actually expired. Writing it
+        // back on every JWT request was a disk write per call, and the stale
+        // copy it wrote could land after a logout and quietly un-revoke that
+        // token. The prune re-reads the file under the lock, so it never
+        // writes back what this request read. Housekeeping only: a failed
+        // prune must not fail the validation.
+        foreach ($revoked as $exp) {
+            if ($exp <= $now) {
+                $this->updateRevokedTokens($file);
+                break;
+            }
+        }
+
+        return isset($revoked[$jti]) && $revoked[$jti] > $now;
+    }
+
+    protected function addRevokedToken(string $jti, int $expiresAt): void
+    {
+        $file = $this->getRevokedTokensFile();
+        $dir = dirname($file);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+
+        // Here the write *is* the revocation, so a failure has to be loud.
+        // revokeToken() catches this and reports false to the caller rather than
+        // claiming a token was revoked when it was not.
+        if (!$this->updateRevokedTokens($file, $jti, $expiresAt)) {
+            throw new \RuntimeException(sprintf('Unable to write revoked token list "%s"', $file));
+        }
+    }
+
+    /**
+     * Read the revocation list (jti => expiry timestamp) under a shared lock,
+     * so a reader never sees the file half-written by updateRevokedTokens().
+     *
+     * @return array<string, int>
+     */
+    protected function readRevokedTokens(string $file): array
+    {
+        $handle = @fopen($file, 'rb');
+        if ($handle === false) {
+            return [];
+        }
+
+        try {
+            @flock($handle, LOCK_SH);
+            $contents = stream_get_contents($handle);
+        } finally {
+            @flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+
+        return $this->decodeRevokedTokens(is_string($contents) ? $contents : '');
+    }
+
+    /**
+     * Read-modify-write the revocation list under an exclusive lock: re-read
+     * it, add `$jti` when one is given, drop expired entries, and write it back
+     * only if that changed anything.
+     *
+     * Reading inside the lock is the point. Two requests that each read the
+     * file and later write their own copy back lose whichever write lands
+     * first, and when that is a logout the token it revoked works again.
+     *
+     * Suppressed and returned rather than thrown, because the two callers need
+     * opposite handling: pruning on the read path is housekeeping and must never
+     * fail a request, while the write in addRevokedToken() *is* the revocation
+     * and losing it silently would leave a token the caller believes is dead
+     * still usable. An unsilenced warning here would fatal every JWT validation
+     * on a site whose cache directory has become unwritable (#30).
+     *
+     * With `$claim`, an unexpired entry for `$jti` already in the list makes
+     * this return false without writing: the token was used up by another
+     * request, see {@see consumeToken()}.
+     *
+     * @return bool Whether the list is now on disk as intended.
+     */
+    protected function updateRevokedTokens(string $file, ?string $jti = null, int $expiresAt = 0, bool $claim = false): bool
+    {
+        $handle = @fopen($file, 'c+b');
+        if ($handle === false) {
+            return false;
+        }
+
+        try {
+            @flock($handle, LOCK_EX);
+
+            $contents = stream_get_contents($handle);
+            $current = $this->decodeRevokedTokens(is_string($contents) ? $contents : '');
+
+            $now = time();
+            if ($claim && ($jti === null || $jti === '' || ($current[$jti] ?? 0) > $now)) {
+                return false;
+            }
+
+            $next = $current;
+            if ($jti !== null && $jti !== '') {
+                $next[$jti] = $expiresAt;
+            }
+            $next = array_filter($next, static fn ($exp) => $exp > $now);
+
+            if ($next === $current && $contents !== '') {
+                return true;
+            }
+
+            $json = json_encode($next === [] ? new \stdClass() : $next);
+            if ($json === false || !ftruncate($handle, 0) || !rewind($handle)) {
+                return false;
+            }
+            if (fwrite($handle, $json) !== strlen($json)) {
+                return false;
+            }
+
+            return fflush($handle);
+        } finally {
+            @flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function decodeRevokedTokens(string $contents): array
+    {
+        $decoded = $contents !== '' ? json_decode($contents, true) : null;
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        $revoked = [];
+        foreach ($decoded as $jti => $exp) {
+            if (is_numeric($exp)) {
+                $revoked[(string) $jti] = (int) $exp;
+            }
+        }
+
+        return $revoked;
+    }
+
+    protected function getRevokedTokensFile(): string
+    {
+        $locator = $this->grav['locator'];
+        return $locator->findResource('cache://api', true, true) . '/revoked_tokens.json';
+    }
+}

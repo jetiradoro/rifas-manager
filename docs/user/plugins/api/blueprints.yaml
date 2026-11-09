@@ -1,0 +1,815 @@
+name: API
+slug: api
+type: plugin
+version: 1.1.16
+description: RESTful API for Grav CMS. Provides headless access to pages, media, configuration, users, and system management.
+icon: plug
+author:
+  name: Team Grav
+  email: devs@getgrav.org
+  url: https://getgrav.org
+homepage: https://github.com/getgrav/grav-plugin-api
+keywords: api, rest, headless, json
+bugs: https://github.com/getgrav/grav-plugin-api/issues
+docs: https://learn.getgrav.org/api
+license: MIT
+compatibility:
+  grav: ["2.0"]
+
+dependencies:
+  - { name: grav, version: ">=2.1.5" }
+  - { name: login, version: ">=3.11.0" }
+
+form:
+  validation: loose
+  fields:
+    enabled:
+      type: toggle
+      label: PLUGIN_API.PLUGIN_STATUS
+      highlight: 1
+      default: 1
+      options:
+        1: PLUGIN_ADMIN.ENABLED
+        0: PLUGIN_ADMIN.DISABLED
+      validate:
+        type: bool
+
+    tabs:
+      type: tabs
+      classes: side-tabs
+      fields:
+        tab_general:
+          type: tab
+          title: PLUGIN_API.GENERAL
+          fields:
+            section_general:
+              type: section
+              title: PLUGIN_API.GENERAL_SETTINGS
+              underline: true
+
+            route:
+              type: text
+              label: PLUGIN_API.API_ROUTE
+              help: PLUGIN_API.API_ROUTE_HELP
+              default: /api
+              validate:
+                type: text
+
+            version_prefix:
+              type: text
+              label: PLUGIN_API.VERSION_PREFIX
+              help: PLUGIN_API.VERSION_PREFIX_HELP
+              default: v1
+              validate:
+                type: text
+
+            section_backend:
+              type: section
+              title: PLUGIN_API.BACKEND
+              underline: true
+
+            flex_backend.pages:
+              type: toggle
+              label: PLUGIN_API.FLEX_PAGES_BACKEND
+              help: PLUGIN_API.FLEX_PAGES_BACKEND_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            flex_backend.accounts:
+              type: toggle
+              label: PLUGIN_API.FLEX_ACCOUNTS_BACKEND
+              help: PLUGIN_API.FLEX_ACCOUNTS_BACKEND_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            force_cache:
+              type: toggle
+              label: PLUGIN_API.KEEP_CACHE_FOR_API_REQUESTS
+              help: PLUGIN_API.KEEP_CACHE_FOR_API_REQUESTS_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            compression:
+              type: select
+              label: PLUGIN_API.COMPRESSION
+              help: PLUGIN_API.COMPRESSION_HELP
+              default: auto
+              options:
+                auto: PLUGIN_API.COMPRESSION_AUTO
+                'off': PLUGIN_API.COMPRESSION_OFF
+              validate:
+                type: string
+
+        tab_authentication:
+          type: tab
+          title: PLUGIN_API.AUTHENTICATION
+          fields:
+            section_auth:
+              type: section
+              title: PLUGIN_API.AUTHENTICATION
+              underline: true
+
+            auth.api_keys_enabled:
+              type: toggle
+              label: PLUGIN_API.API_KEY_AUTHENTICATION
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            auth.jwt_enabled:
+              type: toggle
+              label: PLUGIN_API.JWT_AUTHENTICATION
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            auth.jwt_expiry:
+              type: text
+              label: PLUGIN_API.JWT_ACCESS_TOKEN_EXPIRY
+              help: PLUGIN_API.JWT_ACCESS_TOKEN_EXPIRY_HELP
+              default: 3600
+              validate:
+                type: int
+
+            auth.jwt_refresh_expiry:
+              type: text
+              label: PLUGIN_API.JWT_REFRESH_TOKEN_EXPIRY
+              help: PLUGIN_API.JWT_REFRESH_TOKEN_EXPIRY_HELP
+              default: 604800
+              validate:
+                type: int
+
+            auth.jwt_algorithm:
+              type: select
+              label: PLUGIN_API.JWT_SIGNING_ALGORITHM
+              help: PLUGIN_API.JWT_SIGNING_ALGORITHM_HELP
+              default: HS256
+              options:
+                HS256: "HS256"
+                HS384: "HS384"
+                HS512: "HS512"
+              validate:
+                type: string
+
+            auth.session_enabled:
+              type: toggle
+              label: PLUGIN_API.SESSION_AUTHENTICATION
+              help: PLUGIN_API.SESSION_AUTHENTICATION_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            auth.key_cache_ttl:
+              type: text
+              label: PLUGIN_API.API_KEY_VERIFICATION_CACHE
+              help: PLUGIN_API.API_KEY_VERIFICATION_CACHE_HELP
+              default: 600
+              validate:
+                type: int
+                min: 0
+
+            session_early_close:
+              type: toggle
+              label: PLUGIN_API.RELEASE_SESSION_LOCK_EARLY
+              help: PLUGIN_API.RELEASE_SESSION_LOCK_EARLY_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            protect_frontend_session:
+              type: toggle
+              label: PLUGIN_API.PROTECT_FRONTEND_SESSION
+              help: PLUGIN_API.PROTECT_FRONTEND_SESSION_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            translation_overrides:
+              type: toggle
+              label: PLUGIN_API.TRANSLATION_OVERRIDES
+              help: PLUGIN_API.TRANSLATION_OVERRIDES_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            allow_draft_preview:
+              type: toggle
+              label: PLUGIN_API.ALLOW_DRAFT_PREVIEW
+              help: PLUGIN_API.ALLOW_DRAFT_PREVIEW_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            section_login_screen:
+              type: section
+              title: PLUGIN_API.LOGIN_SCREEN
+              underline: true
+
+            login.show_password_form:
+              type: toggle
+              label: PLUGIN_API.SHOW_PASSWORD_FORM
+              help: PLUGIN_API.SHOW_PASSWORD_FORM_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            section_login_captcha:
+              type: section
+              title: PLUGIN_API.LOGIN_CAPTCHA
+              underline: true
+
+            login.captcha.enabled:
+              type: toggle
+              label: PLUGIN_API.LOGIN_CAPTCHA
+              help: PLUGIN_API.LOGIN_CAPTCHA_HELP
+              highlight: 0
+              default: 0
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            login.captcha.provider:
+              type: select
+              label: PLUGIN_API.CAPTCHA_PROVIDER
+              help: PLUGIN_API.CAPTCHA_PROVIDER_HELP
+              default: cap
+              options:
+                cap: "Cap (built-in, no keys)"
+                turnstile: "Cloudflare Turnstile (Form plugin)"
+                recaptcha: "Google reCAPTCHA (Form plugin)"
+              validate:
+                type: string
+
+            login.captcha.mode:
+              type: select
+              label: PLUGIN_API.CAPTCHA_MODE
+              help: PLUGIN_API.CAPTCHA_MODE_HELP
+              default: invisible
+              options:
+                invisible: PLUGIN_API.INVISIBLE
+                checkbox: PLUGIN_API.CHECKBOX
+              validate:
+                type: string
+
+            login.captcha.flows.login:
+              type: toggle
+              label: PLUGIN_API.GUARD_LOGIN
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            login.captcha.flows.forgot_password:
+              type: toggle
+              label: PLUGIN_API.GUARD_FORGOTTEN_PASSWORD
+              help: PLUGIN_API.GUARD_FORGOTTEN_PASSWORD_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            login.captcha.flows.setup:
+              type: toggle
+              label: PLUGIN_API.GUARD_FIRST_RUN_SETUP
+              help: PLUGIN_API.GUARD_FIRST_RUN_SETUP_HELP
+              highlight: 0
+              default: 0
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            login.captcha.cap.challenge_difficulty:
+              type: text
+              label: PLUGIN_API.CAP_DIFFICULTY
+              help: PLUGIN_API.CAP_DIFFICULTY_HELP
+              default: 4
+              validate:
+                type: int
+                min: 1
+                max: 8
+
+            login.captcha.cap.challenge_count:
+              type: text
+              label: PLUGIN_API.CAP_SUB_CHALLENGES
+              help: PLUGIN_API.CAP_SUB_CHALLENGES_HELP
+              default: 30
+              validate:
+                type: int
+                min: 1
+                max: 200
+
+        tab_cors:
+          type: tab
+          title: PLUGIN_API.CORS
+          fields:
+            section_cors:
+              type: section
+              title: PLUGIN_API.CORS_SETTINGS
+              underline: true
+
+            cors.enabled:
+              type: toggle
+              label: PLUGIN_API.ENABLE_CORS
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            cors.origins:
+              type: array
+              label: PLUGIN_API.ALLOWED_ORIGINS
+              help: PLUGIN_API.ALLOWED_ORIGINS_HELP
+              value_only: true
+
+            cors.methods:
+              type: selectize
+              label: PLUGIN_API.ALLOWED_METHODS
+              help: PLUGIN_API.ALLOWED_METHODS_HELP
+              default:
+                - GET
+                - POST
+                - PATCH
+                - DELETE
+                - OPTIONS
+              multiple: true
+              validate:
+                type: commalist
+
+            cors.headers:
+              type: array
+              label: PLUGIN_API.ALLOWED_HEADERS
+              default:
+                - Content-Type
+                - Authorization
+                - X-API-Key
+                - X-Grav-Environment
+                - If-Match
+                - If-None-Match
+              value_only: true
+
+        tab_rate_limiting:
+          type: tab
+          title: PLUGIN_API.RATE_LIMITING
+          fields:
+            section_rate_limit:
+              type: section
+              title: PLUGIN_API.RATE_LIMITING
+              underline: true
+
+            rate_limit.enabled:
+              type: toggle
+              label: PLUGIN_API.ENABLE_RATE_LIMITING
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            rate_limit.requests:
+              type: text
+              label: PLUGIN_API.REQUESTS_PER_WINDOW
+              help: PLUGIN_API.REQUESTS_PER_WINDOW_HELP
+              default: 120
+              validate:
+                type: int
+
+            rate_limit.window:
+              type: text
+              label: PLUGIN_API.TIME_WINDOW
+              help: PLUGIN_API.TIME_WINDOW_HELP
+              default: 60
+              validate:
+                type: int
+
+        tab_content:
+          type: tab
+          title: PLUGIN_API.CONTENT
+          fields:
+            section_media_metadata:
+              type: section
+              title: PLUGIN_API.MEDIA_METADATA
+              underline: true
+
+            media_metadata.max_length:
+              type: text
+              label: PLUGIN_API.MAXIMUM_VALUE_LENGTH
+              help: PLUGIN_API.MAXIMUM_VALUE_LENGTH_HELP
+              default: 2000
+              validate:
+                type: int
+                min: 1
+
+            media_metadata.fields:
+              type: list
+              label: PLUGIN_API.EDITABLE_METADATA_FIELDS
+              help: PLUGIN_API.EDITABLE_METADATA_FIELDS_HELP
+              fields:
+                .key:
+                  type: text
+                  label: PLUGIN_API.KEY
+                  help: PLUGIN_API.KEY_HELP
+                  validate:
+                    type: text
+                .label:
+                  type: text
+                  label: PLUGIN_API.LABEL
+                .type:
+                  type: select
+                  label: PLUGIN_API.FIELD_TYPE
+                  default: text
+                  options:
+                    text: PLUGIN_API.SINGLE_LINE
+                    textarea: PLUGIN_API.MULTI_LINE
+                    tags: PLUGIN_API.TAGS_LIST
+                    select: PLUGIN_API.SELECT_LIST
+                    number: PLUGIN_API.NUMBER
+                    date: PLUGIN_API.DATE
+                    boolean: PLUGIN_API.BOOLEAN
+                .options:
+                  type: array
+                  label: PLUGIN_API.SELECT_OPTIONS
+                  help: PLUGIN_API.SELECT_OPTIONS_HELP
+                  placeholder_key: PLUGIN_API.SELECT_OPTION_VALUE
+                  placeholder_value: PLUGIN_API.SELECT_OPTION_LABEL
+                .min:
+                  type: number
+                  label: PLUGIN_API.NUMBER_MIN
+                  help: PLUGIN_API.NUMBER_MIN_HELP
+                  step: any
+                .max:
+                  type: number
+                  label: PLUGIN_API.NUMBER_MAX
+                  help: PLUGIN_API.NUMBER_MAX_HELP
+                  step: any
+                .required:
+                  type: toggle
+                  label: PLUGIN_API.REQUIRED
+                  help: PLUGIN_API.REQUIRED_HELP
+                  highlight: 1
+                  default: 0
+                  options:
+                    1: PLUGIN_ADMIN.YES
+                    0: PLUGIN_ADMIN.NO
+                  validate:
+                    type: bool
+                .remove:
+                  type: toggle
+                  label: PLUGIN_API.HIDE_FIELD
+                  help: PLUGIN_API.HIDE_FIELD_HELP
+                  highlight: 0
+                  default: 0
+                  options:
+                    1: PLUGIN_ADMIN.YES
+                    0: PLUGIN_ADMIN.NO
+                  validate:
+                    type: bool
+
+            section_popularity:
+              type: section
+              title: PLUGIN_API.PAGE_STATISTICS
+              underline: true
+
+            popularity.enabled:
+              type: toggle
+              label: PLUGIN_API.TRACK_PAGE_VIEWS
+              help: PLUGIN_API.TRACK_PAGE_VIEWS_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            popularity.exclude_admin:
+              type: toggle
+              label: PLUGIN_API.EXCLUDE_LOGGED_IN_ADMINS
+              help: PLUGIN_API.EXCLUDE_LOGGED_IN_ADMINS_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            popularity.exclude_ips:
+              type: array
+              label: PLUGIN_API.EXCLUDED_IP_ADDRESSES
+              help: PLUGIN_API.EXCLUDED_IP_ADDRESSES_HELP
+              value_only: true
+
+            popularity.exclude_non_browsers:
+              type: toggle
+              label: PLUGIN_API.EXCLUDE_NON_BROWSER_CLIENTS
+              help: PLUGIN_API.EXCLUDE_NON_BROWSER_CLIENTS_HELP
+              highlight: 1
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            popularity.exclude_agents:
+              type: array
+              label: PLUGIN_API.EXCLUDED_USER_AGENTS
+              help: PLUGIN_API.EXCLUDED_USER_AGENTS_HELP
+              value_only: true
+
+        tab_audit_trail:
+          type: tab
+          title: PLUGIN_API.AUDIT_TRAIL
+          fields:
+            section_audit:
+              type: section
+              title: PLUGIN_API.AUDIT_TRAIL
+              underline: true
+
+            audit.enabled:
+              type: toggle
+              label: PLUGIN_API.ENABLE_AUDIT_TRAIL
+              help: PLUGIN_API.ENABLE_AUDIT_TRAIL_HELP
+              highlight: 0
+              default: 0
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            audit.coverage:
+              type: select
+              label: PLUGIN_API.DETAIL_LEVEL
+              help: PLUGIN_API.DETAIL_LEVEL_HELP
+              default: standard
+              options:
+                standard: PLUGIN_API.STANDARD_ACTIVITY_STREAM
+                detailed: PLUGIN_API.DETAILED_WITH_CHANGE_DIFFS
+
+            audit.retention_days:
+              type: text
+              label: PLUGIN_API.RETENTION_DAYS
+              help: PLUGIN_API.RETENTION_DAYS_HELP
+              default: 90
+              validate:
+                type: int
+                min: 0
+
+            audit.retention_max_rows:
+              type: text
+              label: PLUGIN_API.MAXIMUM_ENTRIES
+              help: PLUGIN_API.MAXIMUM_ENTRIES_HELP
+              default: 100000
+              validate:
+                type: int
+                min: 0
+
+            audit.anonymize_ip:
+              type: toggle
+              label: PLUGIN_API.ANONYMIZE_IP_ADDRESSES
+              help: PLUGIN_API.ANONYMIZE_IP_ADDRESSES_HELP
+              default: 0
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            audit.capture.auth:
+              type: toggle
+              label: PLUGIN_API.CAPTURE_AUTHENTICATION
+              help: PLUGIN_API.CAPTURE_AUTHENTICATION_HELP
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            audit.capture.content:
+              type: toggle
+              label: PLUGIN_API.CAPTURE_CONTENT_CHANGES
+              help: PLUGIN_API.CAPTURE_CONTENT_CHANGES_HELP
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            audit.capture.media:
+              type: toggle
+              label: PLUGIN_API.CAPTURE_MEDIA_CHANGES
+              help: PLUGIN_API.CAPTURE_MEDIA_CHANGES_HELP
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            audit.capture.users:
+              type: toggle
+              label: PLUGIN_API.CAPTURE_USER_GROUP_CHANGES
+              help: PLUGIN_API.CAPTURE_USER_GROUP_CHANGES_HELP
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            audit.capture.config:
+              type: toggle
+              label: PLUGIN_API.CAPTURE_CONFIGURATION_CHANGES
+              help: PLUGIN_API.CAPTURE_CONFIGURATION_CHANGES_HELP
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            audit.capture.packages:
+              type: toggle
+              label: PLUGIN_API.CAPTURE_PACKAGE_CHANGES
+              help: PLUGIN_API.CAPTURE_PACKAGE_CHANGES_HELP
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+        tab_demo_mode:
+          type: tab
+          title: PLUGIN_API.DEMO_MODE
+          fields:
+            section_demo:
+              type: section
+              title: PLUGIN_API.DEMO_MODE
+              underline: true
+
+            demo.notice:
+              type: display
+              markdown: true
+              content: PLUGIN_API.DEMO_NOTICE
+
+            demo.writable:
+              type: select
+              multiple: true
+              label: PLUGIN_API.WRITABLE_RESOURCES
+              help: PLUGIN_API.WRITABLE_RESOURCES_HELP
+              default: []
+              options:
+                api.pages.create: PLUGIN_API.DEMO_GRANT_PAGES_CREATE
+                api.pages.update: PLUGIN_API.DEMO_GRANT_PAGES_UPDATE
+                api.pages.delete: PLUGIN_API.DEMO_GRANT_PAGES_DELETE
+                api.media.upload: PLUGIN_API.DEMO_GRANT_MEDIA_UPLOAD
+                api.media.update: PLUGIN_API.DEMO_GRANT_MEDIA_UPDATE
+                api.media.delete: PLUGIN_API.DEMO_GRANT_MEDIA_DELETE
+                api.config.site: PLUGIN_API.DEMO_GRANT_CONFIG_SITE
+                api.config.plugins: PLUGIN_API.DEMO_GRANT_CONFIG_PLUGINS
+                api.config.themes: PLUGIN_API.DEMO_GRANT_CONFIG_THEMES
+                api.pages.write: PLUGIN_API.DEMO_GRANT_PAGES_ALL
+                api.media.write: PLUGIN_API.DEMO_GRANT_MEDIA_ALL
+                api.config.write: PLUGIN_API.DEMO_GRANT_CONFIG_ALL
+
+            demo.allow_routes:
+              type: array
+              label: PLUGIN_API.DEMO_ALLOW_ROUTES
+              help: PLUGIN_API.DEMO_ALLOW_ROUTES_HELP
+              placeholder_value: 'POST /courses/*'
+              value_only: true
+
+            demo.escape_html:
+              type: toggle
+              label: PLUGIN_API.DEMO_ESCAPE_HTML
+              help: PLUGIN_API.DEMO_ESCAPE_HTML_HELP
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            demo.include_code:
+              type: toggle
+              label: PLUGIN_API.DEMO_INCLUDE_CODE
+              help: PLUGIN_API.DEMO_INCLUDE_CODE_HELP
+              default: 0
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            demo.extra_roots:
+              type: array
+              label: PLUGIN_API.DEMO_EXTRA_ROOTS
+              help: PLUGIN_API.DEMO_EXTRA_ROOTS_HELP
+              placeholder_value: 'user://data'
+              value_only: true
+
+            demo.reset_interval:
+              type: text
+              label: PLUGIN_API.RESET_INTERVAL_MINUTES
+              help: PLUGIN_API.RESET_INTERVAL_MINUTES_HELP
+              default: 30
+              validate:
+                type: int
+                min: 1
+
+            demo.reset_on_request:
+              type: toggle
+              label: PLUGIN_API.RESET_ON_REQUEST
+              help: PLUGIN_API.RESET_ON_REQUEST_HELP
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            demo.reset_on_schedule:
+              type: toggle
+              label: PLUGIN_API.RESET_ON_SCHEDULE
+              help: PLUGIN_API.RESET_ON_SCHEDULE_HELP
+              default: 1
+              options:
+                1: PLUGIN_ADMIN.ENABLED
+                0: PLUGIN_ADMIN.DISABLED
+              validate:
+                type: bool
+
+            demo.keep_safety_snapshots:
+              type: text
+              label: PLUGIN_API.SAFETY_SNAPSHOTS_TO_RETAIN
+              help: PLUGIN_API.SAFETY_SNAPSHOTS_TO_RETAIN_HELP
+              default: 5
+              validate:
+                type: int
+                min: 0

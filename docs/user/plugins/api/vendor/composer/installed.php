@@ -1,0 +1,56 @@
+<?php return array(
+    'root' => array(
+        'name' => 'getgrav/grav-plugin-api',
+        'pretty_version' => 'dev-develop',
+        'version' => 'dev-develop',
+        'reference' => 'e387f0de718f06d210cbbebd11986c7878485b49',
+        'type' => 'grav-plugin',
+        'install_path' => __DIR__ . '/../../',
+        'aliases' => array(),
+        'dev' => false,
+    ),
+    'versions' => array(
+        'firebase/php-jwt' => array(
+            'pretty_version' => 'v7.0.5',
+            'version' => '7.0.5.0',
+            'reference' => '47ad26bab5e7c70ae8a6f08ed25ff83631121380',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../firebase/php-jwt',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'getgrav/grav-plugin-api' => array(
+            'pretty_version' => 'dev-develop',
+            'version' => 'dev-develop',
+            'reference' => 'e387f0de718f06d210cbbebd11986c7878485b49',
+            'type' => 'grav-plugin',
+            'install_path' => __DIR__ . '/../../',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'nikic/fast-route' => array(
+            'pretty_version' => 'v1.3.0',
+            'version' => '1.3.0.0',
+            'reference' => '181d480e08d9476e61381e04a71b34dc0432e812',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../nikic/fast-route',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'symfony/yaml' => array(
+            'dev_requirement' => false,
+            'replaced' => array(
+                0 => '*',
+            ),
+        ),
+        'trilbymedia/cap-php' => array(
+            'pretty_version' => '1.0.0',
+            'version' => '1.0.0.0',
+            'reference' => '88dbea9eeca2a73ba1576f60eaabd869396ad00d',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../trilbymedia/cap-php',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+    ),
+);

@@ -1,0 +1,818 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Grav\Plugin;
+
+use Grav\Common\Plugin;
+use Grav\Common\Uri;
+use Grav\Common\Utils;
+use Grav\Events\PermissionsRegisterEvent;
+use Grav\Framework\Acl\PermissionsReader;
+
+/**
+ * Admin2 — Modern administration panel for Grav CMS.
+ *
+ * Serves a pre-built SvelteKit SPA from the plugin's app/ directory.
+ * The SPA communicates with the Grav API plugin for all data operations.
+ *
+ * The SvelteKit build bakes a single placeholder (`__GRAV_ADMIN2_BASE__`)
+ * into index.html's entry-chunk preload links and into one runtime chunk
+ * as the fallback for `globalThis.__sveltekit_<nonce>?.base`. On every
+ * shell request, admin2.php substitutes that placeholder in the served
+ * HTML and injects a `<script>` that sets the runtime global with two
+ * separate per-site values:
+ *
+ *   - `base`   = the configured admin route (`/admin`) — used for in-app
+ *                navigation and history.
+ *   - `assets` = the same admin route — used for the SvelteKit version
+ *                poll, which we intercept here in PHP because Grav's stock
+ *                .htaccess blocks `user/*.json`.
+ *
+ * Every other byte (chunks, CSS, fonts, immutable assets) lives on disk
+ * under `user/plugins/admin2/app/_app/...` and is served directly by the
+ * webserver — no PHP, no materialization, no per-site copies. A single
+ * plugin install can be symlinked into many sites with different rootUrls
+ * or routes without them trampling each other.
+ */
+class Admin2Plugin extends Plugin
+{
+    /**
+     * Token that the SvelteKit build uses as its `kit.paths.base`. Defined
+     * in svelte.config.js — keep these in sync.
+     */
+    private const BASE_PLACEHOLDER = '/__GRAV_ADMIN2_BASE__';
+
+    /** @var bool Whether the current request is for the Admin2 route */
+    protected bool $isAdmin2Route = false;
+
+    /**
+     * The configured route, route-local (matches $uri->route() output).
+     * Example: '/admin2' or '/admin'.
+     */
+    protected string $base = '';
+
+    /** @var bool|null Per-request result of anyUsersExist() */
+    private ?bool $anyUsersExist = null;
+
+    /**
+     * The full URL path from the webserver root to the admin route — the
+     * Grav site's rootUrl plus $base. Used as both the in-app route base
+     * and the version-poll URL prefix in the injected runtime global.
+     * Example: '/admin' on a root-hosted site, '/grav-api/admin' when
+     * Grav is mounted at /grav-api/.
+     */
+    protected string $routeBase = '';
+
+    /**
+     * The full URL path from the webserver root to the on-disk bundle.
+     * Substituted into index.html so chunk preload links resolve to real
+     * files that the webserver can serve directly. Example:
+     * '/user/plugins/admin2/app' on root, '/grav-api/user/plugins/admin2/app'
+     * in a subfolder install.
+     */
+    protected string $assetsPath = '';
+
+    public static function getSubscribedEvents(): array
+    {
+        return [
+            'onPluginsInitialized' => [
+                ['setup', 100000],
+                ['onPluginsInitialized', 1001],
+            ],
+            'onApiBlueprintResolved' => ['onApiBlueprintResolved', 0],
+            PermissionsRegisterEvent::class => ['onRegisterPermissions', 1000],
+        ];
+    }
+
+    public function onRegisterPermissions(PermissionsRegisterEvent $event): void
+    {
+        $actions = PermissionsReader::fromYaml("plugin://{$this->name}/permissions.yaml");
+        $event->permissions->addActions($actions);
+    }
+
+    /**
+     * Inject admin-next-only fields into resolved blueprints.
+     *
+     * Currently used to add a `state` (account-enabled) toggle to the user
+     * account blueprint, which Grav core's `account.yaml` doesn't carry —
+     * admin-classic has no UI for the field either, so previously the only
+     * way to disable a user was to hand-edit YAML. The toggle is gated on
+     * `api.users.write`, since the underlying PATCH /users/{name} also
+     * rejects non-managers writing to `state` (see grav-plugin-api
+     * v1.0.0-beta.15).
+     */
+    public function onApiBlueprintResolved(\RocketTheme\Toolbox\Event\Event $event): void
+    {
+        if (($event['template'] ?? null) !== 'account') {
+            return;
+        }
+
+        $fields = $event['fields'];
+
+        // Core's account.yaml references admin-classic callables
+        // (\Grav\Plugin\Admin\Admin::adminLanguages and ::contentEditor)
+        // for the `language` and `content_editor` fields. On admin-next
+        // sites where admin-classic isn't installed, the API can't resolve
+        // these and emits `data_options` for the client, which then 404s
+        // against /data/resolve. Substitute admin-next-friendly options
+        // here so the form is usable without admin-classic present.
+        $fields = $this->rewriteAdminClassicDataOptions($fields);
+
+        $user = $event['user'] ?? null;
+        $isManager = $user ? (bool) (
+            $user->get('access.api.super')
+            ?? $user->get('access.admin.super')
+            ?? $user->get('access.api.users.write')
+        ) : false;
+
+        if ($isManager) {
+            // Note: injected fields bypass BlueprintController::serializeFields(),
+            // so emit the post-serialization shape — `options` as an ordered
+            // array of `{value, label}` objects rather than the YAML-blueprint
+            // map form. Client-side i18n picks up `ADMIN_NEXT.*` labels via the
+            // ICU.* dual-namespace lookup.
+            $stateField = [
+                'name'    => 'state',
+                'type'    => 'select',
+                'size'    => 'medium',
+                'classes' => 'fancy',
+                'label'   => 'ADMIN_NEXT.USERS.STATUS',
+                'help'    => 'ADMIN_NEXT.USERS.STATUS_HELP',
+                'default' => 'enabled',
+                'options' => [
+                    ['value' => 'enabled',  'label' => 'ADMIN_NEXT.ENABLED'],
+                    ['value' => 'disabled', 'label' => 'ADMIN_NEXT.DISABLED'],
+                ],
+            ];
+            $fields = $this->insertFieldAfter($fields, 'title', $stateField);
+        }
+
+        $event['fields'] = $fields;
+    }
+
+    /**
+     * Recursively replace the legacy admin-classic data-options@ stand-ins
+     * (which the API serializer left as `data_options` references because
+     * the Admin class isn't loadable here) with concrete option lists.
+     *
+     * @param array<int, array<string, mixed>> $fields
+     * @return array<int, array<string, mixed>>
+     */
+    private function rewriteAdminClassicDataOptions(array $fields): array
+    {
+        $out = [];
+        foreach ($fields as $field) {
+            if (isset($field['fields']) && is_array($field['fields'])) {
+                $field['fields'] = $this->rewriteAdminClassicDataOptions($field['fields']);
+            }
+            $directive = $field['data_options'] ?? null;
+            if (is_string($directive) && $directive !== '') {
+                $normalized = ltrim($directive, '\\');
+                if ($normalized === 'Grav\\Plugin\\Admin\\Admin::adminLanguages') {
+                    $field['options'] = $this->adminLanguageOptions();
+                    unset($field['data_options']);
+                } elseif ($normalized === 'Grav\\Plugin\\Admin\\Admin::contentEditor') {
+                    $field['options'] = $this->contentEditorOptions();
+                    unset($field['data_options']);
+                }
+            }
+            $out[] = $field;
+        }
+        return $out;
+    }
+
+    /**
+     * Stand-in for \Grav\Plugin\Admin\Admin::adminLanguages when
+     * admin-classic isn't installed. Admin-next currently only ships
+     * English UI strings, so that's the only honest choice we can offer.
+     *
+     * @return array<int, array{value: string, label: string}>
+     */
+    private function adminLanguageOptions(): array
+    {
+        return [
+            ['value' => 'en', 'label' => 'English'],
+        ];
+    }
+
+    /**
+     * Stand-in for \Grav\Plugin\Admin\Admin::contentEditor when
+     * admin-classic isn't installed. Mirrors the legacy default list and
+     * fires the same `onAdminListContentEditors` event so editor plugins
+     * (editor-pro etc.) can register themselves the way they always have.
+     *
+     * @return array<int, array{value: string, label: string}>
+     */
+    private function contentEditorOptions(): array
+    {
+        $options = [
+            'default'    => 'Default',
+            'codemirror' => 'CodeMirror',
+        ];
+        $event = new \RocketTheme\Toolbox\Event\Event(['options' => &$options]);
+        $this->grav->fireEvent('onAdminListContentEditors', $event);
+
+        $out = [];
+        foreach ($options as $value => $label) {
+            $out[] = [
+                'value' => (string) $value,
+                'label' => is_string($label) ? $label : (string) $value,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Insert a field directly after a named sibling. Recurses into
+     * container fields (`fields:` children) so the target is found
+     * regardless of nesting depth. Returns the original list unchanged
+     * if the anchor isn't present.
+     *
+     * @param array<int, array<string, mixed>> $fields
+     * @param array<string, mixed> $newField
+     * @return array<int, array<string, mixed>>
+     */
+    private function insertFieldAfter(array $fields, string $afterName, array $newField): array
+    {
+        $out = [];
+        foreach ($fields as $field) {
+            if (isset($field['fields']) && is_array($field['fields'])) {
+                $field['fields'] = $this->insertFieldAfter($field['fields'], $afterName, $newField);
+            }
+            $out[] = $field;
+            if (($field['name'] ?? '') === $afterName) {
+                $out[] = $newField;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Early setup — detect if the current request targets our route.
+     * Most chunk / CSS / font URLs the SPA emits point at the bundle on
+     * disk (`/user/plugins/admin2/app/...`) and never reach PHP. The only
+     * static asset the SPA hits via the admin route is `_app/version.json`,
+     * which we serve here because Grav's stock .htaccess blocks
+     * `user/*.json`.
+     */
+    public function setup(): void
+    {
+        // Admin2 is a web-only plugin; skip entirely in CLI. Otherwise the
+        // bootstrap hijack in onPluginsInitialized() can fire redirect('/admin')
+        // during console commands (e.g. the cache clear after `bin/gpm install`),
+        // which calls Grav::close() and aborts the command.
+        if (\PHP_SAPI === 'cli') {
+            return;
+        }
+
+        $route = $this->config->get('plugins.admin2.route');
+        if (!$route) {
+            return;
+        }
+
+        $this->base = '/' . trim($route, '/');
+
+        /** @var \Grav\Common\Uri $uri */
+        $uri = $this->grav['uri'];
+
+        // Full path from webserver root. rootUrl(false) returns the path-only
+        // portion of the Grav root (e.g. '/grav-api' or ''), never the host.
+        $rootPath = rtrim($uri->rootUrl(false), '/');
+        $this->routeBase = $rootPath . $this->base;
+
+        // Derive the bundle's on-disk URL from the plugin's filesystem path,
+        // not from a config knob: if a host relocates plugins (e.g. via a
+        // custom stream override) the URL stays consistent with the files
+        // Apache will actually be serving.
+        $this->assetsPath = Utils::url('plugins://' . $this->name . '/app')
+            ?: $rootPath . '/user/plugins/' . $this->name . '/app';
+
+        // Grav core strips known "page" extensions (html, json, xml, rss…)
+        // from $uri->route(), per system.pages.types. Reattach the
+        // extension *only* when it was actually stripped (route doesn't
+        // already end with it), so we recognize `_app/version.json` here.
+        $currentRoute = $uri->route();
+        $stripped = $uri->extension();
+        if ($stripped && !str_ends_with($currentRoute, '.' . $stripped)) {
+            $currentRoute .= '.' . $stripped;
+        }
+
+        if ($currentRoute === $this->base || str_starts_with($currentRoute, $this->base . '/')) {
+            $this->isAdmin2Route = true;
+
+            // version.json poll — serve from the plugin's app/ dir.
+            $subPath = substr($currentRoute, strlen($this->base));
+            if ($subPath === '/_app/version.json') {
+                $this->serveVersionJson();
+                // serveVersionJson exits
+            }
+        }
+    }
+
+    /**
+     * Serve the SPA's version.json file. The SvelteKit runtime polls this
+     * to detect when the bundle has been updated underneath the live SPA.
+     * We pipe it through PHP because Grav's stock .htaccess blocks direct
+     * access to `user/*.json`.
+     */
+    private function serveVersionJson(): void
+    {
+        $file = __DIR__ . '/app/_app/version.json';
+        if (!is_file($file)) {
+            http_response_code(404);
+            exit;
+        }
+
+        header('Content-Type: application/json');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        header('Content-Length: ' . filesize($file));
+        readfile($file);
+        exit;
+    }
+
+    /**
+     * If on our route (and not a static asset), register the hook to serve the SPA shell.
+     */
+    public function onPluginsInitialized(): void
+    {
+        // Bootstrap hijack — parity with admin-classic. If there are no user
+        // accounts, send any frontend page request to the admin2 route so the
+        // SPA's /auth/setup probe can take over and walk the visitor through
+        // first-user creation. Without this, a site with admin2 installed but
+        // no accounts would let the first random visitor who discovers the
+        // admin route create the super user.
+        //
+        // Skip the API plugin's own route prefix — otherwise we'd intercept the
+        // SPA's own /auth/setup probe and redirect it away.
+        //
+        // Pass the route-local base (e.g. '/admin') — Grav's redirect() prepends
+        // the site root itself. $this->routeBase already includes the root, so
+        // using it here would double-prefix on sites mounted in a subpath.
+        if (!$this->isAdmin2Route && $this->base && !$this->isApiRoute() && !$this->anyUsersExist()) {
+            $this->grav->redirect($this->base);
+        }
+
+        if (!$this->isAdmin2Route) {
+            return;
+        }
+
+        // Core collapses doubled slashes when it matches the route, so `//admin`
+        // lands here too, but the browser keeps the raw path. The SPA router then
+        // sees a path outside its base and reloads the page forever (#177). Send
+        // the browser to the clean URL instead.
+        $requested = (string) $this->grav['uri']->uri(false);
+        [$path, $query] = array_pad(explode('?', $requested, 2), 2, null);
+        if (str_contains($path, '//')) {
+            $this->grav->redirect(Uri::cleanPath($path) . ($query !== null ? '?' . $query : ''));
+        }
+
+        $this->enable([
+            'onPagesInitialized' => ['onPagesInitialized', 1000],
+        ]);
+    }
+
+    /**
+     * Whether the current request targets the API plugin's route prefix.
+     * The bootstrap hijack must not intercept these, or the SPA's own
+     * /auth/setup probe would be redirected away from the API it needs.
+     */
+    private function isApiRoute(): bool
+    {
+        $apiRoute = rtrim((string) $this->config->get('plugins.api.route', '/api'), '/');
+        if ($apiRoute === '') {
+            return false;
+        }
+        /** @var \Grav\Common\Uri $uri */
+        $uri = $this->grav['uri'];
+        $current = $uri->route();
+        return $current === $apiRoute || str_starts_with($current, $apiRoute . '/');
+    }
+
+    /**
+     * Check whether any user accounts exist. Mirrors Admin::doAnyUsersExist()
+     * from admin-classic but is self-contained so admin2 does not depend on
+     * admin-classic being installed.
+     *
+     * This runs on every frontend request, so it answers from the cheapest
+     * source that is certain. When Grav keeps accounts as top-level YAML files
+     * in account:// (regular accounts, or Flex accounts with file storage), one
+     * such file is enough to know the answer is true, without asking the
+     * accounts service to count everything. That matters when a plugin
+     * replaces the service with one that also counts accounts in a database.
+     * In every other case, including "no YAML file found", the answer comes
+     * from the accounts service exactly as before, so the fast path can only
+     * ever confirm accounts exist and never reports that none do.
+     */
+    private function anyUsersExist(): bool
+    {
+        return $this->anyUsersExist ??= $this->detectAnyUsers();
+    }
+
+    private function detectAnyUsers(): bool
+    {
+        $accountsDir = $this->grav['locator']->findResource('account://', true) ?: null;
+        if ($accountsDir !== null && !is_dir($accountsDir)) {
+            $accountsDir = null;
+        }
+
+        if ($accountsDir !== null && $this->accountsAreTopLevelYaml($accountsDir) && $this->hasTopLevelYaml($accountsDir)) {
+            return true;
+        }
+
+        // Count through the same account backend the Users page uses, so the
+        // check stays accurate across regular flat-file, Flex, and custom
+        // nested layouts. A raw glob of account://*.yaml only sees top-level
+        // flat files and misses nested accounts like user/accounts/<name>/user.yaml.
+        try {
+            $accounts = $this->grav['accounts'] ?? null;
+            if ($accounts) {
+                return $accounts->count() > 0;
+            }
+        } catch (\Throwable) {
+            // Fall through to the flat-file scan below if the accounts
+            // service is unavailable this early in the bootstrap.
+        }
+
+        return $accountsDir !== null && $this->hasTopLevelYaml($accountsDir);
+    }
+
+    /**
+     * Whether Grav's own account store counts every top-level *.yaml file in
+     * account:// as an account. True for regular accounts (DataUser counts
+     * exactly those files) and for Flex accounts whose storage is a Flex
+     * FileStorage rooted at account:// (it indexes every file in that folder).
+     * Folder storage (user/accounts/xx/<name>/user.yaml), custom storage
+     * classes, or a FileStorage pointed at another folder all return false,
+     * so those layouts always go through the accounts service.
+     */
+    private function accountsAreTopLevelYaml(string $accountsDir): bool
+    {
+        $type = \defined('GRAV_USER_INSTANCE')
+            ? \GRAV_USER_INSTANCE
+            : (string) $this->config->get('system.accounts.type', 'regular');
+        if (strtolower($type) !== 'flex') {
+            return true;
+        }
+
+        try {
+            $directory = $this->grav['flex']->getDirectory('user-accounts');
+            $storage = $directory?->getStorage();
+        } catch (\Throwable) {
+            return false;
+        }
+        if (!$storage instanceof \Grav\Framework\Flex\Storage\FileStorage) {
+            return false;
+        }
+
+        $folder = (string) $storage->getStoragePath();
+        if ($folder === '') {
+            return false;
+        }
+        if (!str_starts_with($folder, '/') && \defined('GRAV_ROOT')) {
+            $folder = \GRAV_ROOT . '/' . $folder;
+        }
+
+        $folder = realpath($folder);
+
+        return $folder !== false && $folder === realpath($accountsDir);
+    }
+
+    /**
+     * Whether account:// holds at least one *.yaml file, stopping at the
+     * first one found. Hidden files are skipped, as glob() and Flex do.
+     */
+    private function hasTopLevelYaml(string $accountsDir): bool
+    {
+        $handle = @opendir($accountsDir);
+        if ($handle === false) {
+            return false;
+        }
+
+        try {
+            while (($name = readdir($handle)) !== false) {
+                if ($name[0] !== '.' && str_ends_with($name, '.yaml') && is_file($accountsDir . '/' . $name)) {
+                    return true;
+                }
+            }
+        } finally {
+            closedir($handle);
+        }
+
+        return false;
+    }
+
+    /**
+     * Serve the SPA shell for all non-asset routes.
+     */
+    public function onPagesInitialized(): void
+    {
+        $this->serveSpaShell();
+    }
+
+    /**
+     * Serve the SPA index.html from the plugin's app/ directory with
+     * per-site URLs substituted into the chunk preload links and a
+     * runtime override for SvelteKit's `__sveltekit_<nonce>` global.
+     */
+    private function serveSpaShell(): void
+    {
+        $indexFile = __DIR__ . '/app/index.html';
+
+        if (!file_exists($indexFile)) {
+            header('HTTP/1.1 500 Internal Server Error');
+            echo 'Admin2: app not available. Run `npm run build:plugin` from grav-admin-next.';
+            exit;
+        }
+
+        $html = file_get_contents($indexFile);
+
+        // The build emits one placeholder used in two contexts:
+        //
+        //   1. URL prefixes for chunk preload links and dynamic imports —
+        //      these need to resolve to the real on-disk bundle location
+        //      so the webserver serves each file directly without PHP.
+        //   2. JS string literals inside the inline `__sveltekit_<nonce>`
+        //      initializer — these need to be the admin *route* (so the
+        //      SPA router stays mounted there, in-app navigation works,
+        //      and version polling hits our setup() PHP path).
+        //
+        // Pattern (1): every URL-context occurrence is followed by `/`
+        // (e.g. `/__GRAV_ADMIN2_BASE__/_app/...`). Pattern (2): the JS
+        // literal is closed by `"` (e.g. `"/__GRAV_ADMIN2_BASE__"`).
+        // Substitute each context with its correct value.
+        $html = str_replace(
+            ['"' . self::BASE_PLACEHOLDER . '"', self::BASE_PLACEHOLDER . '/'],
+            ['"' . $this->routeBase . '"', $this->assetsPath . '/'],
+            $html
+        );
+
+        // Inject our own per-site config that the SPA reads at boot.
+        $apiRoute = $this->config->get('plugins.api.route', '/api');
+        $apiVersion = $this->config->get('plugins.api.version_prefix', 'v1');
+
+        /** @var \Grav\Common\Uri $uri */
+        $uri = $this->grav['uri'];
+
+        // Path-only site root (e.g. '' or '/grav-api'), never the host. The SPA
+        // prefixes this onto every API/asset request, so a relative value keeps
+        // those requests same-origin with whatever host actually served this
+        // shell. Using the absolute rootUrl(true) instead would bake in the
+        // canonical host from system.custom_base_url: visiting the admin on an
+        // alternate host (e.g. www.example.com when the base is example.com)
+        // would then fire every request cross-origin, where the auth token and
+        // session cookie aren't sent — so login fails and even the pre-login
+        // translations never load, leaving raw keys like "subtitle" on screen
+        // (#56).
+        $serverUrl = rtrim($uri->rootUrl(false), '/');
+
+        // Boot-critical fields the SPA needs before login to render the sign-in
+        // screen and reach the auth API.
+        $config = [
+            'serverUrl' => $serverUrl,
+            'apiPrefix' => '/' . trim($apiRoute, '/') . '/' . trim($apiVersion, '/'),
+            'basePath' => $this->routeBase,
+            'admin' => [
+                'name' => $this->getBlueprint()->get('name'),
+            ],
+            // List only the pages each user can edit (plus the folders leading
+            // to them) on the Pages screen, in search and in recent pages
+            // (admin2#209). A listing preference, not access control: the API
+            // still decides what each user may read and change.
+            'pages' => [
+                'only_editable' => (bool) $this->config->get('plugins.admin2.pages.only_editable', false),
+            ],
+        ];
+
+        // Site branding + admin language, exposed pre-auth so the sign-in screen
+        // renders the configured logo, title and language on first visit (e.g. a
+        // fresh incognito window) instead of falling back to the stock Grav logo
+        // and English until the user logs in once. Unlike versions/environment,
+        // none of this is a security-relevant fingerprint — it's the same public
+        // branding the operator deliberately put on the login page.
+        $branding = $this->resolveBrandingForBoot();
+        if ($branding !== null) {
+            $config['branding'] = $branding['branding'];
+            $config['brandingUrls'] = $branding['brandingUrls'];
+            // The site's default look, so the sign-in screen and a first visit
+            // paint with the operator's accent, font and colour mode rather
+            // than the stock purple until the user has signed in once.
+            $config['appearance'] = $branding['appearance'];
+            if ($branding['language'] !== '') {
+                $config['language'] = $branding['language'];
+            }
+        }
+
+        // Exact Grav/Admin versions and the environment type are a free
+        // technology fingerprint for an unauthenticated visitor (it served on
+        // the pre-login shell and every admin subroute), letting an attacker
+        // pick version-specific exploits with no reconnaissance. Only expose
+        // them once the request is authenticated; the SPA reads these fields
+        // defensively and pulls authoritative values from the API after login.
+        // GHSA-pfjq-chp8-3vgh.
+        $user = $this->grav['user'] ?? null;
+        if ($user && $user->authenticated) {
+            $config['environment'] = $uri->environment();
+            $config['grav'] = ['version' => GRAV_VERSION];
+            $config['admin']['version'] = $this->getBlueprint()->get('version');
+        }
+
+        // JSON_HEX_TAG/JSON_HEX_AMP are what make this safe to drop inside a
+        // <script> block. An HTML parser does not understand JavaScript string
+        // context: a literal `</script>` anywhere in this JSON closes the block
+        // early and everything after it is parsed as page markup. Branding title
+        // and subtitle are operator-supplied free text, so without escaping the
+        // angle brackets a value of `</script><img src=x onerror=...>` breaks out
+        // and executes on the pre-auth login page.
+        //
+        // Escaping the TAGS rather than relying on JSON_UNESCAPED_SLASHES being
+        // absent is deliberate: the `\/` form only protects the closing tag by
+        // accident, so anyone re-adding JSON_UNESCAPED_SLASHES for URL
+        // readability would silently reopen the hole. Here the slashes stay
+        // readable and the brackets are neutralised directly, which is the part
+        // that actually matters. The escapes decode back to the identical string,
+        // so the SPA still sees exactly what the operator typed.
+        $config = json_encode($config, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP);
+
+        // A fresh nonce on every inline and module script in the shell, so a
+        // Content-Security-Policy can allow exactly those (admin2#212). SvelteKit
+        // can't add one itself: its nonce mode doesn't work with the prerendered
+        // fallback page this bundle is. The nonce goes on even with the policy
+        // off; it changes nothing then. base64 only uses [A-Za-z0-9+/=], so it is
+        // safe in an attribute and a JS string as is.
+        $nonce = base64_encode(random_bytes(16));
+        $html = $this->addScriptNonces($html, $nonce);
+
+        // `csp-nonce` is where Vite's preload helper looks for the nonce to put
+        // on the modulepreload links it adds. __GRAV_CSP_NONCE__ is for code
+        // that adds <script> elements (the login captcha, plugins).
+        $head = '<meta property="csp-nonce" nonce="' . $nonce . '">' . "\n    "
+            . '<script nonce="' . $nonce . '">window.__GRAV_CONFIG__ = ' . $config . ';'
+            . 'window.__GRAV_CSP_NONCE__ = "' . $nonce . '";</script>';
+        $html = str_replace('<head>', '<head>' . "\n    " . $head, $html);
+
+        header('Content-Type: text/html; charset=UTF-8');
+        if ($this->config->get('plugins.admin2.csp.enabled', false)) {
+            header('Content-Security-Policy: ' . $this->contentSecurityPolicy($nonce));
+            // A nonce must never be served twice, so keep the shell out of
+            // every cache (the session usually says so already).
+            header('Cache-Control: no-store, private');
+        }
+        echo $html;
+        exit;
+    }
+
+    /**
+     * Put `nonce="…"` on every `<script>` and `<link rel="modulepreload">` tag
+     * of the built shell. The modulepreload links need it too: under
+     * 'strict-dynamic' a preload the parser finds is only fetched with a nonce.
+     */
+    private function addScriptNonces(string $html, string $nonce): string
+    {
+        $attr = ' nonce="' . $nonce . '"';
+        $html = (string) preg_replace('/<script(?=[\s>])/i', '<script' . $attr, $html);
+
+        return (string) preg_replace('/<link(?=[^>]*\brel=["\']?modulepreload\b)/i', '<link' . $attr, $html);
+    }
+
+    /**
+     * The Content-Security-Policy for the shell when `csp.enabled` is on.
+     *
+     * The base policy covers what Admin2 itself loads:
+     *   - scripts: the nonce'd shell scripts and whatever they load
+     *     ('strict-dynamic'), which includes the bundle's chunks, plugin web
+     *     components imported from /api/v1/admin-next/modules/ and scripts a
+     *     plugin adds with document.createElement('script'). 'self' is only the
+     *     fallback for browsers without 'strict-dynamic'.
+     *   - styles: the bundle's CSS plus inline styles, which Svelte, Tailwind
+     *     transitions and plugin web components all use.
+     *   - images: the site itself, data: and blob: (previews before upload) and
+     *     any https: image, since page content shown in the editor can point
+     *     anywhere and theme screenshots come from getgrav.org.
+     *   - fonts: self-hosted, some inlined as data: URIs.
+     *   - connect: the API, which is always same-origin (serverUrl is a path).
+     *   - frames: the frontend preview, which is the site itself.
+     * The configured login captcha adds what it needs (Cap: a blob: worker and
+     * WebAssembly; Turnstile and reCAPTCHA: their frames). `csp.extra` adds
+     * anything else, such as a Mercure hub on another host for live editing.
+     */
+    private function contentSecurityPolicy(string $nonce): string
+    {
+        $directives = [
+            'default-src' => ["'self'"],
+            'script-src' => ["'self'", "'nonce-{$nonce}'", "'strict-dynamic'"],
+            'style-src' => ["'self'", "'unsafe-inline'"],
+            'img-src' => ["'self'", 'data:', 'blob:', 'https:'],
+            'font-src' => ["'self'", 'data:'],
+            'connect-src' => ["'self'"],
+            'media-src' => ["'self'", 'data:', 'blob:'],
+            'worker-src' => ["'self'"],
+            'frame-src' => ["'self'"],
+            'object-src' => ["'none'"],
+            'base-uri' => ["'self'"],
+            'form-action' => ["'self'"],
+            'frame-ancestors' => ["'self'"],
+        ];
+
+        if ($this->config->get('plugins.api.captcha.enabled', false)) {
+            switch ($this->config->get('plugins.api.captcha.provider', 'cap')) {
+                case 'cap':
+                    // The proof-of-work runs in a blob: worker on WebAssembly.
+                    $directives['worker-src'][] = 'blob:';
+                    $directives['script-src'][] = "'wasm-unsafe-eval'";
+                    break;
+                case 'turnstile':
+                    $directives['frame-src'][] = 'https://challenges.cloudflare.com';
+                    break;
+                case 'recaptcha':
+                    $directives['frame-src'][] = 'https://www.google.com/recaptcha/';
+                    $directives['frame-src'][] = 'https://recaptcha.google.com/recaptcha/';
+                    $directives['connect-src'][] = 'https://www.google.com/recaptcha/';
+                    break;
+            }
+        }
+
+        foreach ($this->parseExtraCsp((string) $this->config->get('plugins.admin2.csp.extra', '')) as $name => $sources) {
+            $directives[$name] = array_values(array_unique(array_merge($directives[$name] ?? [], $sources)));
+        }
+
+        $parts = [];
+        foreach ($directives as $name => $sources) {
+            $parts[] = trim($name . ' ' . implode(' ', $sources));
+        }
+
+        return implode('; ', $parts);
+    }
+
+    /**
+     * Parse `csp.extra`: one directive per line (or separated by `;`), each a
+     * directive name followed by the sources to add, e.g.
+     * `connect-src https://hub.example.com`. Sources are added to the base
+     * policy's own directive of that name, or make a new directive. Anything
+     * that could break out of the header (line breaks, commas, a malformed
+     * name) is dropped.
+     *
+     * @return array<string, list<string>>
+     */
+    private function parseExtraCsp(string $extra): array
+    {
+        $result = [];
+        foreach (preg_split('/[;\r\n]+/', $extra) ?: [] as $line) {
+            $tokens = preg_split('/\s+/', trim($line), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $name = strtolower((string) array_shift($tokens));
+            if ($name === '' || !preg_match('/^[a-z][a-z-]*$/', $name)) {
+                continue;
+            }
+            $sources = array_values(array_filter($tokens, static fn (string $t): bool => !preg_match('/[,\x00-\x1f\x7f]/', $t)));
+            $result[$name] = array_values(array_unique(array_merge($result[$name] ?? [], $sources)));
+        }
+
+        return $result;
+    }
+
+    /**
+     * Resolve site branding + admin language for the pre-auth boot config.
+     *
+     * Reuses the API plugin's PreferencesResolver so the shape and storage
+     * (user/config/admin-next.yaml) stay identical to the post-auth
+     * /admin-next/preferences payload. Best-effort: any failure (API plugin
+     * absent, config unreadable) returns null and the SPA falls back to its
+     * built-in defaults.
+     *
+     * @return array{branding: array<string, mixed>, appearance: array<string, mixed>, brandingUrls: array<string, string>, language: string}|null
+     */
+    private function resolveBrandingForBoot(): ?array
+    {
+        $resolverClass = \Grav\Plugin\Api\Services\PreferencesResolver::class;
+        if (!class_exists($resolverClass)) {
+            return null;
+        }
+
+        try {
+            $resolver = new $resolverClass($this->grav);
+            $branding = $resolver->siteBranding();
+            $sitePrefs = $resolver->sitePreferences();
+            $language = is_string($sitePrefs['adminLanguage'] ?? null) ? $sitePrefs['adminLanguage'] : '';
+            $appearance = [];
+            foreach (['colorMode', 'accentHue', 'accentSaturation', 'darkShade', 'fontFamily', 'fontSize', 'helpMode'] as $key) {
+                if (array_key_exists($key, $sitePrefs)) {
+                    $appearance[$key] = $sitePrefs[$key];
+                }
+            }
+
+            return [
+                'branding' => $branding,
+                'appearance' => $appearance,
+                'brandingUrls' => [
+                    'light' => $resolver->brandingMediaUrl((string) ($branding['logoLight'] ?? '')),
+                    'dark' => $resolver->brandingMediaUrl((string) ($branding['logoDark'] ?? '')),
+                    'favicon' => $resolver->brandingMediaUrl((string) ($branding['favicon'] ?? '')),
+                ],
+                'language' => $language,
+            ];
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+}

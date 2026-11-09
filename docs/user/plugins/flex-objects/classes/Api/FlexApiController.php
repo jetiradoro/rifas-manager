@@ -1,0 +1,1473 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Grav\Plugin\FlexObjects\Api;
+
+use Grav\Common\Page\Media;
+use Grav\Common\User\Interfaces\UserInterface;
+use Grav\Common\Utils;
+use Grav\Framework\Flex\FlexDirectory;
+use Grav\Framework\Flex\Interfaces\FlexCollectionInterface;
+use Grav\Framework\Flex\Interfaces\FlexObjectInterface;
+use Grav\Plugin\Api\Controllers\AbstractApiController;
+use Grav\Plugin\Api\Controllers\HandlesMediaUploads;
+use Grav\Plugin\Api\Controllers\TranslatesAdminLabels;
+use Grav\Plugin\Api\Exceptions\NotFoundException;
+use Grav\Plugin\Api\Exceptions\ValidationException;
+use Grav\Plugin\Api\Response\ApiResponse;
+use Grav\Plugin\FlexObjects\Flex;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+
+class FlexApiController extends AbstractApiController
+{
+    use HandlesMediaUploads;
+    use TranslatesAdminLabels;
+
+    /**
+     * Admin-config keys whose string values are user-facing labels and should
+     * be translated against the signed-in user's admin language. Everything
+     * else (Twig templates in `value`, formatters, field `type`, etc.) is left
+     * untouched, matching how blueprint serialization only translates labels.
+     */
+    private const TRANSLATABLE_LABEL_KEYS = ['label', 'title', 'text', 'help', 'placeholder', 'description'];
+
+    /**
+     * Flex types with dedicated Admin Next pages. They can still expose
+     * metadata to those pages, but they do not have the generic Flex edit route.
+     */
+    private const ADMIN_NEXT_DEDICATED_TYPES = ['pages', 'user-accounts', 'user-groups'];
+
+    /**
+     * User/group directories must NOT be written through the generic Flex route.
+     * That route authorizes only against the directory blueprint permission
+     * (e.g. admin.users.update) and skips the super-admin-target and per-field
+     * (password/access/state/groups) guards the dedicated Users and Groups API
+     * controllers enforce — so a delegated user-manager could otherwise reset a
+     * super-admin's password or elevate an account to super (GHSA-pc8m-jxvh-vmrc).
+     * Admin Next edits these types through their dedicated endpoints, not this
+     * route, so refusing generic writes here changes no legitimate flow.
+     */
+    private const DEDICATED_WRITE_ONLY_TYPES = ['user-accounts', 'user-groups'];
+
+    /**
+     * Pages are not served by the generic Flex object routes at all. Those
+     * routes authorize against the directory blueprint permission only
+     * (`admin.pages.<action>`), so they skip what the Pages API applies to every
+     * page: the `api.pages.*` permissions and the page's own `permissions`
+     * frontmatter. Admin Next reads and writes pages through `/pages`, so
+     * refusing them here changes no flow of its own. Directory metadata and the
+     * blueprint stay available.
+     */
+    private const DEDICATED_ONLY_TYPES = ['pages'];
+
+    /**
+     * Recursively translate language-key-looking label values within an admin
+     * config subtree. {@see translateLabel()} is a no-op for anything that
+     * isn't a translation key, so non-label strings pass through unchanged.
+     *
+     * @param array<mixed> $node
+     * @return array<mixed>
+     */
+    private function translateConfigLabels(array $node): array
+    {
+        foreach ($node as $key => $value) {
+            if (is_array($value)) {
+                $node[$key] = $this->translateConfigLabels($value);
+            } elseif (is_string($value) && in_array($key, self::TRANSLATABLE_LABEL_KEYS, true)) {
+                $node[$key] = $this->translateLabel($value);
+            }
+        }
+
+        return $node;
+    }
+
+    /**
+     * Flatten a blueprint field's `options` into a translated value→label map
+     * the frontend can use to render select/checkbox/radio list cells as their
+     * configured labels instead of raw stored keys.
+     *
+     * Only static option arrays are handled. Dynamic options (`data-options@`
+     * callables) and non-scalar shapes return null, so the frontend falls back
+     * to showing the raw value rather than a wrong label.
+     *
+     * @param mixed $options
+     * @return array<string, string>|null
+     */
+    private function normalizeOptionLabels($options): ?array
+    {
+        if (!is_array($options) || $options === []) {
+            return null;
+        }
+
+        $map = [];
+        foreach ($options as $value => $label) {
+            // Reject grouped/nested option arrays — only flat maps are supported.
+            if (is_array($label)) {
+                return null;
+            }
+            $map[(string) $value] = $this->translateLabel((string) $label);
+        }
+
+        return $map;
+    }
+
+    /**
+     * GET /flex-objects/config
+     *
+     * Returns UI-relevant plugin configuration for admin-next. Never returns
+     * secrets or backend-only data. The flex directories list is exposed
+     * separately via GET /flex-objects so callers that just need config stay
+     * lightweight.
+     */
+    public function config(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $cfg = $this->config->get('plugins.flex-objects', []);
+
+        return ApiResponse::create([
+            'enabled'      => (bool) ($cfg['enabled'] ?? true),
+            'built_in_css' => (bool) ($cfg['built_in_css'] ?? true),
+            'security'     => [
+                'restrict_page_frontmatter' => (bool) ($cfg['security']['restrict_page_frontmatter'] ?? true),
+            ],
+            'admin_list'   => [
+                'per_page' => (int) ($cfg['admin_list']['per_page'] ?? 15),
+                'order'    => [
+                    'by'  => (string) ($cfg['admin_list']['order']['by'] ?? 'updated_timestamp'),
+                    'dir' => (string) ($cfg['admin_list']['order']['dir'] ?? 'desc'),
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * GET /flex-objects — List all enabled flex directories with their admin config.
+     */
+    public function directories(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $flex = $this->getFlex();
+        $user = $this->getUser($request);
+        $result = [];
+
+        // Resolve the signed-in user's admin language once so the directory
+        // labels below come back localized instead of as raw PLUGIN_* keys
+        // (matching how the blueprint endpoints translate their labels).
+        $this->primeAdminLanguages($request);
+
+        foreach ($flex->getDirectories() as $directory) {
+            if (!$directory->isEnabled()) {
+                continue;
+            }
+
+            if (in_array($directory->getFlexType(), self::ADMIN_NEXT_DEDICATED_TYPES, true)) {
+                continue;
+            }
+
+            $config = $directory->getConfig('admin');
+            if (empty($config) || !empty($config['disabled'])) {
+                continue;
+            }
+
+            // Skip directories the user cannot list
+            if (!$this->isDirectoryAuthorized($directory, 'list', $user, $request)) {
+                continue;
+            }
+
+            $result[] = $this->serializeDirectoryMetadata($directory, $user, $request);
+        }
+
+        return ApiResponse::create($result);
+    }
+
+    /**
+     * GET /flex-objects/{type}/metadata — Get one directory's Admin Next metadata.
+     *
+     * Unlike GET /flex-objects this endpoint also serves built-in directories
+     * such as user-accounts, so dedicated Admin Next pages can opt into the
+     * Flex list/detail configuration without exposing duplicate Flex sidebar
+     * entries.
+     */
+    public function metadata(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $directory = $this->resolveDirectory($this->getRouteParam($request, 'type'));
+        $user = $this->getUser($request);
+
+        if (!$this->isDirectoryAuthorized($directory, 'list', $user, $request)) {
+            throw new \Grav\Plugin\Api\Exceptions\ForbiddenException('Missing required permission to list this Flex directory.');
+        }
+
+        $this->primeAdminLanguages($request);
+
+        return ApiResponse::create($this->serializeDirectoryMetadata($directory, $user, $request));
+    }
+
+    /**
+     * GET /flex-objects/blueprints — List every available flex directory blueprint.
+     *
+     * Powers the `directories` field on the flex-objects plugin settings page:
+     * one toggle per available blueprint, value is the array of enabled
+     * blueprint URLs. Includes hidden + currently-disabled blueprints because
+     * they're the things the admin is choosing to enable. The legacy URL
+     * (pre-rc.4 alias) is included so the field can match saved values that
+     * still reference the old form.
+     */
+    public function blueprints(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+        $this->primeAdminLanguages($request);
+
+        $flex = $this->getFlex();
+        $newToOld = Flex::getLegacyBlueprintMap(false); // [newUrl => oldUrl]
+
+        $items = [];
+        foreach ($flex->getBlueprints() as $directory) {
+            $url = $directory->getBlueprintFile();
+            $items[] = [
+                'url'         => $url,
+                'legacy_url'  => $newToOld[$url] ?? null,
+                'type'        => $directory->getFlexType(),
+                'title'       => $this->translateLabel($directory->getTitle()),
+                'description' => $this->translateLabel($directory->getDescription() ?? ''),
+            ];
+        }
+
+        return ApiResponse::create($items);
+    }
+
+    /**
+     * GET /flex-objects/{type} — List objects with pagination, search, sort.
+     */
+    public function index(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = $this->getRouteParam($request, 'type');
+        $directory = $this->resolveDirectory($type);
+        $this->requireFlexPermission($request, $directory, 'list');
+
+        // Per-directory list defaults (admin.list.options). Explicit client
+        // query params always win; these only fill the gaps so non-Admin2 API
+        // consumers get the same initial page size and ordering Admin2 shows.
+        $listOptions = $directory->getConfig('admin.list.options') ?? [];
+
+        $query = $request->getQueryParams();
+        $defaultPerPage = isset($listOptions['per_page']) ? (int) $listOptions['per_page'] : null;
+        $pagination = $this->getPagination($request, $defaultPerPage);
+
+        $search = $query['search'] ?? null;
+        $sortField = $query['sort'] ?? null;
+        $sortOrder = strtolower($query['order'] ?? '');
+        if ($sortField === null && !empty($listOptions['order']['by'])) {
+            $sortField = (string) $listOptions['order']['by'];
+            $sortOrder = $sortOrder !== '' ? $sortOrder : strtolower((string) ($listOptions['order']['dir'] ?? 'asc'));
+        }
+        if (!in_array($sortOrder, ['asc', 'desc'], true)) {
+            $sortOrder = 'asc';
+        }
+
+        $collection = $directory->getCollection();
+        $filters = $this->parseFilters($query['filters'] ?? []);
+
+        if ($filters) {
+            $collection = $this->applyFilters($collection, $filters);
+        }
+
+        // Apply search
+        if ($search && $search !== '') {
+            $collection = $collection->search($search);
+        }
+
+        // Apply sort
+        if ($sortField) {
+            $collection = $collection->sort([$sortField => $sortOrder]);
+        }
+
+        $total = $collection->count();
+
+        // Slice for pagination
+        $objects = $collection->slice($pagination['offset'], $pagination['limit']);
+
+        // Get list field names from config
+        $listFields = array_keys($directory->getConfig('admin.list.fields') ?? []);
+        $detail = $this->normalizeDetailConfig($directory, $directory->getConfig('admin.list.detail'), $this->getUser($request), $request);
+
+        $data = [];
+        foreach ($objects as $object) {
+            $data[] = $this->serializeForList($object, $listFields, $detail);
+        }
+
+        return ApiResponse::paginated(
+            data: $data,
+            total: $total,
+            page: $pagination['page'],
+            perPage: $pagination['per_page'],
+            baseUrl: $this->getApiBaseUrl() . '/flex-objects/' . $type,
+        );
+    }
+
+    /**
+     * GET /flex-objects/{type}/{key} — Get a single object.
+     */
+    public function show(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = $this->getRouteParam($request, 'type');
+        $directory = $this->resolveDirectory($type);
+        $this->requireFlexPermission($request, $directory, 'read');
+
+        $key = $this->getRouteParam($request, 'key');
+        $object = $directory->getObject($key);
+
+        if (!$object) {
+            throw new NotFoundException("Object '{$key}' not found in '{$type}'.");
+        }
+
+        return $this->respondWithEtag($this->serializeObject($object));
+    }
+
+    /**
+     * POST /flex-objects/{type} — Create a new object.
+     */
+    public function create(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = $this->getRouteParam($request, 'type');
+        $directory = $this->resolveDirectory($type);
+        $this->assertGenericWriteAllowed($directory);
+        $this->requireFlexPermission($request, $directory, 'create');
+
+        $body = $this->getRequestBody($request);
+
+        try {
+            $object = $this->createObjectFromRequest($directory, $body);
+            $object->save();
+        } catch (\Exception $e) {
+            throw new \Grav\Plugin\Api\Exceptions\ValidationException(
+                'Failed to create object: ' . $e->getMessage(),
+            );
+        }
+
+        $this->fireAdminEvent('onAdminAfterSave', ['object' => $object]);
+
+        $key = $object->getKey();
+
+        return ApiResponse::created(
+            data: $this->serializeObject($object),
+            location: $this->getApiBaseUrl() . '/flex-objects/' . $type . '/' . $key,
+            headers: $this->invalidationHeaders([
+                'flex-objects:' . $type . ':list',
+            ]),
+        );
+    }
+
+    /**
+     * Build a new object from submitted data, validated against the directory's blueprint.
+     *
+     * The data describes the new object and nothing else: the storage metadata (`__META`) and the storage key
+     * and timestamp are not the client's to choose, or the object could be stored under, and replace, another one.
+     *
+     * @param FlexDirectory $directory
+     * @param array<string, mixed> $data
+     * @return FlexObjectInterface
+     */
+    private function createObjectFromRequest(FlexDirectory $directory, array $data): FlexObjectInterface
+    {
+        unset($data['__META'], $data['__meta'], $data['storage_key'], $data['storage_timestamp']);
+
+        return $directory->createObject($data, '', true);
+    }
+
+    /**
+     * PATCH /flex-objects/{type}/{key} — Update an existing object.
+     */
+    public function update(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = $this->getRouteParam($request, 'type');
+        $directory = $this->resolveDirectory($type);
+        $this->assertGenericWriteAllowed($directory);
+        $this->requireFlexPermission($request, $directory, 'update');
+
+        $key = $this->getRouteParam($request, 'key');
+        $object = $directory->getObject($key);
+
+        if (!$object) {
+            throw new NotFoundException("Object '{$key}' not found in '{$type}'.");
+        }
+
+        // ETag validation
+        $currentEtag = $this->generateEtag($this->serializeObject($object));
+        $this->validateEtag($request, $currentEtag);
+
+        $body = $this->getRequestBody($request);
+        unset($body['__meta']);
+
+        try {
+            // Diff the incoming media-field values against what's stored so core
+            // physically unlinks any file the user removed. Without the second
+            // $files argument, update() only rewrites the field property and
+            // leaves the file orphaned on disk — admin-next has no form-flash
+            // delete queue like classic admin's FlexForm::submit().
+            $removedFiles = $this->collectRemovedMediaFiles($object, $body);
+            $object->update($body, $removedFiles);
+            $object->save();
+        } catch (\Exception $e) {
+            throw new \Grav\Plugin\Api\Exceptions\ValidationException(
+                'Failed to update object: ' . $e->getMessage(),
+            );
+        }
+
+        $this->fireAdminEvent('onAdminAfterSave', ['object' => $object]);
+
+        return $this->respondWithEtag(
+            $this->serializeObject($object),
+            200,
+            ['flex-objects:' . $type . ':list', 'flex-objects:' . $type . ':update:' . $key],
+        );
+    }
+
+    /**
+     * DELETE /flex-objects/{type}/{key} — Delete an object.
+     */
+    public function delete(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = $this->getRouteParam($request, 'type');
+        $directory = $this->resolveDirectory($type);
+        $this->assertGenericWriteAllowed($directory);
+        $this->requireFlexPermission($request, $directory, 'delete');
+
+        $key = $this->getRouteParam($request, 'key');
+        $object = $directory->getObject($key);
+
+        if (!$object) {
+            throw new NotFoundException("Object '{$key}' not found in '{$type}'.");
+        }
+
+        $object->delete();
+
+        $this->fireAdminEvent('onAdminAfterDelete', ['object' => $object]);
+
+        return ApiResponse::noContent(
+            $this->invalidationHeaders([
+                'flex-objects:' . $type . ':list',
+                'flex-objects:' . $type . ':delete:' . $key,
+            ]),
+        );
+    }
+
+    /**
+     * GET /flex-objects/{type}/export — Export all objects as YAML.
+     */
+    public function export(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = $this->getRouteParam($request, 'type');
+        $directory = $this->resolveDirectory($type);
+
+        // Export returns every field of every object, which is read-grade data.
+        // `list` only covers the minimised column view index() serves, and the
+        // classic admin export controller gated on `read` for the same reason
+        // (GHSA-3v3h-qxj8-43p3).
+        $this->requireFlexPermission($request, $directory, 'read');
+
+        // Honour the directory's export switch. A directory that never opted in
+        // (user accounts, groups, pages) has no export feature to offer, and must
+        // not be dumped wholesale through this endpoint.
+        $exportConfig = $directory->getConfig('admin.export') ?? [];
+        if (empty($exportConfig['enabled'])) {
+            throw new NotFoundException("Export is not enabled for '{$type}'.");
+        }
+
+        $collection = $directory->getCollection();
+        $data = [];
+
+        foreach ($collection as $object) {
+            $data[$object->getKey()] = $object->jsonSerialize();
+        }
+
+        $yaml = \Grav\Common\Yaml::dump($data, 10, 2);
+        $filename = $type . '-' . date('Y-m-d') . '.yaml';
+
+        return new \Grav\Framework\Psr7\Response(
+            200,
+            [
+                'Content-Type' => 'application/x-yaml',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'Cache-Control' => 'no-store, max-age=0',
+            ],
+            $yaml,
+        );
+    }
+
+    /**
+     * GET /flex-objects/{type}/{key}/media — List media attached to an object.
+     *
+     * For folder-stored directories the media lives in the object's own
+     * storage folder (e.g. user-data://flex-objects/contacts/{id}), alongside
+     * the object's data file.
+     */
+    public function mediaList(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = $this->getRouteParam($request, 'type');
+        $directory = $this->resolveDirectory($type);
+        $this->requireFlexPermission($request, $directory, 'read');
+
+        $object = $this->resolveObject($directory, $request);
+        $folder = $this->resolveMediaFolder($object);
+
+        $serialized = $this->getSerializer()->serializeCollection($this->objectMediaItems($object, $folder));
+
+        return ApiResponse::create($serialized);
+    }
+
+    /**
+     * POST /flex-objects/{type}/{key}/media — Upload file(s) to an object.
+     */
+    public function mediaUpload(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = $this->getRouteParam($request, 'type');
+        $directory = $this->resolveDirectory($type);
+        $this->requireFlexPermission($request, $directory, 'update');
+
+        $object = $this->resolveObject($directory, $request);
+        $key = $object->getKey();
+        $folder = $this->resolveMediaFolder($object);
+
+        if (!is_dir($folder) && !mkdir($folder, 0775, true) && !is_dir($folder)) {
+            throw new ValidationException('Unable to create media directory for this object.');
+        }
+
+        $uploadedFiles = $this->flattenUploadedFiles($request->getUploadedFiles());
+        if ($uploadedFiles === []) {
+            throw new ValidationException('No files were uploaded.');
+        }
+
+        // Honor per-field upload settings (random_name, accept, ...) forwarded
+        // by the file field; absent, this is an inert no-op.
+        $settings = $this->parseUploadFieldSettings($request);
+
+        // The object's own data file lives in this folder, so an upload under
+        // that name would overwrite the object itself.
+        foreach ($uploadedFiles as $file) {
+            $name = basename((string)$file->getClientFilename());
+            if ($this->isObjectDataFile($object, $name)) {
+                throw new ValidationException("'{$name}' is reserved for the object's own data.");
+            }
+        }
+
+        $uploadedNames = [];
+        foreach ($uploadedFiles as $file) {
+            // Fire before event — plugins can throw to reject specific files
+            $this->fireEvent('onApiBeforeMediaUpload', [
+                'object' => $object,
+                'filename' => $file->getClientFilename(),
+                'type' => $file->getClientMediaType(),
+                'size' => $file->getSize(),
+            ]);
+
+            $uploadedNames[] = $this->processUploadedFile($file, $folder, $settings);
+        }
+
+        // Fresh Media object to pick up the newly uploaded files
+        $serialized = $this->getSerializer()->serializeCollection($this->objectMediaItems($object, $folder));
+
+        $this->fireAdminEvent('onAdminAfterAddMedia', ['object' => $object]);
+        $this->fireEvent('onApiMediaUploaded', [
+            'object' => $object,
+            'filenames' => $uploadedNames,
+        ]);
+
+        return ApiResponse::created(
+            data: $serialized,
+            location: $this->getApiBaseUrl() . '/flex-objects/' . $type . '/' . $key . '/media',
+            // Media-only channel: a media write doesn't change item.json, so it
+            // must not fire the object's `:update:` channel (the edit page reads
+            // that as an external modification). The list route's `:*` wildcard
+            // still catches this for directory badges.
+            headers: $this->invalidationHeaders([
+                'flex-objects:' . $type . ':media:' . $key,
+            ]),
+        );
+    }
+
+    /**
+     * DELETE /flex-objects/{type}/{key}/media/{filename} — Delete a media file.
+     */
+    public function mediaDelete(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = $this->getRouteParam($request, 'type');
+        $directory = $this->resolveDirectory($type);
+        $this->requireFlexPermission($request, $directory, 'update');
+
+        $object = $this->resolveObject($directory, $request);
+        $key = $object->getKey();
+        $folder = $this->resolveMediaFolder($object);
+        $filename = $this->getSafeFilename($request);
+
+        $filePath = $folder . '/' . $filename;
+        // The object's own data file is not media; deleting it would delete the object's data.
+        if (!file_exists($filePath) || $this->isObjectDataFile($object, $filename)) {
+            throw new NotFoundException("Media file '{$filename}' not found on this object.");
+        }
+
+        $this->fireEvent('onApiBeforeMediaDelete', ['object' => $object, 'filename' => $filename]);
+
+        unlink($filePath);
+
+        // Also remove any metadata sidecar (.meta.yaml) if it exists
+        $metaPath = $filePath . '.meta.yaml';
+        if (file_exists($metaPath)) {
+            unlink($metaPath);
+        }
+
+        $this->fireAdminEvent('onAdminAfterDelMedia', ['object' => $object, 'filename' => $filename]);
+        $this->fireEvent('onApiMediaDeleted', ['object' => $object, 'filename' => $filename]);
+
+        return ApiResponse::noContent(
+            // Media-only channel — see mediaUpload(): a media delete doesn't
+            // touch item.json, so it must not fire the object's `:update:`.
+            $this->invalidationHeaders([
+                'flex-objects:' . $type . ':media:' . $key,
+            ]),
+        );
+    }
+
+    /**
+     * Check if a user is authorized for an action on a Flex directory.
+     *
+     * Delegates to {@see DirectoryPermission} so this check stays in sync with
+     * the sidebar registration in flex-objects.php.
+     */
+    private function isDirectoryAuthorized(FlexDirectory $directory, string $action, UserInterface $user, ?ServerRequestInterface $request = null): bool
+    {
+        // API-key scope cap first, as requireFlexPermission() does. Without it a
+        // key scoped to one directory could list every other directory and read
+        // related records in a detail panel, because the super-admin
+        // short-circuit below reads the account behind the key.
+        if ($request !== null && !$this->flexScopeAllows($request, $directory, $action)) {
+            return false;
+        }
+
+        if ($this->isSuperAdmin($user)) {
+            return true;
+        }
+
+        return DirectoryPermission::isAuthorized($directory, $action, $user, $this->getPermissionResolver());
+    }
+
+    // ─── Helpers ───────────────────────────────────────────────
+
+    /**
+     * Resolve the {key} route param to an existing object or throw a 404.
+     */
+    private function resolveObject(FlexDirectory $directory, ServerRequestInterface $request): FlexObjectInterface
+    {
+        $key = $this->getRouteParam($request, 'key');
+        $object = $key !== null && $key !== '' ? $directory->getObject($key) : null;
+
+        if (!$object) {
+            $type = $directory->getFlexType();
+            throw new NotFoundException("Object '{$key}' not found in '{$type}'.");
+        }
+
+        return $object;
+    }
+
+    /**
+     * Resolve an object's media folder to an absolute, writable filesystem path.
+     *
+     * getMediaFolder() returns null for SimpleStorage directories (a single
+     * shared file, no per-object folder) and a GRAV_ROOT-relative or stream
+     * path for folder-stored ones. Normalize all cases to an absolute path.
+     */
+    private function resolveMediaFolder(FlexObjectInterface $object): string
+    {
+        $folder = method_exists($object, 'getMediaFolder') ? $object->getMediaFolder() : null;
+        if (!$folder) {
+            throw new ValidationException(
+                'This directory does not support per-object media. '
+                . 'Object media requires folder-based storage.',
+            );
+        }
+
+        /** @var \RocketTheme\Toolbox\ResourceLocator\UniformResourceLocator $locator */
+        $locator = $this->grav['locator'];
+        if ($locator->isStream($folder)) {
+            // Resolve to the absolute writable path, even if it doesn't exist yet
+            $resolved = $locator->findResource($folder, true, true);
+            if ($resolved) {
+                return $resolved;
+            }
+        }
+
+        // Already absolute? Use as-is. Otherwise treat as GRAV_ROOT-relative.
+        if (str_starts_with($folder, '/') || preg_match('#^[A-Za-z]:[\\\\/]#', $folder)) {
+            return $folder;
+        }
+
+        return rtrim(GRAV_ROOT, '/') . '/' . $folder;
+    }
+
+    /**
+     * Filename of the object's own data file (e.g. `item.json`), or null when the
+     * storage has no per-object file. Folder storage keeps it in the same folder
+     * as the object's media, so it has to be told apart from the media itself.
+     */
+    private function objectDataFile(FlexObjectInterface $object): ?string
+    {
+        $directory = method_exists($object, 'getFlexDirectory') ? $object->getFlexDirectory() : null;
+        $storage = $directory?->getStorage();
+        if (!is_object($storage) || !method_exists($storage, 'getPathFromKey')) {
+            return null;
+        }
+
+        $name = basename((string)$storage->getPathFromKey($object->getStorageKey()));
+
+        return $name !== '' ? $name : null;
+    }
+
+    private function isObjectDataFile(FlexObjectInterface $object, string $filename): bool
+    {
+        $dataFile = $this->objectDataFile($object);
+
+        return $dataFile !== null && strcasecmp($filename, $dataFile) === 0;
+    }
+
+    /**
+     * The media in an object's folder, minus the object's own data file. Core's
+     * Media class skips a page's `.md` the same way, but `json` is a media type,
+     * so `item.json` would otherwise be listed (and offered for deletion).
+     *
+     * @return array<string,mixed>
+     */
+    private function objectMediaItems(FlexObjectInterface $object, string $folder): array
+    {
+        $items = (new Media($folder))->all();
+
+        foreach (array_keys($items) as $name) {
+            if ($this->isObjectDataFile($object, (string)$name)) {
+                unset($items[$name]);
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * Build a core-compatible `$files` delete map for object-local media that an
+     * incoming update removes.
+     *
+     * Admin-next has no FormFlash queue, so a PATCH that drops a file from a
+     * `type: file` field only rewrites the field value — the physical file is
+     * never unlinked. This reproduces what classic admin's FlexForm::submit()
+     * did: diff each media field's stored value against the incoming body and
+     * hand core a `[$field => [$filename => null]]` map, which
+     * FlexObject::update() feeds to setUpdatedMedia()/saveUpdatedMedia() to
+     * delete the file when the object saves.
+     *
+     * Only self-owned (object folder) media is queued for deletion. A field
+     * with a shared destination (e.g. `media://`, `user://`) is dereferenced
+     * but left on disk, since the file may be used elsewhere.
+     *
+     * @param array<string,mixed> $body
+     * @return array<string,array<string,null>>
+     */
+    private function collectRemovedMediaFiles(FlexObjectInterface $object, array $body): array
+    {
+        if (!method_exists($object, 'getBlueprint') || !method_exists($object, 'getNestedProperty')) {
+            return [];
+        }
+
+        try {
+            $items = $object->getBlueprint()->schema()->getState()['items'] ?? [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        $files = [];
+        foreach ($items as $field => $settings) {
+            if (!is_array($settings)) {
+                continue;
+            }
+
+            $type = $settings['type'] ?? '';
+            $isMedia = in_array($type, ['avatar', 'file', 'pagemedia'], true)
+                || array_key_exists('destination', $settings);
+            if (!$isMedia) {
+                continue;
+            }
+
+            // Only physically delete object-local media. A shared destination
+            // is dereferenced but kept on disk (matches getFieldSettings()'s
+            // `self` resolution in core's FlexMediaTrait).
+            $destination = rtrim((string)($settings['destination'] ?? ''), '/');
+            if (!in_array($destination, ['', '@self', 'self@', '@self@'], true)) {
+                continue;
+            }
+
+            // Skip fields the client didn't send — a partial update must not
+            // read an absent field as "every file removed".
+            if (!$this->bodyHasField($body, (string)$field)) {
+                continue;
+            }
+
+            $stored = $this->mediaFileBasenames($object->getNestedProperty((string)$field));
+            $incoming = $this->mediaFileBasenames($this->bodyGetField($body, (string)$field));
+
+            foreach (array_keys(array_diff_key($stored, $incoming)) as $filename) {
+                $files[(string)$field][$filename] = null;
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * Normalize a file-field value (Grav's keyed `{ path: {name,...} }` format)
+     * to a set of bare filenames, keyed by basename for O(1) diffing. Keying on
+     * basename keeps the diff stable whether values are stored by full path or
+     * by bare filename.
+     *
+     * @param mixed $value
+     * @return array<string,true>
+     */
+    private function mediaFileBasenames($value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $names = [];
+        foreach ($value as $key => $info) {
+            if (is_array($info)) {
+                $name = $info['name'] ?? $info['path'] ?? (is_string($key) ? $key : '');
+            } else {
+                $name = is_string($key) ? $key : (string)$info;
+            }
+
+            $name = Utils::basename((string)$name);
+            if ($name !== '') {
+                $names[$name] = true;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * Read a dot-notation field from a nested body array. Returns null if any
+     * path segment is missing.
+     *
+     * @param array<string,mixed> $body
+     * @return mixed
+     */
+    private function bodyGetField(array $body, string $field)
+    {
+        $current = $body;
+        foreach (explode('.', $field) as $part) {
+            if (!is_array($current) || !array_key_exists($part, $current)) {
+                return null;
+            }
+            $current = $current[$part];
+        }
+
+        return $current;
+    }
+
+    /**
+     * Whether the incoming body explicitly carries a value for a dot-notation
+     * field (even if null/empty), so partial updates skip untouched fields.
+     *
+     * @param array<string,mixed> $body
+     */
+    private function bodyHasField(array $body, string $field): bool
+    {
+        $current = $body;
+        foreach (explode('.', $field) as $part) {
+            if (!is_array($current) || !array_key_exists($part, $current)) {
+                return false;
+            }
+            $current = $current[$part];
+        }
+
+        return true;
+    }
+
+    private function getFlex(): Flex
+    {
+        return $this->grav['flex_objects'];
+    }
+
+    private function resolveDirectory(?string $type): FlexDirectory
+    {
+        if (!$type) {
+            throw new NotFoundException('Flex directory type is required.');
+        }
+
+        $flex = $this->getFlex();
+        $directory = $flex->getDirectory($type);
+
+        if (!$directory || !$directory->isEnabled()) {
+            throw new NotFoundException("Flex directory '{$type}' not found or not enabled.");
+        }
+
+        return $directory;
+    }
+
+    /**
+     * Refuse a generic Flex write to a user/group directory. Those types carry
+     * privilege-bearing fields (password, access, state, groups) and have
+     * dedicated API controllers that gate them; the generic route does not.
+     * See DEDICATED_WRITE_ONLY_TYPES / GHSA-pc8m-jxvh-vmrc.
+     */
+    private function assertGenericWriteAllowed(FlexDirectory $directory): void
+    {
+        if (in_array($directory->getFlexType(), self::DEDICATED_WRITE_ONLY_TYPES, true)) {
+            throw new \Grav\Plugin\Api\Exceptions\ForbiddenException(
+                "The '{$directory->getFlexType()}' directory must be modified through its dedicated API endpoint.",
+            );
+        }
+    }
+
+    /**
+     * Refuse every generic Flex object route for a type that is served only by
+     * its dedicated API controller. See DEDICATED_ONLY_TYPES.
+     */
+    private function assertGenericRouteAllowed(FlexDirectory $directory): void
+    {
+        if (in_array($directory->getFlexType(), self::DEDICATED_ONLY_TYPES, true)) {
+            throw new \Grav\Plugin\Api\Exceptions\ForbiddenException(
+                "The '{$directory->getFlexType()}' directory is only available through its dedicated API endpoint.",
+            );
+        }
+    }
+
+    /**
+     * Check the directory-specific permission derived from the blueprint.
+     *
+     * Checks both api.* and admin.* prefixed permissions (OR logic) so users
+     * with either grant can access the flex directory via the API.
+     */
+    private function requireFlexPermission(
+        ServerRequestInterface $request,
+        FlexDirectory $directory,
+        string $action,
+    ): void {
+        // Every object, export and media route comes through here, so this is
+        // the one place a dedicated-only type is turned away, super included.
+        $this->assertGenericRouteAllowed($directory);
+
+        $user = $this->getUser($request);
+
+        // API-key scope cap (GHSA-x7hm). A key minted with a non-empty `scopes`
+        // list is capped to exactly those permissions regardless of the owning
+        // account's ACL. AbstractApiController::requirePermission() enforces this
+        // before its own super-admin short-circuit, but the Flex CRUD/media/export
+        // routes authorize against the directory blueprint instead of calling
+        // requirePermission(), so the cap must be applied here too — before the
+        // super-admin bypass below — or a narrowly-scoped key on a super account
+        // would reach every Flex directory.
+        $this->requireFlexScope($request, $directory, $action);
+
+        if ($this->isSuperAdmin($user)) {
+            return;
+        }
+
+        // Check API access
+        if (!$this->hasPermission($user, 'api.access')) {
+            throw new \Grav\Plugin\Api\Exceptions\ForbiddenException('API access is not enabled for this user.');
+        }
+
+        // Check directory-level permission from blueprint config.
+        // Blueprints may define both admin.* and api.* permissions — check all
+        // registered prefixes (OR: any matching permission grants access).
+        $permissions = $directory->getConfig('admin.permissions');
+        if (!$permissions) {
+            // No blueprint-defined permissions: defer to core's authorization
+            // rules (admin.flex-object.<action>) rather than allowing access.
+            // Mirrors the gate used by directories() when listing directories.
+            if (!$directory->isAuthorized($action, 'admin', $user)) {
+                throw new \Grav\Plugin\Api\Exceptions\ForbiddenException(
+                    "Missing required permission for '{$directory->getFlexType()}'.",
+                );
+            }
+            return;
+        }
+
+        foreach ($permissions as $prefix => $config) {
+            $permission = $prefix . '.' . $action;
+            if ($this->hasPermission($user, $permission)) {
+                return;
+            }
+        }
+        // None matched — report the first prefix for a clear error
+        $prefix = array_key_first($permissions);
+        throw new \Grav\Plugin\Api\Exceptions\ForbiddenException("Missing required permission: {$prefix}.{$action}");
+    }
+
+    /**
+     * Enforce the API-key scope cap for a Flex directory action (GHSA-x7hm).
+     *
+     * When the request carries a non-empty `api_key_scopes` attribute, the key
+     * is restricted to those scopes even on a super-admin account. The action is
+     * allowed only if a scope permits at least one of the directory's candidate
+     * permissions (`<prefix>.<action>` for each blueprint permission prefix, plus
+     * the generic `admin.flex-object.<action>` fallback used when a directory
+     * declares no permissions block). An empty or absent scope set (unscoped
+     * keys, JWT, and session credentials) means full access, so this is a no-op.
+     *
+     * The scope-match logic mirrors AbstractApiController::scopesPermit(), which
+     * is private in the API plugin; kept in sync deliberately.
+     */
+    private function requireFlexScope(
+        ServerRequestInterface $request,
+        FlexDirectory $directory,
+        string $action,
+    ): void {
+        if (!$this->flexScopeAllows($request, $directory, $action)) {
+            throw new \Grav\Plugin\Api\Exceptions\ForbiddenException(
+                "API key is not authorized for the '{$action}' action on '{$directory->getFlexType()}'.",
+            );
+        }
+    }
+
+    /**
+     * Non-throwing form of requireFlexScope(), for checks that skip or hide
+     * rather than reject.
+     */
+    private function flexScopeAllows(ServerRequestInterface $request, FlexDirectory $directory, string $action): bool
+    {
+        $scopes = $request->getAttribute('api_key_scopes');
+        if (!is_array($scopes) || $scopes === []) {
+            return true;
+        }
+
+        $candidates = [];
+        foreach (($directory->getConfig('admin.permissions') ?? []) as $prefix => $config) {
+            $candidates[] = $prefix . '.' . $action;
+        }
+        $candidates[] = 'admin.flex-object.' . $action;
+
+        foreach ($candidates as $permission) {
+            if ($this->scopesPermitPermission($scopes, $permission)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a non-empty API-key scope list grants a permission. A scope grants
+     * its own permission and everything beneath it (`api.contacts` covers
+     * `api.contacts.read`); `*` grants everything. Mirrors
+     * AbstractApiController::scopesPermit() (see GHSA-x7hm).
+     *
+     * @param array<int, mixed> $scopes
+     */
+    private function scopesPermitPermission(array $scopes, string $permission): bool
+    {
+        foreach ($scopes as $scope) {
+            if (!is_string($scope) || $scope === '') {
+                continue;
+            }
+            if ($scope === '*' || $scope === $permission || str_starts_with($permission, $scope . '.')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function serializeObject(FlexObjectInterface $object): array
+    {
+        $data = $object->jsonSerialize();
+
+        return array_merge(
+            ['key' => $object->getKey(), '__meta' => $this->objectMeta($object)],
+            is_array($data) ? $data : [],
+        );
+    }
+
+    /**
+     * Read-only metadata for the admin "object info" panel: the identifier used
+     * in code snippets plus where the object lives on disk. Returned under the
+     * reserved `__meta` key so the admin can show it without it ever becoming
+     * part of the saved object data.
+     *
+     * @return array<string, string>
+     */
+    private function objectMeta(FlexObjectInterface $object): array
+    {
+        $meta = [
+            'type' => $object->getFlexType(),
+            'key' => $object->getKey(),
+            'storageKey' => $object->getStorageKey(),
+        ];
+
+        // Storage folder comes from the media trait, not the object interface,
+        // so guard it — some storages return null until the object is saved.
+        if (method_exists($object, 'getStorageFolder')) {
+            $folder = $object->getStorageFolder();
+            if ($folder) {
+                $meta['storagePath'] = $folder;
+            }
+        }
+
+        return $meta;
+    }
+
+    /**
+     * @param mixed $user
+     * @return array<string, mixed>
+     */
+    private function serializeDirectoryMetadata(FlexDirectory $directory, $user, ?ServerRequestInterface $request = null): array
+    {
+        $config = $directory->getConfig('admin') ?? [];
+        $menu = $config['menu']['list'] ?? [];
+
+        // Resolve the display type (and, for choice fields, the value→label
+        // option map) for each list column so the frontend can render typed
+        // cells — datetimes as dates, selects as labels — instead of raw
+        // stored values. A list column's own `field.type` wins over the
+        // edit-form field type so a list-only `datetime` column isn't
+        // mis-reported as `text`.
+        $list = $config['list'] ?? [];
+        $listFields = $list['fields'] ?? [];
+        [$fieldTypes, $fieldOptions] = $this->describeListFields($directory, $listFields);
+        $detail = $this->normalizeDetailConfig($directory, $list['detail'] ?? null, $user, $request);
+        if ($detail !== null) {
+            $list['detail'] = $detail;
+        }
+
+        return [
+            'type'          => $directory->getFlexType(),
+            'title'         => $this->translateLabel($menu['title'] ?? $directory->getTitle()),
+            'description'   => $this->translateLabel($directory->getDescription() ?? ''),
+            'icon'          => $menu['icon'] ?? 'fa-file',
+            'list'          => $this->translateConfigLabels($list),
+            'edit'          => $this->translateConfigLabels($config['edit'] ?? []),
+            'search'        => $directory->getConfig('data.search') ?? [],
+            'field_types'   => $fieldTypes,
+            'field_options' => $fieldOptions,
+            'export'        => $this->translateConfigLabels($config['export'] ?? []),
+        ];
+    }
+
+    /**
+     * Resolve field display metadata for Admin Next's Flex list renderer.
+     *
+     * @param array<string, mixed> $listFields
+     * @return array{0: array<string, string>, 1: array<string, array<string, string>>}
+     */
+    private function describeListFields(FlexDirectory $directory, array $listFields): array
+    {
+        $fieldTypes = [];
+        $fieldOptions = [];
+
+        try {
+            $formFields = $directory->getBlueprint()->fields();
+            foreach ($listFields as $fieldName => $listFieldCfg) {
+                $listDef = (array) ($listFieldCfg['field'] ?? []);
+                $formDef = (array) ($formFields[$fieldName] ?? []);
+
+                $fieldTypes[$fieldName] = $listDef['type'] ?? $formDef['type'] ?? 'text';
+
+                $options = $listDef['options'] ?? $formDef['options'] ?? null;
+                $normalized = $this->normalizeOptionLabels($options);
+                if ($normalized !== null) {
+                    $fieldOptions[$fieldName] = $normalized;
+                }
+            }
+        } catch (\Exception $e) {
+            // Non-critical: callers can still render raw values.
+        }
+
+        return [$fieldTypes, $fieldOptions];
+    }
+
+    /**
+     * Normalize config.admin.list.detail into a self-contained Admin Next
+     * contract. The accepted YAML shape mirrors the classic-admin PR:
+     *
+     * detail.fields:
+     * - omitted: use the child type list fields as-is
+     * - true: include the child list field as-is
+     * - false: hide the field
+     * - object: merge overrides on top of the child list field definition
+     *
+     * @param mixed $detail
+     * @param mixed $user
+     * @return array<string, mixed>|null
+     */
+    private function normalizeDetailConfig(FlexDirectory $directory, $detail, $user, ?ServerRequestInterface $request = null): ?array
+    {
+        if (!is_array($detail) || empty($detail['enabled'])) {
+            return null;
+        }
+
+        $relation = (array) ($detail['relation'] ?? []);
+        $relatedType = (string) ($relation['type'] ?? '');
+        $localKey = (string) ($relation['local_key'] ?? '');
+        $foreignKey = (string) ($relation['foreign_key'] ?? '');
+        if ($relatedType === '' || $localKey === '' || $foreignKey === '') {
+            return null;
+        }
+
+        $relatedDirectory = $this->getFlex()->getDirectory($relatedType);
+        if (!$relatedDirectory || !$relatedDirectory->isEnabled()) {
+            return null;
+        }
+
+        if (!$this->isDirectoryAuthorized($relatedDirectory, 'list', $user, $request)) {
+            return null;
+        }
+
+        $actionsEnabled = (bool) ($detail['actions'] ?? false);
+        $canEdit = $actionsEnabled
+            && $this->hasAdminNextFlexEditRoute($relatedDirectory)
+            && $this->isDirectoryAuthorized($relatedDirectory, 'update', $user, $request);
+        $canDelete = $actionsEnabled
+            && $this->isDirectoryAuthorized($relatedDirectory, 'delete', $user, $request);
+
+        $fields = $this->resolveDetailFields($relatedDirectory, $detail['fields'] ?? null);
+        [$fieldTypes, $fieldOptions] = $this->describeListFields($relatedDirectory, $fields);
+        $relatedOptions = $relatedDirectory->getConfig('admin.list.options') ?? [];
+        $sort = $this->normalizeSortConfig($relation['sort'] ?? ($relatedOptions['order'] ?? []));
+
+        return [
+            'enabled'       => true,
+            'label'         => $detail['label'] ?? $relatedDirectory->getTitle(),
+            'title'         => $detail['title'] ?? ($detail['label'] ?? $relatedDirectory->getTitle()),
+            'icon'          => $detail['icon'] ?? 'fa-list',
+            'limit'         => max(1, (int) ($detail['limit'] ?? ($relatedOptions['per_page'] ?? 10))),
+            'actions'       => $canEdit || $canDelete,
+            'can_edit'      => $canEdit,
+            'can_delete'    => $canDelete,
+            'relation'      => [
+                'type'        => $relatedType,
+                'local_key'   => $localKey,
+                'foreign_key' => $foreignKey,
+                'sort'        => $sort,
+            ],
+            'fields'        => $fields,
+            'field_types'   => $fieldTypes,
+            'field_options' => $fieldOptions,
+        ];
+    }
+
+    private function hasAdminNextFlexEditRoute(FlexDirectory $directory): bool
+    {
+        if (in_array($directory->getFlexType(), self::ADMIN_NEXT_DEDICATED_TYPES, true)) {
+            return false;
+        }
+
+        $config = $directory->getConfig('admin');
+
+        return is_array($config) && $config !== [] && empty($config['disabled']);
+    }
+
+    /**
+     * @param mixed $fields
+     * @return array<string, mixed>
+     */
+    private function resolveDetailFields(FlexDirectory $directory, $fields): array
+    {
+        $defaultFields = $directory->getConfig('admin.list.fields') ?? [];
+
+        if (!is_array($fields) || $fields === []) {
+            return $defaultFields;
+        }
+
+        $resolved = [];
+        foreach ($fields as $key => $options) {
+            if (is_int($key)) {
+                $key = is_string($options) ? $options : null;
+                $options = true;
+            }
+
+            if (!$key || $options === false || $options === null) {
+                continue;
+            }
+
+            $base = (array) ($defaultFields[$key] ?? []);
+            if ($options === true) {
+                $resolved[$key] = $base;
+                continue;
+            }
+
+            if (!is_array($options)) {
+                continue;
+            }
+
+            $resolved[$key] = $base ? array_replace_recursive($base, $options) : $options;
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @param mixed $sort
+     * @return array{by?: string, dir?: string}
+     */
+    private function normalizeSortConfig($sort): array
+    {
+        if (!is_array($sort)) {
+            return [];
+        }
+
+        if (isset($sort['by'])) {
+            $field = (string) $sort['by'];
+            $dir = strtolower((string) ($sort['dir'] ?? 'asc'));
+
+            return $field !== '' ? ['by' => $field, 'dir' => $dir === 'desc' ? 'desc' : 'asc'] : [];
+        }
+
+        foreach ($sort as $field => $dir) {
+            if (!is_string($field) || $field === '') {
+                continue;
+            }
+            $dir = strtolower((string) $dir);
+
+            return ['by' => $field, 'dir' => $dir === 'desc' ? 'desc' : 'asc'];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param mixed $filters
+     * @return array<string, mixed>
+     */
+    private function parseFilters($filters): array
+    {
+        if (is_string($filters) && $filters !== '') {
+            $decoded = json_decode($filters, true);
+            if (is_array($decoded)) {
+                $filters = $decoded;
+            }
+        }
+
+        if (!is_array($filters)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($filters as $field => $value) {
+            if (!is_string($field) || $field === '' || $value === null || $value === '') {
+                continue;
+            }
+
+            if (is_array($value)) {
+                $values = array_values(array_filter($value, static fn($item) => is_scalar($item) && $item !== ''));
+                if ($values === []) {
+                    continue;
+                }
+                $normalized[$field] = $values;
+                continue;
+            }
+
+            if (is_scalar($value)) {
+                $normalized[$field] = $value;
+            }
+        }
+
+        return $normalized;
+    }
+
+    private function applyFilters(FlexCollectionInterface $collection, array $filters): FlexCollectionInterface
+    {
+        return $collection->filter(function (FlexObjectInterface $object) use ($filters): bool {
+            foreach ($filters as $field => $expected) {
+                $actual = $this->getObjectValue($object, $field);
+
+                if (is_array($expected)) {
+                    $expectedValues = array_map('strval', $expected);
+                    if (!in_array((string) $actual, $expectedValues, true)) {
+                        return false;
+                    }
+                    continue;
+                }
+
+                if ((string) $actual !== (string) $expected) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }
+
+    private function getObjectValue(FlexObjectInterface $object, string $field): mixed
+    {
+        if ($field === 'key' || $field === 'id') {
+            return $object->getKey();
+        }
+
+        if (method_exists($object, 'getFormValue')) {
+            $value = $object->getFormValue($field);
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        if (method_exists($object, 'getNestedProperty')) {
+            $value = $object->getNestedProperty($field);
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        return $object->getProperty($field);
+    }
+
+    private function serializeForList(FlexObjectInterface $object, array $listFields, ?array $detail = null): array
+    {
+        $data = ['key' => $object->getKey()];
+
+        if ($listFields) {
+            foreach ($listFields as $field) {
+                // A directory whose storage nests its data (FolderStorage with a
+                // MarkdownFormatter keeps everything under `header`) has to declare
+                // its list columns as dotted paths, and getProperty() only ever
+                // reads the top level. Fall back to the nested lookup, but only
+                // when the flat read came back null: the built-in directories then
+                // keep resolving exactly what they resolve today, and a column that
+                // legitimately holds `false` is never re-read (#237).
+                $value = $object->getProperty($field);
+                if ($value === null) {
+                    $value = $object->getNestedProperty($field);
+                }
+
+                $data[$field] = $value;
+            }
+        } else {
+            // No list config — return all data
+            $all = $object->jsonSerialize();
+            if (is_array($all)) {
+                $data = array_merge($data, $all);
+            }
+        }
+
+        if ($detail) {
+            $localKey = $detail['relation']['local_key'];
+            $localValue = $this->getObjectValue($object, $localKey);
+            if ($localValue !== null && $localValue !== '') {
+                $data['__detail'] = [
+                    'type'       => $detail['relation']['type'],
+                    'title'      => $this->translateLabel((string) $detail['title']),
+                    'label'      => $this->translateLabel((string) $detail['label']),
+                    'filter'     => [$detail['relation']['foreign_key'] => $localValue],
+                    'limit'      => $detail['limit'],
+                    'sort'       => $detail['relation']['sort'],
+                    'actions'    => $detail['actions'],
+                    'can_edit'   => $detail['can_edit'],
+                    'can_delete' => $detail['can_delete'],
+                ];
+            }
+        }
+
+        return $data;
+    }
+}

@@ -1,0 +1,235 @@
+enabled: true
+route: /api
+version_prefix: v1
+
+auth:
+  api_keys_enabled: true
+  jwt_enabled: true
+  # The JWT signing secret is auto-generated and stored, outside this config
+  # tree, in user/config/plugins/api-private.php (a non-committed PHP file,
+  # mirroring Grav core's security-private.php). It is intentionally not set here.
+  jwt_algorithm: HS256
+  jwt_expiry: 3600
+  jwt_refresh_expiry: 604800
+  session_enabled: true
+
+login:
+  # Whether the admin login screen shows the username and password form
+  # (GET /auth/sso/providers reports it as show_password_form). A plugin answering
+  # onApiLoginProviders can turn it off for the request, e.g. Login OAuth2 with
+  # "Enforce OAuth2". Reported as on anyway while no provider is offered, so the
+  # login screen always has a way in.
+  #
+  # If single sign-on stops working, set `show_password_form` back to true in
+  # user/config/plugins/api.yaml and run `bin/grav clear`. If a plugin turns it
+  # off, undo that in the plugin's own settings.
+  show_password_form: true
+
+  # Challenge shown in front of the unauthenticated auth endpoints. Off by
+  # default; the admin login is already rate-limited by the Login plugin and
+  # supports per-account 2FA, so this is defense in depth rather than the first
+  # line of it.
+  #
+  # If a misconfigured captcha ever locks you out of the admin, set `enabled`
+  # back to false in user/config/plugins/api.yaml and run `bin/grav clear`.
+  captcha:
+    enabled: false
+    # 'cap' is a proof-of-work challenge served by this plugin — no keys, no
+    # third-party service. 'turnstile' and 'recaptcha' need the Form plugin
+    # installed and its keys configured; they are read from that plugin's own
+    # config rather than duplicated here.
+    provider: cap
+    # 'invisible' solves in the background as the user types; 'checkbox' makes
+    # them click. Honored by cap and Turnstile.
+    mode: invisible
+    # Which unauthenticated flows the challenge guards. Setup runs once on a
+    # brand-new site, so it's off by default.
+    flows:
+      login: true
+      forgot_password: true
+      setup: false
+    # Proof-of-work tuning for the 'cap' provider. More/harder sub-challenges
+    # cost the client more CPU; the defaults take well under a second on a
+    # phone.
+    cap:
+      challenge_count: 30
+      challenge_size: 32
+      challenge_difficulty: 4
+      expires_ms: 600000
+
+cors:
+  enabled: true
+  # Cross-origin browser access is OFF by default (same-origin only). To allow a
+  # browser app on another origin, list its exact scheme+host here, e.g.
+  # 'https://app.example.com'. '*' is intentionally NOT the default: the API
+  # serves authenticated data, and a wildcard lets any website read responses
+  # for any token it can supply. A configured '*' is honored only for
+  # unauthenticated endpoints.
+  origins: []
+  methods:
+    - GET
+    - POST
+    - PATCH
+    - DELETE
+    - OPTIONS
+  headers:
+    - Content-Type
+    - Authorization
+    - X-API-Key
+    - X-API-Token
+    - X-Grav-Environment
+    - If-Match
+    - If-None-Match
+  expose_headers:
+    - ETag
+    - X-Invalidates
+    - X-RateLimit-Limit
+    - X-RateLimit-Remaining
+    - X-RateLimit-Reset
+  max_age: 86400
+  credentials: false
+
+# Gzip JSON responses over 8 KB when the client accepts gzip: auto | off.
+# Skipped automatically when PHP (zlib.output_compression) or an earlier layer
+# already compresses the output.
+compression: auto
+
+rate_limit:
+  enabled: true
+  requests: 120
+  window: 60
+  storage: file
+
+demo:
+  # Demo mode is activated per-account via the `access.api.demo` flag, not by a
+  # global switch — a demo account browses everything (typically also granted
+  # access.api.super) but every change it tries is refused except what is
+  # granted below, and operational/secret data is redacted on read. These
+  # settings do nothing until an account is flagged.
+  #
+  # What a demo account may change. Empty is a read-only demo. Each shorthand
+  # stands for its three finer grants, so list those instead to allow part:
+  #   api.pages.write  = api.pages.create, api.pages.update, api.pages.delete
+  #   api.media.write  = api.media.upload, api.media.update, api.media.delete
+  #   api.config.write = api.config.site, api.config.plugins, api.config.themes
+  # e.g. [api.pages.create, api.pages.update, api.media.upload] lets visitors
+  # write and edit pages and add images, but never delete anything. Users,
+  # groups, packages, system tools, backups, webhooks and the system, security,
+  # media, scheduler and backups settings are always refused, as are the
+  # settings of the API, Admin, Login and Email plugins.
+  writable: []
+  # Other routes a demo account may write to, below the API prefix: `METHOD
+  # /path` or `/path`, `*` matching anything. For a plugin's own routes, e.g.
+  # 'POST /courses/*/progress'. Cannot open the locked routes above.
+  allow_routes: []
+  # Render raw HTML in pages a demo account saves as text, so a visitor cannot
+  # put scripts or hidden links on the public site. A demo account can never
+  # save a page that runs Twig, whatever this is set to.
+  escape_html: true
+  # Also restore user/plugins and user/themes on every reset. Symlinked plugins
+  # and themes are left as they are.
+  include_code: false
+  # More user:// folders to restore on every reset, e.g. user://data for what
+  # visitors do on the site itself, or user://accounts for sign-ups.
+  extra_roots: []
+  # Minutes between automatic resets of the demo content back to the captured
+  # baseline. Only takes effect once a baseline exists.
+  reset_interval: 30
+  # Lazily reset on incoming API requests when the content is stale. Recommended
+  # for installs that don't run `bin/grav scheduler` via cron.
+  reset_on_request: true
+  # Also register a Scheduler job (for installs running `bin/grav scheduler`).
+  reset_on_schedule: true
+  # A safety snapshot of the live content is taken before every reset, in case
+  # the baseline itself is wrong. Oldest snapshots beyond this count are purged.
+  keep_safety_snapshots: 5
+
+# Apply this site's translation overrides (user/languages/<lang>.yaml) late enough
+# to beat the active theme's own strings. Grav already merges that folder above
+# core and plugins at compile time, but themes merge afterwards, so without this
+# a reworded theme string would silently lose.
+translation_overrides: true
+
+# Let the new admin's page editor preview an unpublished (published: false) page
+# on the front end. The preview is authorized by a short-lived, route-scoped
+# token minted only for users with page-read permission; turn this off to disable
+# draft previews entirely regardless of the token.
+allow_draft_preview: true
+# Lifetime of a draft-preview token, in seconds (minimum 30). Short by design —
+# it only needs to survive from clicking Preview to the page loading.
+preview_token_ttl: 300
+
+flex_backend:
+  pages: true
+  accounts: true
+
+media_metadata:
+  # Descriptive fields editable in the media metadata editor (page media field
+  # and site media manager). Each entry's `key` is the exact key written to the
+  # `<filename>.meta.yaml` sidecar next to the media file. Order is preserved in
+  # the editor. `type` is `text` (single line), `textarea` (multi-line),
+  # `tags` (a list of values, stored as a YAML sequence), `select` (one of
+  # the entries in `options`, a map of stored value to display label, e.g.
+  # `options: { generated: 'AI generated', none: 'No AI' }`; a select without
+  # options is ignored), `number` (stored as a YAML number, with optional `min`
+  # and `max` bounds), `date` (`YYYY-MM-DD`, stored quoted so it stays a string)
+  # or `boolean` (stored as `true`; clearing it removes the key, since a stored
+  # 'false' string is truthy in Twig).
+  #
+  # `required: true` means a save cannot empty the field. A request that leaves
+  # the key out altogether still leaves the stored value alone, and clearing all
+  # metadata ignores `required`.
+  #
+  # The five fields below are built in. Listing your own fields adds to them:
+  # the editor shows your list in its order, then any built-in field you left
+  # out. An entry with a built-in key replaces that field (its label, type or
+  # position), and `remove: true` takes it out of the editor, e.g.
+  # `- { key: tags, remove: true }`. Removing a field never deletes values
+  # already stored in sidecars.
+  #
+  # Any keys NOT listed here — EXIF data, width/height, the `upload` block core
+  # writes, image-action keys like `resize`/`quality` — are left untouched when
+  # metadata is saved. Reserved technical keys can never be assigned to a field.
+  fields:
+    - { key: alt, label: 'Alt Text', type: text }
+    - { key: title, label: 'Title', type: text }
+    - { key: caption, label: 'Caption', type: textarea }
+    - { key: description, label: 'Description', type: textarea }
+    - { key: tags, label: 'Tags', type: tags }
+  # Maximum characters accepted per metadata value. Values are also stripped of
+  # HTML tags on save, since they render into `<img>` attributes on the site.
+  max_length: 2000
+
+pagination:
+  default_per_page: 20
+  max_per_page: 1000
+
+invitations:
+  # Default lifetime of a user invite link, in seconds (default 7 days).
+  expiration: 604800
+
+popularity:
+  enabled: true
+  # Skip page views from logged-in admins so your own testing/demo visits
+  # don't skew the stats.
+  exclude_admin: true
+  # Visitor IPs or CIDR ranges to exclude from tracking, e.g.
+  # '203.0.113.7' or '203.0.113.0/24' (IPv4 and IPv6 both supported).
+  exclude_ips: []
+  # Skip clients no person is behind: command-line and library HTTP clients
+  # (curl, python-requests, ...), link-preview fetchers (facebookexternalhit,
+  # ...), AI fetchers (ChatGPT-User, ClaudeBot, ...) and uptime monitors.
+  # Many report themselves as browsers rather than bots.
+  exclude_non_browsers: true
+  # Extra User-Agent fragments to exclude, matched anywhere in the header and
+  # ignoring case, e.g. 'uptimerobot' or 'my-scanner'.
+  exclude_agents: []
+  # How much history to keep: days of daily counts and months of monthly
+  # totals. The dashboard chart offers up to 90 days and 12 months, and
+  # compares each against the period before it, so it needs twice that.
+  history:
+    daily: 365
+    monthly: 24
+  ignore:
+    - '/test*'
+    - '/modular'

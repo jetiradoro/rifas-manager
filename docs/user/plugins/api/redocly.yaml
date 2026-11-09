@@ -1,0 +1,10 @@
+# Lint config for openapi.yaml (npm run lint:openapi).
+extends:
+  - recommended
+rules:
+  # Public discovery routes (captcha, password policy, SSO providers) always
+  # answer 200, and the SSO start/callback routes only ever redirect: errors go
+  # back to the login page in the redirect. Listing a 4xx they never send would
+  # make the spec wrong.
+  operation-4xx-response: off
+  operation-2xx-response: off

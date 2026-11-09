@@ -1,0 +1,16 @@
+# Deny direct web access to this folder, except avatar images (account://avatars)
+# that Grav serves over HTTP. Account data (.yaml password hashes), databases,
+# keys and tokens stay blocked; SVG is excluded as a stored-XSS vector.
+# Defense-in-depth backup for the rules in the site root .htaccess.
+#
+# mod_alias, not `Require` or mod_rewrite. `Require` is AuthConfig-class and
+# returns 500 for this whole folder on a host that grants only `AllowOverride
+# FileInfo` (getgrav/grav#4309, #4311). mod_alias is FileInfo-class, leaves the
+# root's rewrite rules in force here, and merges into subfolders, so a subfolder
+# with its own RewriteEngine cannot switch it off.
+#
+# Matches the whole URL path, so the exception is written exactly as the root's.
+# Keep the two in sync.
+<IfModule mod_alias.c>
+    RedirectMatch 403 (?i)^(?!.*/user/accounts/[^/]+/[^/]+\.(jpe?g|png|gif|webp|avif|bmp|ico)$)
+</IfModule>

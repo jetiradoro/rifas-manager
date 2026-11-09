@@ -1,0 +1,12 @@
+# Deny all direct web access to this folder and everything beneath it.
+# Grav reads these files server-side; they must never be served over HTTP.
+# This is a defense-in-depth backup for the rules in the site root .htaccess.
+#
+# mod_alias, not `Require` or mod_rewrite. `Require` is AuthConfig-class and
+# returns 500 for this whole folder on a host that grants only `AllowOverride
+# FileInfo` (getgrav/grav#4309, #4311). mod_alias is FileInfo-class, leaves the
+# root's rewrite rules in force here, and merges into subfolders, so a subfolder
+# with its own RewriteEngine cannot switch it off.
+<IfModule mod_alias.c>
+    RedirectMatch 403 .*
+</IfModule>

@@ -1,0 +1,771 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Grav\Plugin\Api\Controllers;
+
+use Grav\Common\User\Interfaces\UserCollectionInterface;
+use Grav\Common\User\Interfaces\UserInterface;
+use Grav\Plugin\Api\Auth\JwtAuthenticator;
+use Grav\Plugin\Api\Captcha\LoginCaptcha;
+use Grav\Plugin\Api\Exceptions\ForbiddenException;
+use Grav\Plugin\Api\Exceptions\TooManyRequestsException;
+use Grav\Plugin\Api\Exceptions\UnauthorizedException;
+use Grav\Plugin\Api\Exceptions\ValidationException;
+use Grav\Plugin\Api\Popularity\PopularityTracker;
+use Grav\Plugin\Api\Response\ApiResponse;
+use Grav\Plugin\Api\Services\PasswordPolicyService;
+use Grav\Plugin\Login\Login;
+use Grav\Plugin\Login\TwoFactorAuth\TwoFactorAuth;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+
+class AuthController extends AbstractApiController
+{
+    use ResolvesAdminBaseUrl;
+
+    public function token(ServerRequestInterface $request): ResponseInterface
+    {
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['username', 'password']);
+
+        $username = (string) $body['username'];
+        $password = (string) $body['password'];
+
+        $this->enforceLoginRateLimit($username);
+
+        // Verify the captcha before any credential work. After the rate limit,
+        // so a caller already locked out can't make us do the verification
+        // (which is a remote call for Turnstile/reCAPTCHA) on every attempt.
+        $this->captcha()->verify(LoginCaptcha::FLOW_LOGIN, $body, $this->getRequestIp($request));
+
+        // Route through the Login plugin when available so the full
+        // onUserLoginAuthenticate / onUserLoginAuthorize / onUserLogin chain
+        // fires. This is what lets LDAP (and any other auth plugin that
+        // subscribes to onUserLoginAuthenticate at higher priority) validate
+        // the credentials and map groups to access levels.
+        //
+        // `authorize` is passed as `[]` rather than `admin.login`: the API
+        // plugin runs its own permission gate further down that handles both
+        // legacy and Flex users correctly (admin.super, api.access, etc.).
+        // Letting the Login plugin gate on `admin.login` here breaks logins
+        // on regular (non-flex) accounts whose legacy User::authorize() lacks
+        // an admin.super fallback — even super admins are denied unless they
+        // also have an explicit access.admin.login: true.
+        //
+        // Falls back to the legacy User::authenticate() path on sites without
+        // the Login plugin.
+        if (class_exists(Login::class) && isset($this->grav['login'])) {
+            /** @var Login $login */
+            $login = $this->grav['login'];
+
+            $event = $this->runLoginChain(
+                $login,
+                ['username' => $username, 'password' => $password],
+                ['admin' => true, 'twofa' => false],
+                ['authorize' => [], 'return_event' => true]
+            );
+
+            $user = $event->getUser();
+
+            if (!$user || !$user->authenticated) {
+                $this->fireEvent('onApiUserLoginFailure', [
+                    'username' => $username,
+                    'reason' => 'password',
+                    'ip' => $this->getRequestIp($request),
+                ]);
+                throw new UnauthorizedException('Invalid username or password.');
+            }
+        } else {
+            /** @var UserCollectionInterface $accounts */
+            $accounts = $this->grav['accounts'];
+            $user = $accounts->load($username);
+
+            // Delegate to User::authenticate() so the core trait's plaintext-password
+            // fallback fires (auto-hashes a yaml-declared `password:` field on first
+            // successful login, then saves — same behavior admin-classic and the Login
+            // plugin have always had).
+            if (!$user->exists() || !$user->authenticate($password)) {
+                $this->fireEvent('onApiUserLoginFailure', [
+                    'username' => $username,
+                    'reason' => 'password',
+                    'ip' => $this->getRequestIp($request),
+                ]);
+                throw new UnauthorizedException('Invalid username or password.');
+            }
+        }
+
+        // Gate API access + account state, then mint a 2FA challenge or token
+        // pair. Shared with the SSO/OAuth login bridge — see
+        // AbstractApiController::finalizeAuthenticatedUser(). Runs AFTER the
+        // event chain so any onUserLogin handlers (LDAP group→access mapping,
+        // etc.) have populated the access matrix.
+        $result = $this->finalizeAuthenticatedUser($user, $request);
+
+        if (($result['requires_2fa'] ?? false) === true) {
+            // Password was valid — challenge issued. Do NOT reset the rate
+            // limiter yet: the login only counts as successful after the 2FA
+            // code verifies in /auth/2fa/verify.
+            return ApiResponse::create($result);
+        }
+
+        $this->resetLoginRateLimit($username);
+
+        $this->fireEvent('onApiUserLogin', [
+            'user' => $user,
+            'method' => 'password',
+            'ip' => $this->getRequestIp($request),
+            'request' => $request,
+        ]);
+
+        return ApiResponse::create($result);
+    }
+
+    public function verify2fa(ServerRequestInterface $request): ResponseInterface
+    {
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['challenge_token', 'code']);
+
+        $jwt = new JwtAuthenticator($this->grav, $this->config);
+        $user = $jwt->validateChallengeToken($body['challenge_token'], self::CHALLENGE_2FA);
+
+        if ($user === null) {
+            throw new UnauthorizedException('Invalid or expired challenge token.');
+        }
+
+        $username = $user->username;
+
+        $login = $this->grav['login'] ?? null;
+        $limiter = is_object($login) && method_exists($login, 'getRateLimiter')
+            ? $login->getRateLimiter('twofa_attempts')
+            : null;
+        if ($limiter && $limiter->hasReachedLimit($username)) {
+            $seconds = method_exists($limiter, 'getRetryAfter')
+                ? (int) $limiter->getRetryAfter($username)
+                : (int) $limiter->getInterval() * 60;
+            throw new TooManyRequestsException('Too many wrong codes. Try again later.', max(1, $seconds));
+        }
+
+        if ($user->get('state', 'enabled') === 'disabled') {
+            throw new ForbiddenException('This user account is disabled.');
+        }
+
+        if (!class_exists(TwoFactorAuth::class)) {
+            throw new ForbiddenException('2FA support is not available.');
+        }
+
+        $secret = (string) $user->get('twofa_secret');
+        $code = (string) $body['code'];
+
+        $twoFa = new TwoFactorAuth();
+        if (!$secret || !$twoFa->verifyCode($secret, $code)) {
+            $limiter?->registerRateLimitedAction($username);
+            $this->fireEvent('onApiUserLoginFailure', [
+                'username' => $username,
+                'reason' => '2fa',
+                'ip' => $this->getRequestIp($request),
+            ]);
+            throw new UnauthorizedException('Invalid 2FA code.');
+        }
+
+        // Burn the challenge token so it cannot be replayed. Only the request
+        // that actually burns it gets a token pair.
+        if (!$jwt->consumeToken($body['challenge_token'])) {
+            throw new UnauthorizedException('Invalid or expired challenge token.');
+        }
+        if ($limiter && method_exists($limiter, 'resetRateLimit')) {
+            $limiter->resetRateLimit($username);
+        }
+
+        $this->fireEvent('onApiUserLogin', [
+            'user' => $user,
+            'method' => '2fa',
+            'ip' => $this->getRequestIp($request),
+            'request' => $request,
+        ]);
+
+        return $this->issueTokenPair($jwt, $user);
+    }
+
+    // ─── Passkeys ────────────────────────────────────────────────────────────
+
+    /**
+     * GET /auth/passkey
+     *
+     * Whether this site offers passkey sign-in (Login 3.12+ on Grav 2 with
+     * `plugins.login.passkeys.enabled`), so the login screen knows to show
+     * the button. Public.
+     */
+    public function passkeyStatus(ServerRequestInterface $request): ResponseInterface
+    {
+        return ApiResponse::create(['enabled' => $this->passkeys() !== null]);
+    }
+
+    /**
+     * POST /auth/passkey/options
+     *
+     * Body: { for: "sign-in" } → options for a passkey alone, or
+     *       { for: "two-step", challenge_token } → options limited to the
+     *       account's passkeys, in place of the 2FA code.
+     * Returns { options, ticket } for navigator.credentials.get().
+     */
+    public function passkeyOptions(ServerRequestInterface $request): ResponseInterface
+    {
+        $passkeys = $this->requirePasskeys();
+        $body = $this->passkeyBody($request);
+        $this->limitPasskeys('passkey_options', true);
+
+        switch ($body['for'] ?? '') {
+            case 'sign-in':
+                return ApiResponse::create($passkeys->assertionOptions(null, 'sign-in'));
+
+            case 'two-step':
+                $this->requireFields($body, ['challenge_token']);
+                $user = (new JwtAuthenticator($this->grav, $this->config))
+                    ->validateChallengeToken((string) $body['challenge_token'], self::CHALLENGE_2FA);
+                if ($user === null) {
+                    throw new UnauthorizedException('Invalid or expired challenge token.');
+                }
+                return ApiResponse::create($passkeys->assertionOptions($user, 'second-step'));
+        }
+
+        throw new ValidationException('Unknown passkey step.', [['field' => 'for', 'message' => 'Use sign-in or two-step.']]);
+    }
+
+    /**
+     * POST /auth/passkey
+     *
+     * Body: { for, ticket, credential[, challenge_token] }. Returns what
+     * /auth/token returns: a token pair. A passkey is both factors, so a
+     * passkey alone never gets a 2FA challenge, and as the second step it
+     * finishes the challenge the password started.
+     */
+    public function passkey(ServerRequestInterface $request): ResponseInterface
+    {
+        $passkeys = $this->requirePasskeys();
+        $body = $this->passkeyBody($request);
+        $this->requireFields($body, ['ticket', 'credential']);
+        $this->limitPasskeys('passkey_attempts', false);
+
+        $ticket = (string) $body['ticket'];
+        $credential = is_array($body['credential']) ? $body['credential'] : [];
+
+        switch ($body['for'] ?? '') {
+            case 'sign-in':
+                $user = $passkeys->verifyAssertion($ticket, $credential, 'sign-in');
+                if ($user === null) {
+                    $this->passkeyFailed($request, null);
+                }
+
+                /** @var Login $login */
+                $login = $this->grav['login'];
+                $event = $this->runLoginChain(
+                    $login,
+                    ['username' => (string) $user->username],
+                    ['admin' => true, 'twofa' => false, 'passkey' => true, 'rate_limit' => false, 'remember_me' => false],
+                    ['authorize' => [], 'return_event' => true, 'user' => $user]
+                );
+                $user = $event->getUser();
+                if (!$user || !$user->authenticated) {
+                    $this->passkeyFailed($request, null);
+                }
+
+                $result = $this->finalizeAuthenticatedUser($user, $request, true);
+                $this->fireEvent('onApiUserLogin', [
+                    'user' => $user,
+                    'method' => 'passkey',
+                    'passkey' => $passkeys->usedName(),
+                    'ip' => $this->getRequestIp($request),
+                    'request' => $request,
+                ]);
+
+                return ApiResponse::create($result);
+
+            case 'two-step':
+                $this->requireFields($body, ['challenge_token']);
+                $jwt = new JwtAuthenticator($this->grav, $this->config);
+                $user = $jwt->validateChallengeToken((string) $body['challenge_token'], self::CHALLENGE_2FA);
+                if ($user === null) {
+                    throw new UnauthorizedException('Invalid or expired challenge token.');
+                }
+                if ($user->get('state', 'enabled') === 'disabled') {
+                    throw new ForbiddenException('This user account is disabled.');
+                }
+
+                $username = (string) $user->username;
+                $limiter = $this->grav['login']->getRateLimiter('twofa_attempts');
+                if ($limiter->hasReachedLimit($username)) {
+                    throw new TooManyRequestsException('Too many wrong codes. Try again later.', max(1, (int) $limiter->getRetryAfter($username)));
+                }
+
+                if ($passkeys->verifyAssertion($ticket, $credential, 'second-step', $user) === null) {
+                    // Counts against the same cap as wrong 2FA codes.
+                    $limiter->registerRateLimitedAction($username);
+                    $this->passkeyFailed($request, $username, 'That passkey isn\'t one of this account\'s.');
+                }
+
+                if (!$jwt->consumeToken((string) $body['challenge_token'])) {
+                    throw new UnauthorizedException('Invalid or expired challenge token.');
+                }
+                $limiter->resetRateLimit($username);
+
+                $this->fireEvent('onApiUserLogin', [
+                    'user' => $user,
+                    'method' => '2fa-passkey',
+                    'passkey' => $passkeys->usedName(),
+                    'ip' => $this->getRequestIp($request),
+                    'request' => $request,
+                ]);
+
+                return $this->issueTokenPair($jwt, $user);
+        }
+
+        throw new ValidationException('Unknown passkey step.', [['field' => 'for', 'message' => 'Use sign-in or two-step.']]);
+    }
+
+    /** The Login plugin's passkeys, when this site offers them. */
+    private function passkeys(): ?\Grav\Plugin\Login\Passkeys\Passkeys
+    {
+        $login = $this->grav['login'] ?? null;
+
+        return is_object($login) && method_exists($login, 'passkeys') ? $login->passkeys() : null;
+    }
+
+    private function requirePasskeys(): \Grav\Plugin\Login\Passkeys\Passkeys
+    {
+        return $this->passkeys() ?? throw new ForbiddenException('Passkeys are not available on this site.');
+    }
+
+    /**
+     * The body of a passkey call, which must be JSON. A cross-site page can
+     * send a plain form POST here without a CORS preflight; refusing it keeps
+     * such a page from spending this IP's passkey allowance on bogus answers.
+     */
+    private function passkeyBody(ServerRequestInterface $request): array
+    {
+        if (!str_starts_with(strtolower($request->getHeaderLine('Content-Type')), 'application/json')) {
+            throw new \Grav\Plugin\Api\Exceptions\ApiException(415, 'Unsupported Media Type', 'Passkey requests must be sent as application/json.');
+        }
+
+        return $this->getRequestBody($request);
+    }
+
+    /**
+     * Per-IP limits from the Login plugin: `passkey_options` counts every
+     * ceremony started, `passkey_attempts` only answers that failed.
+     */
+    private function limitPasskeys(string $context, bool $count): void
+    {
+        $login = $this->grav['login'];
+        $limiter = $login->getRateLimiter($context);
+        $ip = $login->getIpKey();
+        if ($limiter->hasReachedLimit($ip, 'ip')) {
+            throw new TooManyRequestsException('Too many passkey attempts. Try again in a few minutes.', max(60, (int) $limiter->getInterval() * 60));
+        }
+        if ($count) {
+            $limiter->registerRateLimitedAction($ip, 'ip');
+        }
+    }
+
+    private function passkeyFailed(ServerRequestInterface $request, ?string $username, ?string $message = null): never
+    {
+        $login = $this->grav['login'];
+        $login->getRateLimiter('passkey_attempts')->registerRateLimitedAction($login->getIpKey(), 'ip');
+        $this->fireEvent('onApiUserLoginFailure', [
+            'username' => $username ?? '',
+            'reason' => 'passkey',
+            'ip' => $this->getRequestIp($request),
+        ]);
+
+        throw new UnauthorizedException($message ?? 'That passkey didn\'t sign you in.');
+    }
+
+    /**
+     * Fire the Login plugin's whole sign-in chain (LDAP group mapping and the
+     * rest) while leaving the shared Grav session exactly as it was.
+     *
+     * The Login plugin's onUserLogin handler writes the authenticated user into
+     * the Grav session and regenerates the session id (its session-fixation
+     * guard). API requests run under the *front-end* session cookie: the `/api`
+     * route is never under the admin path, so it never gets the `-admin`
+     * session split. Without care an Admin2 sign-in would overwrite and rotate
+     * the session of whoever is logged into the public site in the same
+     * browser, booting front-end visitors every time the SPA (re)authenticates,
+     * regardless of their own session timeout. The API is stateless (JWT), so
+     * the chain runs for its side effects only. getgrav/grav-plugin-admin2#79, #55.
+     */
+    private function runLoginChain(Login $login, array $credentials, array $options, array $extra): \Grav\Plugin\Login\Events\UserLoginEvent
+    {
+        $session = $this->grav['session'];
+        $sessionStarted = $session->isStarted();
+        $previousUser = $sessionStarted ? ($session->user ?? null) : null;
+
+        // onUserLogin only calls regenerateId() when this flag is true;
+        // toggling it off for the duration suppresses the id rotation.
+        $sessionInitialize = $this->config->get('system.session.initialize', true);
+        $this->config->set('system.session.initialize', false);
+
+        try {
+            return $login->login($credentials, $options, $extra);
+        } finally {
+            $this->config->set('system.session.initialize', $sessionInitialize);
+            // Restore the front-end visitor's user (or guest), discarding the
+            // admin user onUserLogin just planted, so the public session is
+            // untouched.
+            if ($sessionStarted) {
+                $session->user = $previousUser;
+            }
+        }
+    }
+
+    public function refresh(ServerRequestInterface $request): ResponseInterface
+    {
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['refresh_token']);
+
+        $jwt = new JwtAuthenticator($this->grav, $this->config);
+        $user = $jwt->validateRefreshToken($body['refresh_token']);
+
+        if ($user === null) {
+            throw new UnauthorizedException('Invalid or expired refresh token.');
+        }
+
+        if ($user->get('state', 'enabled') === 'disabled') {
+            throw new ForbiddenException('This user account is disabled.');
+        }
+
+        // Revoke the old refresh token (rotation). Only the request that
+        // actually revokes it gets a new pair, so concurrent exchanges of one
+        // refresh token can't each leave with their own successor.
+        if (!$jwt->consumeToken($body['refresh_token'])) {
+            throw new UnauthorizedException('Invalid or expired refresh token.');
+        }
+
+        return $this->issueTokenPair($jwt, $user);
+    }
+
+    public function revoke(ServerRequestInterface $request): ResponseInterface
+    {
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['refresh_token']);
+
+        $jwt = new JwtAuthenticator($this->grav, $this->config);
+
+        // Best-effort: decode to capture the subject for the logout event.
+        $user = $jwt->validateRefreshToken($body['refresh_token']);
+        $jwt->revokeToken($body['refresh_token']);
+
+        // Kill the access token presented with this logout request too, so the
+        // current session's bearer token dies now instead of living out its
+        // remaining hour. GHSA-m8g9-wxhx-6f86.
+        $accessToken = $jwt->extractRequestToken($request);
+        if ($accessToken !== null) {
+            $jwt->revokeToken($accessToken);
+        }
+
+        // Count this browser's front-end page views again (see ApiRouter).
+        PopularityTracker::sendExcludeCookie(false);
+
+        if ($user !== null) {
+            $this->fireEvent('onApiUserLogout', [
+                'user' => $user,
+                'ip' => $this->getRequestIp($request),
+                'request' => $request,
+            ]);
+        }
+
+        return ApiResponse::noContent();
+    }
+
+    /**
+     * POST /auth/forgot-password
+     *
+     * Accepts { email } and sends a password reset email if the address
+     * matches a user. Always returns a neutral success message to prevent
+     * account enumeration. Rate limited per-username via the login plugin's
+     * `pw_resets` bucket so enumeration + flood attacks share the login
+     * plugin's limits.
+     */
+    public function forgotPassword(ServerRequestInterface $request): ResponseInterface
+    {
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['email']);
+
+        $this->captcha()->verify(LoginCaptcha::FLOW_FORGOT_PASSWORD, $body, $this->getRequestIp($request));
+
+        $email = htmlspecialchars(strip_tags((string) $body['email']), ENT_QUOTES, 'UTF-8');
+
+        $neutralResponse = ApiResponse::create([
+            'message' => 'If an account exists for that email, a reset link has been sent.',
+        ]);
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $neutralResponse;
+        }
+
+        /** @var UserCollectionInterface $accounts */
+        $accounts = $this->grav['accounts'];
+        $user = $accounts->find($email, ['email']);
+
+        if (!$user || !$user->exists()) {
+            return $neutralResponse;
+        }
+
+        if (!isset($this->grav['Email']) || empty($this->config->get('plugins.email.from'))) {
+            $this->grav['log']->warning('api.auth: forgot-password skipped — email plugin not configured.');
+            return $neutralResponse;
+        }
+
+        if (!class_exists(Login::class) || !isset($this->grav['login'])) {
+            $this->grav['log']->warning('api.auth: forgot-password skipped — login plugin not available.');
+            return $neutralResponse;
+        }
+
+        /** @var Login $login */
+        $login = $this->grav['login'];
+        $rateLimiter = $login->getRateLimiter('pw_resets');
+        $userKey = (string) $user->username;
+        $rateLimiter->registerRateLimitedAction($userKey);
+
+        if ($rateLimiter->isRateLimited($userKey)) {
+            throw new TooManyRequestsException(
+                sprintf('Too many password reset requests. Try again in %d minutes.', $rateLimiter->getInterval()),
+                $rateLimiter->getInterval() * 60,
+            );
+        }
+
+        try {
+            $randomBytes = random_bytes(16);
+        } catch (\Exception) {
+            $randomBytes = (string) mt_rand();
+        }
+
+        $token = md5(uniqid($randomBytes, true));
+        $expire = time() + 86400; // 24 hours
+
+        // Same storage format as the login plugin's Controller::taskForgot,
+        // so the reset token is compatible with either admin or site flows.
+        $user->set('reset', $token . '::' . $expire);
+        $user->save();
+
+        try {
+            $this->sendAdminNextResetEmail($user, $token, $body['admin_base_url'] ?? null, $request);
+        } catch (\Throwable $e) {
+            $this->grav['log']->error('api.auth: failed to send reset email: ' . $e->getMessage());
+            // Still return neutral success — do not leak mail infrastructure errors.
+        }
+
+        return $neutralResponse;
+    }
+
+    /**
+     * Send the admin-next password reset email. Self-contained: builds the
+     * admin-next reset URL (pointing at its own /reset route, not the Grav
+     * frontend login plugin's /reset_password page) and renders via the
+     * API plugin's own template so the reset loop never leaves the admin UI.
+     */
+    private function sendAdminNextResetEmail(
+        UserInterface $user,
+        string $token,
+        mixed $clientBaseUrl,
+        ServerRequestInterface $request,
+    ): void {
+        if (!isset($this->grav['Email'])) {
+            throw new \RuntimeException('Email service not available.');
+        }
+
+        // With require_trusted_host on but no Site Host or Custom Base URL set, the
+        // link would be built from the request `Host` and could be pointed at an
+        // attacker. Hold it back rather than mail a spoofable token, matching the
+        // Login plugin's own send paths (GHSA-262p-56vv-7v5r). Return silently so
+        // the neutral forgot-password response cannot be used to enumerate accounts.
+        if ($this->trustedHostRequiredButMissing()) {
+            $this->grav['log']->error('api.auth: password reset email withheld — require_trusted_host is on but neither plugins.login.site_host nor system.custom_base_url is set.');
+
+            return;
+        }
+
+        $adminBase = $this->resolveAdminBaseUrl($clientBaseUrl, $request);
+
+        $resetLink = rtrim($adminBase, '/')
+            . '/reset?user=' . rawurlencode((string) $user->username)
+            . '&token=' . rawurlencode($token);
+
+        $cfg = $this->grav['config'];
+        $siteHost = (string) ($cfg->get('plugins.login.site_host') ?: ($this->grav['uri']->host() ?? ''));
+
+        $context = [
+            'reset_link' => $resetLink,
+            'user'       => $user,
+            'site_name'  => $cfg->get('site.title', 'Website'),
+            'site_host'  => $siteHost,
+            'author'     => $cfg->get('site.author.name', ''),
+        ];
+
+        $params = [
+            'to'   => $user->email,
+            'body' => [
+                [
+                    'content_type' => 'text/html',
+                    'template'     => 'emails/api/reset-password.html.twig',
+                    'body'         => '',
+                ],
+            ],
+        ];
+
+        /** @var \Grav\Plugin\Email\Email $email */
+        $email = $this->grav['Email'];
+        $message = $email->buildMessage($params, $context);
+        $email->send($message);
+    }
+
+    /**
+     * POST /auth/reset-password
+     *
+     * Accepts { username, token, password } and completes the password reset.
+     * All failures return a deliberately vague error so token probing cannot
+     * distinguish "no such user" from "wrong token" from "expired token". IP
+     * is rate-limited via the login plugin's standard login bucket to cap
+     * token brute-forcing.
+     */
+    public function resetPassword(ServerRequestInterface $request): ResponseInterface
+    {
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['username', 'token', 'password']);
+
+        $username = (string) $body['username'];
+        $token = (string) $body['token'];
+        $password = (string) $body['password'];
+
+        $this->enforceLoginRateLimit($username);
+
+        $invalidMessage = 'Invalid or expired reset link.';
+
+        /** @var UserCollectionInterface $accounts */
+        $accounts = $this->grav['accounts'];
+        $user = $accounts->load($username);
+
+        if (!$user->exists()) {
+            throw new ValidationException($invalidMessage);
+        }
+
+        $storedReset = (string) $user->get('reset', '');
+        if (!str_contains($storedReset, '::')) {
+            throw new ValidationException($invalidMessage);
+        }
+
+        [$goodToken, $expire] = explode('::', $storedReset, 2);
+
+        if (!hash_equals($goodToken, $token) || time() > (int) $expire) {
+            throw new ValidationException($invalidMessage);
+        }
+
+        // The same password policy setup and invite-accept enforce. Checked only
+        // once the link has proven valid, so a policy error never tells a token
+        // prober anything, and the reset token stays usable for a retry.
+        PasswordPolicyService::assertValid($this->config, $password);
+
+        // Match the login plugin's reset sequence exactly (Controller::taskReset).
+        unset($user->hashed_password, $user->reset);
+        $user->password = $password;
+        // Kill every token issued before this reset so a compromised account's
+        // outstanding access/refresh tokens die with the old password, and
+        // sign its browsers out too. GHSA-m8g9-wxhx-6f86.
+        $this->endOtherSessions($user, false);
+        $user->save();
+
+        $this->resetLoginRateLimit($username);
+
+        $this->fireEvent('onApiPasswordReset', [
+            'user' => $user,
+            'ip' => $this->getRequestIp($request),
+        ]);
+
+        return ApiResponse::create([
+            'message' => 'Password reset successfully.',
+        ]);
+    }
+
+    /**
+     * GET /me — Return the authenticated user's profile and resolved permissions.
+     */
+    public function me(ServerRequestInterface $request): ResponseInterface
+    {
+        return ApiResponse::create($this->meData($request));
+    }
+
+    /**
+     * The payload of GET /me, shared with GET /admin-next/boot.
+     *
+     * @return array<string, mixed>
+     */
+    public function meData(ServerRequestInterface $request): array
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $user = $this->getUser($request);
+
+        return $this->buildUserProfile($user) + [
+            'grav_version' => GRAV_VERSION,
+            'admin_version' => $this->getAdminPluginVersion(),
+        ];
+    }
+
+    private function getAdminPluginVersion(): ?string
+    {
+        foreach (['admin2', 'admin'] as $slug) {
+            if (!$this->config->get("plugins.{$slug}.enabled", false)) {
+                continue;
+            }
+            $blueprintFile = $this->grav['locator']->findResource("plugins://{$slug}/blueprints.yaml");
+            if (!$blueprintFile || !file_exists($blueprintFile)) {
+                continue;
+            }
+            $data = \Grav\Common\Yaml::parse(file_get_contents($blueprintFile));
+            $version = $data['version'] ?? null;
+            if ($version) {
+                return (string) $version;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Call the login plugin's checkLoginRateLimit() which both registers and
+     * checks attempts against max_login_count / max_login_interval using the
+     * same cache store the frontend login uses. Throws 429 if the caller is
+     * currently locked out.
+     */
+    private function captcha(): LoginCaptcha
+    {
+        return new LoginCaptcha($this->grav, $this->config);
+    }
+
+    private function enforceLoginRateLimit(string $username): void
+    {
+        if (!class_exists(Login::class) || !isset($this->grav['login'])) {
+            return;
+        }
+
+        /** @var Login $login */
+        $login = $this->grav['login'];
+        $interval = $login->checkLoginRateLimit($username);
+
+        if ($interval > 0) {
+            throw new TooManyRequestsException(
+                sprintf('Too many login attempts. Try again in %d minutes.', $interval),
+                $interval * 60,
+            );
+        }
+    }
+
+    private function resetLoginRateLimit(string $username): void
+    {
+        if (!class_exists(Login::class) || !isset($this->grav['login'])) {
+            return;
+        }
+        /** @var Login $login */
+        $login = $this->grav['login'];
+        $login->resetLoginRateLimit($username);
+    }
+}

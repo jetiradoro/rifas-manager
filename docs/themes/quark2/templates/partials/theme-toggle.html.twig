@@ -1,0 +1,21 @@
+{% set labeled = labeled|default(false) %}
+{# Mode names and the sentences built from them are passed to theme-toggle.js as
+   data attributes, because the button's label changes on click and the script
+   has no access to Grav's translations. A child theme overriding
+   THEME_QUARK2.THEME_TOGGLE.* in its own languages.yaml changes both. #}
+<button type="button"
+        class="theme-toggle"
+        data-theme-toggle
+        data-label-auto="{{ 'THEME_QUARK2.THEME_TOGGLE.AUTO'|t|e('html_attr') }}"
+        data-label-light="{{ 'THEME_QUARK2.THEME_TOGGLE.LIGHT'|t|e('html_attr') }}"
+        data-label-dark="{{ 'THEME_QUARK2.THEME_TOGGLE.DARK'|t|e('html_attr') }}"
+        data-aria-template="{{ 'THEME_QUARK2.THEME_TOGGLE.ARIA_LABEL'|t|e('html_attr') }}"
+        data-title-template="{{ 'THEME_QUARK2.THEME_TOGGLE.TITLE'|t|e('html_attr') }}"
+        aria-label="{{ 'THEME_QUARK2.THEME_TOGGLE.LABEL'|t|e('html_attr') }}"
+        title="{{ 'THEME_QUARK2.THEME_TOGGLE.LABEL'|t|e('html_attr') }}">
+    {# Sun (light), Moon (dark), Adjust (auto) — Font Awesome 7 free #}
+    <i class="icon icon-sun   fa-solid fa-sun"   aria-hidden="true"></i>
+    <i class="icon icon-moon  fa-solid fa-moon"  aria-hidden="true"></i>
+    <i class="icon icon-auto  fa-solid fa-circle-half-stroke" aria-hidden="true"></i>
+    {% if labeled %}<span style="margin-left:.5rem;">{{ 'THEME_QUARK2.THEME_TOGGLE.LABEL'|t }}</span>{% endif %}
+</button>

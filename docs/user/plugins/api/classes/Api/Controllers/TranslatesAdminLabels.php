@@ -1,0 +1,357 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Grav\Plugin\Api\Controllers;
+
+use Grav\Plugin\Api\Services\DisabledPluginLangIndex;
+use Grav\Plugin\Api\Services\PreferencesResolver;
+use Grav\Plugin\Api\Services\TranslationSourceIndex;
+use Psr\Http\Message\ServerRequestInterface;
+use Throwable;
+
+/**
+ * Resolves admin-facing label strings against the authenticated user's chosen
+ * admin language and translates language-key-looking values (e.g.
+ * `PLUGIN_FOO.BAR`) the way Admin Next expects.
+ *
+ * Used by any controller that serializes blueprint/config labels for the SPA.
+ * The host controller must extend {@see AbstractApiController} (the trait
+ * relies on its `$grav`, `$config` and `getUser()` members).
+ *
+ * Prime the per-request language chain once per payload with
+ * {@see primeAdminLanguages()} before calling {@see translateLabel()}; without
+ * it, labels fall back to Grav's normal lookup behaviour.
+ */
+trait TranslatesAdminLabels
+{
+    private ?DisabledPluginLangIndex $disabledLangIndex = null;
+
+    /**
+     * Language fallback chain used when translating labels for the current
+     * request — typically [$userAdminLanguage, 'en']. Resolved lazily via
+     * {@see primeAdminLanguages()} and cached on the instance, so the
+     * per-request preference lookup runs at most once per payload regardless of
+     * how many labels need translating.
+     *
+     * @var array<int, string>|null
+     */
+    private ?array $adminLabelLanguages = null;
+
+    /**
+     * Map of primary subtag => shipped region-suffixed locale codes, e.g.
+     * `['en' => ['en-US'], 'de' => ['de-DE']]`. Cached per request.
+     *
+     * @var array<string, array<int, string>>|null
+     */
+    private ?array $regionVariantIndex = null;
+
+    private function disabledLangIndex(): DisabledPluginLangIndex
+    {
+        return $this->disabledLangIndex ??= DisabledPluginLangIndex::shared($this->grav);
+    }
+
+    /**
+     * Resolve and cache the language chain for label translation. Prefers the
+     * authenticated user's `adminLanguage` preference (which the SPA picks),
+     * with 'en' as a fallback so any keys not yet translated still come
+     * through in English instead of being humanized.
+     *
+     * Why this is needed: Grav's `Language::translate()` falls back to the
+     * site's active content language when called with no `$languages` hint —
+     * that's typically 'en' even for an admin user who has selected Hebrew
+     * for their UI. The dict endpoint (`/translations/{lang}`) already
+     * accepts an explicit language, so admin-next's client-side i18n works,
+     * but labels are pre-resolved server-side here.
+     *
+     * @return array<int, string>
+     */
+    protected function primeAdminLanguages(ServerRequestInterface $request): array
+    {
+        if ($this->adminLabelLanguages !== null) {
+            return $this->adminLabelLanguages;
+        }
+
+        $lang = 'en';
+        try {
+            $user = $this->getUser($request);
+            $resolver = new PreferencesResolver($this->grav, $this->config);
+            $effective = $resolver->resolve($user, false)['effective'] ?? [];
+            $candidate = $effective['adminLanguage'] ?? null;
+            if (is_string($candidate) && $candidate !== '') {
+                $lang = $candidate;
+            }
+        } catch (Throwable) {
+            // Unauthenticated or resolver failure — fall back to English.
+        }
+
+        return $this->adminLabelLanguages = $this->expandLanguageChain($lang);
+    }
+
+    /**
+     * Build the translation fallback chain for a requested admin language.
+     *
+     * The requested language comes first, then its primary subtag, then
+     * English as the universal tail fallback. Each primary subtag is also
+     * expanded to include any region-suffixed variant that ships on disk:
+     * admin2 stores its dictionary under e.g. `en-US.yaml` (not `en.yaml`),
+     * while legacy / dual-target plugins usually ship `en.yaml`, `ru.yaml`,
+     * etc. Grav indexes plugin language files by the filename's locale code,
+     * so the chain must bridge both directions:
+     *
+     *   - `en` reaches `en-US` for admin2-owned strings.
+     *   - `ru-RU` reaches `ru` for plugin-owned strings.
+     *
+     * That lets plugin authors keep normal short-code language files unless
+     * they intentionally need region-specific translations.
+     *
+     * @return array<int, string>
+     */
+    private function expandLanguageChain(string $lang): array
+    {
+        $chain = [];
+        foreach ([$lang, $this->primarySubtag($lang), 'en'] as $code) {
+            foreach (array_merge([$code], $this->regionVariantsFor($code)) as $candidate) {
+                if (!in_array($candidate, $chain, true)) {
+                    $chain[] = $candidate;
+                }
+            }
+        }
+
+        return $chain;
+    }
+
+    /**
+     * Region-suffixed locale codes shipped for a bare primary subtag, e.g.
+     * `en` => `['en-US']`. Already-regioned codes (containing `-`) need no
+     * expansion and return an empty list.
+     *
+     * @return array<int, string>
+     */
+    private function regionVariantsFor(string $code): array
+    {
+        if (str_contains($code, '-')) {
+            return [];
+        }
+
+        return $this->buildRegionVariantIndex()[$code] ?? [];
+    }
+
+    private function primarySubtag(string $code): string
+    {
+        $dash = strpos($code, '-');
+
+        return $dash === false ? $code : substr($code, 0, $dash);
+    }
+
+    /**
+     * Discover shipped region variants from admin2's languages directory (where
+     * the SPA's translation dictionary lives). Cached for the request.
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function buildRegionVariantIndex(): array
+    {
+        if ($this->regionVariantIndex !== null) {
+            return $this->regionVariantIndex;
+        }
+
+        $index = [];
+        $dir = $this->grav['locator']->findResource('plugins://admin2/languages')
+            ?: (defined('GRAV_ROOT') ? GRAV_ROOT . '/user/plugins/admin2/languages' : null);
+
+        if (is_string($dir) && is_dir($dir)) {
+            foreach (glob($dir . '/*.yaml') ?: [] as $file) {
+                $localeCode = basename($file, '.yaml');
+                $dash = strpos($localeCode, '-');
+                if ($dash !== false) {
+                    $index[substr($localeCode, 0, $dash)][] = $localeCode;
+                }
+            }
+        }
+
+        return $this->regionVariantIndex = $index;
+    }
+
+    /**
+     * Resolve a value that *might* be a translation key, or return null.
+     *
+     * This is the cautious sibling of {@see translateLabel()}, for free-prose
+     * fields where the author is equally entitled to write a literal sentence:
+     * a package's top-level `name` / `description` in its blueprints.yaml
+     * (#39). Two differences matter:
+     *
+     *   - The key test is strict. `translateLabel()` accepts any uppercase
+     *     value containing a dot, which a literal description like
+     *     "FAST. SIMPLE. SECURE." would satisfy. Here the whole value has to be
+     *     a single dotted token with no whitespace.
+     *   - Nothing is invented. There is no `PLUGIN_API.*` last-resort namespace
+     *     and no humanizer, both of which would turn an unresolved
+     *     `MY_THEME.DESCRIPTION` into the word "Description". A caller that
+     *     gets null keeps the author's own text untouched.
+     *
+     * The `disabledOnly` filter `translateLabel()` applies is deliberately not
+     * applied either: the key belongs to the package being described, and a
+     * disabled plugin or a switched-away theme is exactly what the package
+     * manager lists.
+     */
+    protected function resolveTranslationKey(string $value): ?string
+    {
+        if (!$this->looksLikeTranslationKey($value)) {
+            return null;
+        }
+
+        $languages = $this->adminLabelLanguages;
+
+        try {
+            $lang = $this->grav['language'];
+
+            foreach (['ICU.' . $value, $value] as $key) {
+                // array_support=true so a key landing on a nested namespace
+                // comes back as an array and is skipped, rather than blowing up
+                // on "Array to string conversion".
+                $translated = $lang->translate($key, $languages, true);
+                if (is_string($translated) && $translated !== '' && $translated !== $key) {
+                    return $translated;
+                }
+            }
+        } catch (Throwable) {
+            // No language service (CLI, tests) — fall through to the on-disk walk.
+        }
+
+        return $this->valueFromLanguageFiles($value, $languages);
+    }
+
+    /**
+     * Last resort for {@see resolveTranslationKey()}: read the key straight off
+     * the language files on disk.
+     *
+     * Grav merges only the *active* theme's language files
+     * (`Themes::loadLanguages()` reads `theme://languages`, which resolves to
+     * that one theme), so a key shipped by any other installed theme is absent
+     * from the compiled dictionary the lookup above searches — and browsing
+     * themes you have not switched to is most of what the package manager is
+     * for. {@see TranslationSourceIndex} already walks every source's own files
+     * for the translations UI, including inactive themes, and is cached against
+     * their mtimes, so reuse it rather than parsing YAML again here.
+     *
+     * @param array<int, string>|null $languages
+     */
+    private function valueFromLanguageFiles(string $value, ?array $languages): ?string
+    {
+        try {
+            $index = TranslationSourceIndex::shared($this->grav);
+
+            foreach ($languages ?? ['en'] as $code) {
+                $entry = $index->index($code)[$value] ?? null;
+                if (is_string($entry['value'] ?? null) && $entry['value'] !== '') {
+                    return $entry['value'];
+                }
+            }
+        } catch (Throwable) {
+            // Nothing scannable (no locator/cache/config, as in unit tests).
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether a value is shaped like a translation key and nothing else:
+     * `FOO.BAR`, `PLUGIN_MYTHEME.DESCRIPTION`. Requires at least one dot, all
+     * caps, and no whitespace, so authored prose never matches.
+     */
+    private function looksLikeTranslationKey(string $value): bool
+    {
+        return (bool) preg_match('/^[A-Z][A-Z0-9_]*(?:\.[A-Z0-9_]+)+$/', $value);
+    }
+
+    /**
+     * Translate a blueprint / permission / config label string.
+     *
+     * Lookup order, ICU-first:
+     *   1. `ICU.<key>` — admin2's authoritative namespace (Grav 2 convention).
+     *   2. `<key>` — flat lookup, for legacy plugins that ship PLUGIN_ADMIN.*
+     *      under the Grav 1 convention (form, login, flex-objects, etc.).
+     *   3. `PLUGIN_API.<last-segment>` — last-resort api-plugin namespace.
+     *   4. Humanizer over the key itself.
+     *
+     * ICU is checked first by design: admin classic's plugin folder may still
+     * be present in dev installs (disabled, mid-migration) and Grav core's
+     * `flattenByLang()` reads every plugin's lang files regardless of enabled
+     * state. Without the ICU-first order, admin classic's flat values would
+     * shadow admin2's ICU ports — a per-key drift that's hard to spot. Putting
+     * ICU first makes admin2 the source of truth for any key it ships, and
+     * lets the flat lookup serve as a transition fallback for keys admin2
+     * hasn't ported (or that legitimate 3rd-party plugins ship under
+     * PLUGIN_ADMIN.* for shared-vocabulary labels).
+     */
+    protected function translateLabel(string $label): string
+    {
+        $lang = $this->grav['language'];
+        // Use the per-request language chain (set by primeAdminLanguages())
+        // so labels resolve against the user's chosen admin language, not the
+        // site's default content language. Falls back to no override when no
+        // endpoint primed the chain — that preserves Grav's normal lookup
+        // behaviour for any caller (e.g. test code) that calls translateLabel()
+        // directly.
+        $languages = $this->adminLabelLanguages;
+        $primary = $languages[0] ?? ($lang->getLanguage() ?: 'en');
+
+        // If it looks like a language key (e.g. PLUGIN_ADMIN.ACCESS_SITE), try to translate
+        if (str_contains($label, '.') && strtoupper($label) === $label) {
+            $icuKey = 'ICU.' . $label;
+            $icuTranslated = $lang->translate($icuKey, $languages);
+            if ($icuTranslated !== $icuKey) {
+                return $icuTranslated;
+            }
+
+            // admin2 consolidated its shared PLUGIN_ADMIN vocabulary into the
+            // ICU.ADMIN_NEXT namespace so the translation service — scoped to
+            // ADMIN_NEXT — actually translates it into every locale. Blueprints
+            // (and 160+ plugins) still reference the public PLUGIN_ADMIN.* keys,
+            // so alias them onto ICU.ADMIN_NEXT.* here. A handful of nav-word
+            // keys (GROUPS/MEDIA/PAGES/SETTINGS/SYSTEM) resolve to a nested map
+            // under ADMIN_NEXT rather than a string; the is_string guard lets
+            // those fall through to the humaniser (which yields the right word).
+            if (str_starts_with($label, 'PLUGIN_ADMIN.')) {
+                $aliasKey = 'ICU.ADMIN_NEXT.' . substr($label, strlen('PLUGIN_ADMIN.'));
+                // array_support=true returns the raw node instead of casting an
+                // array to string, so a key that lands on a nested namespace
+                // (GROUPS/MEDIA/PAGES/SETTINGS/SYSTEM) comes back as an array and
+                // is skipped here rather than blowing up on "Array to string".
+                $aliasTranslated = $lang->translate($aliasKey, $languages, true);
+                if (is_string($aliasTranslated) && $aliasTranslated !== $aliasKey) {
+                    return $aliasTranslated;
+                }
+            }
+
+            // Skip the flat lookup if the only source for this key is a disabled
+            // plugin — a disabled plugin shouldn't influence what admin2 renders.
+            if (!$this->disabledLangIndex()->isDisabledOnly($label, $primary)) {
+                $translated = $lang->translate($label, $languages);
+                if ($translated !== $label) {
+                    return $translated;
+                }
+            }
+
+            // Try API plugin namespace as fallback
+            $key = substr($label, strrpos($label, '.') + 1);
+            $apiTranslated = $lang->translate('PLUGIN_API.' . $key, $languages);
+            if ($apiTranslated !== 'PLUGIN_API.' . $key) {
+                return $apiTranslated;
+            }
+        }
+
+        // If the label is still a raw key, derive a human-readable name from the permission name
+        if (strtoupper($label) === $label && str_contains($label, '_')) {
+            // PLUGIN_ADMIN.ACCESS_ADMIN_CONFIGURATION -> Configuration
+            $parts = explode('.', $label);
+            $last = end($parts);
+            // Remove ACCESS_ prefix
+            $last = preg_replace('/^ACCESS_(?:ADMIN_|SITE_)?/', '', $last);
+            return ucwords(strtolower(str_replace('_', ' ', $last)));
+        }
+
+        return $label;
+    }
+}

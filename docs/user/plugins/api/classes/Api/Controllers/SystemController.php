@@ -1,0 +1,1323 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Grav\Plugin\Api\Controllers;
+
+use Grav\Common\Backup\Backups;
+use Grav\Common\Language\LanguageCodes;
+use Grav\Plugin\Api\Exceptions\NotFoundException;
+use Grav\Plugin\Api\Exceptions\ValidationException;
+use Grav\Plugin\Api\Response\ApiResponse;
+use Grav\Plugin\Api\Services\DisabledPluginLangIndex;
+use Grav\Plugin\Api\Services\EnvironmentService;
+use Grav\Plugin\Api\Services\TranslationSourceIndex;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+
+class SystemController extends AbstractApiController
+{
+    /**
+     * Locale every other locale falls back to, and the one admin2 authors its
+     * strings in. Must be the canonical form `normalizeLangCode()` produces, so a
+     * request for `en` or `en-US` skips the backfill instead of merging with itself.
+     */
+    private const FALLBACK_LANG = 'en-US';
+
+    /**
+     * Bump when the way the translations dictionary is built changes, so cached
+     * dictionaries and ETags from the previous logic are not served.
+     */
+    private const TRANSLATIONS_CACHE_VERSION = 1;
+
+    private const TRANSLATIONS_CACHE_TTL = 604800;
+
+    /** @var array<string, string> translationsFingerprint() per language and prefix, for this request. */
+    private array $translationsFingerprints = [];
+
+    /**
+     * GET /system/environments — list writable environment targets.
+     *
+     * Response shape:
+     *   {
+     *     detected: "host.example",     // what Grav inferred from the URL
+     *     environments: [
+     *       { name: "",      label: "Default", exists: true, hasOverrides: true|false },
+     *       { name: "staging", exists: true, hasOverrides: true }
+     *     ]
+     *   }
+     *
+     * `name: ""` represents the base user/config target. Any other entry is an
+     * existing environment resolved by Grav's environment:// stream or its
+     * configured common environment path. Legacy user/<host>/config/ layouts
+     * (Grav 1.6 fallback) are included too.
+     */
+    public function environments(ServerRequestInterface $request): ResponseInterface
+    {
+        // Any signed-in admin user: only names, and the environment headers
+        // already accept any name from them. Admin2 needs the list to reset a
+        // stale selection and to decide whether to show its switcher.
+        $this->requirePermission($request, 'api.access');
+
+        $envService = new EnvironmentService($this->grav);
+        $list = [[
+            'name' => '',
+            'label' => 'Default',
+            'exists' => true,
+            'hasOverrides' => false,
+        ]];
+
+        foreach ($envService->listEnvironments() as $name) {
+            $list[] = [
+                'name' => $name,
+                'label' => $name,
+                'exists' => true,
+                'hasOverrides' => $envService->envHasOverrides($name),
+            ];
+        }
+
+        return ApiResponse::create([
+            'detected' => $this->grav['uri']->environment(),
+            'environments' => $list,
+        ]);
+    }
+
+    /**
+     * POST /system/environments — create a new env folder.
+     *
+     * Body: { "name": "staging.foo.com" }
+     * Creates the configured environment's config/ directory (or the standard
+     * user/env/<name>/config/ path when no common path is configured).
+     */
+    public function createEnvironment(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.config.write');
+
+        $body = $this->getRequestBody($request);
+        $name = trim((string)($body['name'] ?? ''));
+
+        $envService = new EnvironmentService($this->grav);
+        try {
+            $envService->createEnvironment($name);
+        } catch (\InvalidArgumentException $e) {
+            throw new ValidationException($e->getMessage());
+        }
+
+        return ApiResponse::create([
+            'name' => $name,
+            'label' => $name,
+            'exists' => true,
+            'hasOverrides' => false,
+        ], 201, ['X-Invalidates' => 'system:environments']);
+    }
+
+    /**
+     * DELETE /system/environments/{name} — remove an environment folder.
+     *
+     * Refuses to delete the env that Grav resolved for the current request, and
+     * refuses to act on legacy user/<name>/ layouts. See EnvironmentService for
+     * the full safety rules.
+     *
+     * Super only, unlike create: the folder can hold `system` and `security`
+     * overrides that only a super user may write (ConfigController's
+     * SUPER_WRITE_SCOPES), and deleting it reverts them just as surely.
+     */
+    public function deleteEnvironment(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requireSuper($request);
+
+        $name = (string) $this->getRouteParam($request, 'name');
+
+        $envService = new EnvironmentService($this->grav);
+        try {
+            $envService->deleteEnvironment($name);
+        } catch (\OutOfBoundsException $e) {
+            throw new NotFoundException($e->getMessage());
+        } catch (\InvalidArgumentException $e) {
+            throw new ValidationException($e->getMessage());
+        }
+
+        return ApiResponse::noContent(['X-Invalidates' => 'system:environments']);
+    }
+
+    public function info(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.system.read');
+
+        $plugins = $this->getPluginsInfo();
+        $themes = $this->getThemesInfo();
+
+        // Demo accounts see the same report with server-path / host-fingerprint
+        // fields redacted (see getPhpConfig()); a public demo must not leak the
+        // host's filesystem layout, open_basedir, temp dir, or web-server banner.
+        $redact = $this->isDemoUser($request);
+
+        $data = [
+            'grav_version' => GRAV_VERSION,
+            'php_version' => PHP_VERSION,
+            'php_extensions' => get_loaded_extensions(),
+            'server_software' => $redact ? self::DEMO_REDACTED : ($_SERVER['SERVER_SOFTWARE'] ?? 'unknown'),
+            'environment' => (string) ($this->config->get('system.environment') ?? $this->grav['uri']->environment()),
+            'plugins' => $plugins,
+            'themes' => $themes,
+            'php_config' => $this->getPhpConfig($redact),
+        ];
+
+        return ApiResponse::create($data);
+    }
+
+    private function getPhpConfig(bool $redact = false): array
+    {
+        $path = fn (string $value): string => $redact ? self::DEMO_REDACTED : $value;
+
+        $ini = function (string $key): string {
+            return (string) ini_get($key);
+        };
+
+        return [
+            'Upload & POST' => [
+                'file_uploads' => $ini('file_uploads'),
+                'upload_max_filesize' => $ini('upload_max_filesize'),
+                'max_file_uploads' => $ini('max_file_uploads'),
+                'post_max_size' => $ini('post_max_size'),
+            ],
+            'Memory & Execution' => [
+                'memory_limit' => $ini('memory_limit'),
+                'max_execution_time' => $ini('max_execution_time') . 's',
+                'max_input_time' => $ini('max_input_time') . 's',
+                'max_input_vars' => $ini('max_input_vars'),
+            ],
+            'Error Handling' => [
+                'display_errors' => $ini('display_errors'),
+                'error_reporting' => (string) error_reporting(),
+                'log_errors' => $ini('log_errors'),
+                'error_log' => $path($ini('error_log') ?: '(none)'),
+            ],
+            'Paths & Environment' => [
+                'open_basedir' => $path($ini('open_basedir') ?: '(none)'),
+                'sys_temp_dir' => $path(sys_get_temp_dir()),
+                'doc_root' => $path($_SERVER['DOCUMENT_ROOT'] ?? '(unknown)'),
+                'include_path' => $path($ini('include_path')),
+            ],
+            'Session' => [
+                'session.save_handler' => $ini('session.save_handler'),
+                'session.save_path' => $path($ini('session.save_path') ?: '(default)'),
+                'session.gc_maxlifetime' => $ini('session.gc_maxlifetime') . 's',
+                'session.cookie_lifetime' => $ini('session.cookie_lifetime') . 's',
+                'session.cookie_secure' => $ini('session.cookie_secure'),
+                'session.cookie_httponly' => $ini('session.cookie_httponly'),
+            ],
+            'OPcache' => function_exists('opcache_get_status') ? [
+                'opcache.enable' => $ini('opcache.enable'),
+                'opcache.memory_consumption' => $ini('opcache.memory_consumption') . 'MB',
+                'opcache.max_accelerated_files' => $ini('opcache.max_accelerated_files'),
+                'opcache.validate_timestamps' => $ini('opcache.validate_timestamps'),
+                'opcache.revalidate_freq' => $ini('opcache.revalidate_freq') . 's',
+            ] : ['opcache.enable' => '0'],
+            'Security' => [
+                'allow_url_fopen' => $ini('allow_url_fopen'),
+                'allow_url_include' => $ini('allow_url_include'),
+                'disable_functions' => $ini('disable_functions') ?: '(none)',
+                'expose_php' => $ini('expose_php'),
+            ],
+            'Date & Locale' => [
+                'date.timezone' => $ini('date.timezone') ?: date_default_timezone_get(),
+                'default_charset' => $ini('default_charset'),
+                'mbstring.internal_encoding' => $ini('mbstring.internal_encoding') ?: '(default)',
+            ],
+        ];
+    }
+
+    /**
+     * GET /ping - Lightweight keep-alive endpoint.
+     * Health/connectivity check. No auth required — session keep-alive
+     * is handled by proactive token refresh on the client side.
+     */
+    public function ping(ServerRequestInterface $request): ResponseInterface
+    {
+        return ApiResponse::create(['pong' => true]);
+    }
+
+    public function clearCache(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.system.write');
+
+        $query = $request->getQueryParams();
+        $scope = $query['scope'] ?? 'standard';
+
+        // API scope => core Cache::clearCache() argument. Core names the partial
+        // clears `*-only` and treats anything it doesn't recognise as a standard
+        // clear, so passing `images` straight through quietly cleared the wrong
+        // thing.
+        $scopeMap = [
+            'all' => 'all',
+            'standard' => 'standard',
+            'images' => 'images-only',
+            'assets' => 'assets-only',
+            'tmp' => 'tmp-only',
+        ];
+        if (!is_string($scope) || !isset($scopeMap[$scope])) {
+            $shown = is_string($scope) ? $scope : '(non-string)';
+            throw new ValidationException(
+                "Invalid cache scope '{$shown}'. Allowed: " . implode(', ', array_keys($scopeMap)),
+            );
+        }
+
+        $results = $this->grav['cache']->clearCache($scopeMap[$scope]);
+
+        return ApiResponse::create([
+            'scope' => $scope,
+            'message' => "Cache cleared successfully (scope: {$scope}).",
+            'details' => $results,
+        ]);
+    }
+
+    /**
+     * GET /system/logs/files — list log files registered for the admin viewer.
+     *
+     * Lists the known core logs plus every other *.log discovered in the
+     * log:// directory, then fires onApiLogFiles so plugins can append their
+     * own. The file names returned here are the only values accepted by
+     * GET /system/logs?file=...
+     */
+    public function logFiles(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.system.read');
+        // Raw logs can carry stack traces with absolute paths, IPs, and the odd
+        // leaked token — too easy to miss something to redact line-by-line, so
+        // block the endpoint outright for demo accounts.
+        $this->denyIfDemo($request);
+
+        $files = $this->getRegisteredLogFiles();
+
+        return ApiResponse::create([
+            'files'   => array_values($files),
+            'default' => 'grav.log',
+        ]);
+    }
+
+    public function logs(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.system.read');
+        $this->denyIfDemo($request);
+
+        $pagination = $this->getPagination($request);
+        $query = $request->getQueryParams();
+        $levelFilter = $query['level'] ?? null;
+        $search = $query['search'] ?? null;
+
+        // Validate ?file= against the registered whitelist. Without this an
+        // attacker could read any file the locator can resolve.
+        $registered = $this->getRegisteredLogFiles();
+        $allowed = array_column($registered, 'file');
+        $requested = $query['file'] ?? 'grav.log';
+        if (!in_array($requested, $allowed, true)) {
+            throw new ValidationException('Unknown log file: ' . $requested, [
+                ['field' => 'file', 'message' => 'Must be one of: ' . implode(', ', $allowed)],
+            ]);
+        }
+
+        $logFile = $this->grav['locator']->findResource('log://' . $requested);
+        if (!$logFile || !file_exists($logFile)) {
+            return ApiResponse::paginated([], 0, $pagination['page'], $pagination['per_page'], $this->getApiBaseUrl() . '/system/logs', query: $request->getQueryParams());
+        }
+
+        $content = file_get_contents($logFile);
+        $lines = explode("\n", $content);
+        $entries = [];
+
+        foreach ($lines as $line) {
+            if ($line === '' || $line[0] !== '[') {
+                continue;
+            }
+
+            // Extract date
+            $closeBracket = strpos($line, ']');
+            if ($closeBracket === false) {
+                continue;
+            }
+            $date = substr($line, 1, $closeBracket - 1);
+
+            // Extract logger.LEVEL: message
+            $rest = ltrim(substr($line, $closeBracket + 1));
+            $colonPos = strpos($rest, ':');
+            if ($colonPos === false) {
+                continue;
+            }
+
+            $loggerLevel = substr($rest, 0, $colonPos);
+            $dotPos = strpos($loggerLevel, '.');
+            if ($dotPos === false) {
+                continue;
+            }
+
+            $logger = substr($loggerLevel, 0, $dotPos);
+            $level = strtoupper(substr($loggerLevel, $dotPos + 1));
+            $message = trim(substr($rest, $colonPos + 1));
+
+            // Strip trailing [] []
+            $message = preg_replace('/\s*\[\]\s*\[\]\s*$/', '', $message);
+
+            if ($levelFilter !== null && $level !== strtoupper($levelFilter)) {
+                continue;
+            }
+
+            if ($search !== null && $search !== '' && stripos($message, $search) === false) {
+                continue;
+            }
+
+            $entries[] = [
+                'date' => $date,
+                'logger' => $logger,
+                'level' => $level,
+                'message' => $message,
+            ];
+        }
+
+        $entries = array_reverse($entries);
+        $total = count($entries);
+        $paged = array_slice($entries, $pagination['offset'], $pagination['limit']);
+
+        return ApiResponse::paginated($paged, $total, $pagination['page'], $pagination['per_page'], $this->getApiBaseUrl() . '/system/logs', query: $request->getQueryParams());
+    }
+
+    /**
+     * DELETE /system/logs?file=grav.log — empty out a log file.
+     *
+     * Super-admin only. Clearing a log destroys the forensic record of
+     * everything that happened before it — including the trail of an attack an
+     * operator may be in the middle of reviewing — so this sits above the
+     * api.system.read/write tiers that the rest of the log viewer uses, and
+     * above what a scoped API key minted on a super account can reach.
+     *
+     * The file is truncated rather than deleted, so the inode, ownership and
+     * mode survive and any handler holding it open keeps writing to the same
+     * place. A single marker entry is left behind recording who cleared it, in
+     * the same format the viewer parses — a wiped log that says nothing about
+     * being wiped is worse than one that does.
+     *
+     * The target accepts `file` from the JSON body or the query string, and is
+     * validated against the same whitelist GET /system/logs uses.
+     */
+    public function clearLog(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requireSuper($request);
+        $this->denyIfDemo($request, 'Clearing logs is disabled in demo mode.');
+
+        $body = $this->getRequestBody($request);
+        $query = $request->getQueryParams();
+        $requested = (string) ($body['file'] ?? $query['file'] ?? 'grav.log');
+
+        $registered = $this->getRegisteredLogFiles();
+        $allowed = array_column($registered, 'file');
+        if (!in_array($requested, $allowed, true)) {
+            throw new ValidationException('Unknown log file: ' . $requested, [
+                ['field' => 'file', 'message' => 'Must be one of: ' . implode(', ', $allowed)],
+            ]);
+        }
+
+        $logFile = $this->grav['locator']->findResource('log://' . $requested);
+        if (!$logFile || !file_exists($logFile)) {
+            // A curated core log is listed before its first write; nothing to
+            // clear is a success, not an error.
+            return ApiResponse::create([
+                'file' => $requested,
+                'cleared_bytes' => 0,
+                'message' => "Log is already empty: {$requested}",
+            ]);
+        }
+
+        if (!is_writable($logFile)) {
+            throw new ValidationException('Log file is not writable: ' . $requested, [
+                ['field' => 'file', 'message' => 'Check filesystem permissions on logs/' . $requested],
+            ]);
+        }
+
+        $size = (int) (@filesize($logFile) ?: 0);
+        $user = $this->getUser($request);
+        $username = (string) ($user->get('username') ?: 'unknown');
+        $marker = $this->buildClearedMarker($logFile, $username);
+
+        if (@file_put_contents($logFile, $marker, LOCK_EX) === false) {
+            throw new \RuntimeException('Failed to clear log file: ' . $requested);
+        }
+
+        // Audited separately from the log itself (the audit trail lives in its
+        // own store), so wiping a log cannot erase the record of the wipe.
+        $this->fireEvent('onApiLogCleared', [
+            'file' => $requested,
+            'bytes' => $size,
+            'user' => $user,
+        ]);
+
+        return ApiResponse::create([
+            'file' => $requested,
+            'cleared_bytes' => $size,
+            'message' => "Log cleared: {$requested}",
+        ]);
+    }
+
+    /**
+     * The one line left in a freshly cleared log. Mirrors Monolog's line format
+     * (`[datetime] channel.LEVEL: message [] []`) so the viewer's parser reads
+     * it like any other entry. The channel is taken from the log's own first
+     * line — grav.log is `grav`, security.log is `grav-security`, a plugin log
+     * is whatever that plugin uses — read with fgets rather than slurping the
+     * file, which can be very large.
+     */
+    private function buildClearedMarker(string $logFile, string $username): string
+    {
+        $channel = 'grav';
+        $handle = @fopen($logFile, 'rb');
+        if ($handle) {
+            $first = fgets($handle, 512);
+            fclose($handle);
+            if (is_string($first) && preg_match('/^\[[^\]]+\]\s+([^.\s]+)\./', $first, $m)) {
+                $channel = $m[1];
+            }
+        }
+
+        // The marker is only worth writing if it can be trusted, so the one
+        // caller-influenced part of it is reduced to characters that cannot
+        // forge a log line — no newlines, brackets or colons. Grav validates
+        // usernames anyway, so in practice this only ever trims.
+        $safeUser = substr((string) preg_replace('/[^\w.@\-]+/u', '', $username), 0, 64);
+
+        $date = (new \DateTimeImmutable('now'))->format('Y-m-d\TH:i:s.uP');
+
+        return sprintf('[%s] %s.NOTICE: Log cleared by %s [] []%s', $date, $channel, $safeUser ?: 'unknown', PHP_EOL);
+    }
+
+    /**
+     * Human-friendly labels for the log files Grav core writes itself. Any
+     * discovered log not listed here falls back to a humanized filename.
+     */
+    private const CORE_LOG_LABELS = [
+        'grav.log'      => 'Grav System Log',
+        'security.log'  => 'Security Log',
+        'email.log'     => 'Email Log',
+        'scheduler.log' => 'Scheduler Log',
+    ];
+
+    /**
+     * Build the list of log files available to the admin viewer.
+     *
+     * The known core logs are always listed (in a stable order, and even
+     * before their first write) so the viewer is predictable. On top of that,
+     * every other `*.log` in the log:// directory is auto-discovered so plugin
+     * and future core logs appear without needing to register. Plugins can
+     * still add or relabel entries via onApiLogFiles — useful for logs that
+     * live outside the log:// stream. Result is deduped by `file` (first wins)
+     * so the curated core labels are never shadowed.
+     *
+     * @return array<int, array{file: string, label: string}>
+     */
+    private function getRegisteredLogFiles(): array
+    {
+        // Curated core logs first, so they keep their order and labels and
+        // remain listed even when the file does not exist yet.
+        $files = [];
+        foreach (self::CORE_LOG_LABELS as $name => $label) {
+            $files[] = ['file' => $name, 'label' => $label];
+        }
+
+        // Auto-discover any additional *.log in the (single) log:// directory.
+        // log:// resolves to one folder (GRAV_LOG_PATH), so this is scoped to
+        // logs an admin with api.system.read is already entitled to read.
+        $logDir = $this->grav['locator']->findResource('log://', true, true);
+        if ($logDir && is_dir($logDir)) {
+            foreach (glob(rtrim($logDir, '/') . '/*.log') ?: [] as $path) {
+                $name = basename($path);
+                if (isset(self::CORE_LOG_LABELS[$name])) {
+                    continue;
+                }
+                $files[] = ['file' => $name, 'label' => $this->humanizeLogName($name)];
+            }
+        }
+
+        $event = $this->fireEvent('onApiLogFiles', ['files' => $files]);
+        $merged = $event['files'] ?? $files;
+
+        // Dedupe by file name; first occurrence wins so core entries above
+        // are preserved even if a plugin tries to re-register the same name.
+        $seen = [];
+        $result = [];
+        foreach ($merged as $entry) {
+            if (!is_array($entry) || empty($entry['file'])) {
+                continue;
+            }
+            $name = (string) $entry['file'];
+            if (isset($seen[$name])) {
+                continue;
+            }
+            // Strip path components defensively — log names must be simple
+            // basenames so they resolve through the log:// stream.
+            if ($name !== basename($name)) {
+                continue;
+            }
+            $seen[$name] = true;
+            $result[] = [
+                'file'  => $name,
+                'label' => (string) ($entry['label'] ?? $name),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Turn a bare log filename into a readable label, e.g. `custom-plugin.log`
+     * becomes "Custom Plugin Log". Used for discovered logs we have no curated
+     * label for.
+     */
+    private function humanizeLogName(string $name): string
+    {
+        $base = preg_replace('/\.log$/', '', $name);
+        $base = str_replace(['-', '_', '.'], ' ', $base);
+        $base = trim(preg_replace('/\s+/', ' ', $base));
+
+        return $base === '' ? $name : ucwords($base) . ' Log';
+    }
+
+    public function backup(ServerRequestInterface $request): ResponseInterface
+    {
+        // Backups archive the full Grav root, including user/accounts (admin
+        // password hashes) and user/config secrets. Gate creation, listing,
+        // download and deletion behind a dedicated api.system.backup permission
+        // (or api.super) rather than the broader read/write tiers, so only
+        // operators explicitly trusted with the credential-bearing archive can
+        // touch it (GHSA-2f86-9cp8-6hcf).
+        $this->requirePermission($request, 'api.system.backup');
+        // Backup archives contain password hashes and config secrets — hide the
+        // whole backup surface (create/list/download/delete) from demo accounts,
+        // not just the mutating verbs the write gate already blocks.
+        $this->denyIfDemo($request);
+
+        // Ensure backup directory is initialized
+        $backups = $this->grav['backups'] ?? new Backups();
+        if (method_exists($backups, 'init')) {
+            $backups->init();
+        }
+
+        $result = Backups::backup();
+
+        $filename = basename($result);
+        $size = file_exists($result) ? filesize($result) : 0;
+
+        return ApiResponse::created(
+            data: [
+                'filename' => $filename,
+                'path' => $result,
+                'size' => $size,
+                'date' => date('c'),
+            ],
+            location: $this->getApiBaseUrl() . '/system/backups',
+        );
+    }
+
+    public function backups(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.system.backup');
+        // Backup archives contain password hashes and config secrets — hide the
+        // whole backup surface (create/list/download/delete) from demo accounts,
+        // not just the mutating verbs the write gate already blocks.
+        $this->denyIfDemo($request);
+
+        // Ensure backup directory is initialized before listing
+        $backups = $this->grav['backups'] ?? new Backups();
+        if (method_exists($backups, 'init')) {
+            $backups->init();
+        }
+
+        $list = Backups::getAvailableBackups(true);
+
+        $items = [];
+        foreach ($list as $backup) {
+            // getAvailableBackups returns stdClass objects, not arrays
+            $b = is_object($backup) ? $backup : (object) $backup;
+            $items[] = [
+                'filename' => $b->filename ?? basename($b->path ?? ''),
+                'title' => $b->title ?? null,
+                // ISO 8601 like POST /system/backups returns. Core's `date` is
+                // RFC 2822, so format from the DateTime it keeps alongside.
+                'date' => ($b->time ?? null) instanceof \DateTimeInterface
+                    ? $b->time->format('c')
+                    : ($b->date ?? null),
+                'size' => $b->size ?? 0,
+            ];
+        }
+
+        // Include purge config for storage usage display
+        $purge = Backups::getPurgeConfig();
+
+        return ApiResponse::create([
+            'backups' => $items,
+            'purge' => $purge,
+            'profiles_count' => count(Backups::getBackupProfiles() ?? []),
+        ]);
+    }
+
+    /**
+     * DELETE /system/backups/{filename} - Delete a backup file.
+     */
+    public function deleteBackup(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.system.backup');
+        // Backup archives contain password hashes and config secrets — hide the
+        // whole backup surface (create/list/download/delete) from demo accounts,
+        // not just the mutating verbs the write gate already blocks.
+        $this->denyIfDemo($request);
+
+        $b = $this->grav['backups'] ?? new Backups();
+        if (method_exists($b, 'init')) { $b->init(); }
+
+        $filename = $this->getRouteParam($request, 'filename');
+
+        // Validate filename (no path traversal)
+        if (!$filename || $filename !== basename($filename) || !str_ends_with($filename, '.zip')) {
+            throw new ValidationException(
+                'Invalid backup filename.',
+                [['field' => 'filename', 'message' => 'Invalid backup filename.']],
+            );
+        }
+
+        $backupDir = $this->grav['locator']->findResource('backup://', true);
+        $filepath = $backupDir . '/' . $filename;
+
+        if (!file_exists($filepath)) {
+            throw new NotFoundException("Backup '{$filename}' not found.");
+        }
+
+        unlink($filepath);
+
+        return ApiResponse::noContent();
+    }
+
+    /**
+     * GET /system/backups/{filename}/download - Download a backup file.
+     */
+    public function downloadBackup(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.system.backup');
+        // Backup archives contain password hashes and config secrets — hide the
+        // whole backup surface (create/list/download/delete) from demo accounts,
+        // not just the mutating verbs the write gate already blocks.
+        $this->denyIfDemo($request);
+
+        $b = $this->grav['backups'] ?? new Backups();
+        if (method_exists($b, 'init')) { $b->init(); }
+
+        $filename = $this->getRouteParam($request, 'filename');
+
+        if (!$filename || $filename !== basename($filename) || !str_ends_with($filename, '.zip')) {
+            throw new ValidationException(
+                'Invalid backup filename.',
+                [['field' => 'filename', 'message' => 'Invalid backup filename.']],
+            );
+        }
+
+        $backupDir = $this->grav['locator']->findResource('backup://', true);
+        $filepath = $backupDir . '/' . $filename;
+
+        if (!file_exists($filepath)) {
+            throw new NotFoundException("Backup '{$filename}' not found.");
+        }
+
+        $stream = fopen($filepath, 'rb');
+
+        return new \Grav\Framework\Psr7\Response(
+            200,
+            [
+                'Content-Type' => 'application/zip',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'Content-Length' => (string) filesize($filepath),
+            ],
+            $stream,
+        );
+    }
+
+    /**
+     * GET /translations/{lang} - Get all translation strings for a language.
+     *
+     * Returns a flat key-value object of all translation strings for efficient
+     * client-side caching. Optionally filter by prefix (e.g., ?prefix=PLUGIN_ADMIN).
+     *
+     * Answers conditional GETs. The ETag is the body's `checksum`, and the
+     * checksum for a given set of source files is remembered under a stat-only
+     * fingerprint of them, so a client that already holds the current strings
+     * gets an empty 304 without the dictionary being built at all. The built
+     * dictionary is cached under the same fingerprint, so a full response after
+     * a cache hit skips the build too.
+     */
+    public function translations(ServerRequestInterface $request): ResponseInterface
+    {
+        // No auth required — translation strings are not sensitive
+
+        $lang = $this->resolveTranslationsLanguage($this->getRouteParam($request, 'lang'));
+        $prefix = $request->getQueryParams()['prefix'] ?? null;
+        $prefix = is_string($prefix) && $prefix ? $prefix : null;
+        $ifNoneMatch = $request->getHeaderLine('If-None-Match');
+
+        // Fast path: the checksum for these exact source files is known, and the
+        // client already has it. No dictionary is built or even read.
+        $knownChecksum = $this->knownTranslationsChecksum($lang, $prefix);
+        if ($knownChecksum !== null && $this->translationsEtagMatches($ifNoneMatch, $knownChecksum)) {
+            return $this->translationsNotModified($knownChecksum);
+        }
+
+        ['checksum' => $checksum, 'strings' => $translations] = $this->translationsDictionary($lang, $prefix, $knownChecksum);
+
+        if ($this->translationsEtagMatches($ifNoneMatch, $checksum)) {
+            return $this->translationsNotModified($checksum);
+        }
+
+        return ApiResponse::create([
+            'lang' => $lang,
+            'dir' => LanguageCodes::getOrientation(self::primarySubtag($lang)),
+            'count' => count($translations),
+            'checksum' => $checksum,
+            'strings' => $translations,
+        ])
+            ->withHeader('ETag', '"' . $checksum . '"')
+            ->withHeader('Cache-Control', 'no-cache, private');
+    }
+
+    /**
+     * The language code GET /translations/{lang} answers for a requested code.
+     *
+     * Admin UI languages are a different concept from site content languages,
+     * so this does NOT gate on $language->getLanguages() (the languages
+     * system.yaml serves content in). Any plugin shipping a
+     * `languages/<lang>.yaml` is loadable, even if the site itself only serves
+     * English. A missing or malformed code, or one that no source ships a file
+     * for (neither the code nor its primary subtag), falls back to the site
+     * default, and legacy short codes are coerced to their BCP 47 form so `en`
+     * resolves to admin2's `en-US.yaml`.
+     *
+     * The shipped-file check matters because the endpoint is public and each
+     * resolved code gets its own cached dictionary: a code nothing ships would
+     * only ever produce the English backfill, stored again under a new key.
+     */
+    public function resolveTranslationsLanguage(mixed $lang): string
+    {
+        /** @var \Grav\Common\Language\Language $language */
+        $language = $this->grav['language'];
+        $default = self::normalizeLangCode($language->getDefault() ?: 'en-US');
+
+        if (!is_string($lang) || !preg_match('/^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?$/', $lang)) {
+            return $default;
+        }
+
+        return self::shippedLanguageOr(self::normalizeLangCode($lang), $this->shippedTranslationLanguages(), $default);
+    }
+
+    /**
+     * Language codes any core, plugin, theme or site source ships a file for.
+     *
+     * @return array<int, string>
+     */
+    protected function shippedTranslationLanguages(): array
+    {
+        return TranslationSourceIndex::shared($this->grav)->languages();
+    }
+
+    /**
+     * $lang when a source ships a file for it or for its primary subtag,
+     * otherwise $default. Codes on disk are compared case-insensitively.
+     *
+     * @param array<int, string> $shipped
+     */
+    private static function shippedLanguageOr(string $lang, array $shipped, string $default): string
+    {
+        $shipped = array_map('strtolower', $shipped);
+        foreach (self::translationChainFor($lang) as $code) {
+            if (in_array(strtolower($code), $shipped, true)) {
+                return $lang;
+            }
+        }
+
+        return $default;
+    }
+
+    /**
+     * The checksum GET /translations/{lang} sends as its ETag for a resolved
+     * language (see resolveTranslationsLanguage()), shared with
+     * GET /admin-next/boot. The remembered checksum answers without reading the
+     * dictionary; otherwise the dictionary is loaded or built, which also
+     * primes the cache the next /translations call reads.
+     */
+    public function translationsChecksum(string $lang, ?string $prefix = null): string
+    {
+        $known = $this->knownTranslationsChecksum($lang, $prefix);
+
+        return $known ?? $this->translationsDictionary($lang, $prefix, null)['checksum'];
+    }
+
+    /**
+     * The checksum remembered for these exact source files, or null.
+     */
+    private function knownTranslationsChecksum(string $lang, ?string $prefix): ?string
+    {
+        // Only the full dictionary is remembered (see translationsDictionary()).
+        if ($prefix !== null) {
+            return null;
+        }
+
+        $known = $this->grav['cache']->fetch('api-translations-etag-' . $this->translationsFingerprint($lang, $prefix));
+
+        return is_string($known) ? $known : null;
+    }
+
+    /**
+     * The dictionary and its checksum, from the cache or freshly built. The
+     * remembered checksum is updated when it differs from the dictionary's.
+     *
+     * @return array{checksum: string, strings: array<string, string>}
+     */
+    private function translationsDictionary(string $lang, ?string $prefix, ?string $knownChecksum): array
+    {
+        // A prefixed request is filtered from the cached full dictionary rather
+        // than stored under its own key: the prefix is free text from a public
+        // endpoint, so one entry per prefix would let anyone grow the cache.
+        if ($prefix !== null) {
+            $full = $this->translationsDictionary($lang, null, $this->knownTranslationsChecksum($lang, null));
+            $strings = self::filterByPrefix($full['strings'], $prefix);
+
+            return ['checksum' => md5(json_encode($strings)), 'strings' => $strings];
+        }
+
+        $cache = $this->grav['cache'];
+        $fingerprint = $this->translationsFingerprint($lang, $prefix);
+        $etagKey = 'api-translations-etag-' . $fingerprint;
+        $dictKey = 'api-translations-dict-' . $fingerprint;
+
+        $cached = $cache->fetch($dictKey);
+        if (is_array($cached) && is_string($cached['checksum'] ?? null) && is_array($cached['strings'] ?? null)) {
+            $checksum = $cached['checksum'];
+            $translations = $cached['strings'];
+        } else {
+            $translations = $this->buildTranslationsForRequest($lang);
+            // Include a checksum for cache invalidation
+            $checksum = md5(json_encode($translations));
+            $cache->save($dictKey, ['checksum' => $checksum, 'strings' => $translations], self::TRANSLATIONS_CACHE_TTL);
+        }
+        if ($knownChecksum !== $checksum) {
+            $cache->save($etagKey, $checksum, self::TRANSLATIONS_CACHE_TTL);
+        }
+
+        return ['checksum' => $checksum, 'strings' => $translations];
+    }
+
+    /**
+     * The translations dictionary for a language, English-backfilled and
+     * optionally narrowed to one key prefix.
+     *
+     * @return array<string, string>
+     */
+    private function buildTranslationsForRequest(string $lang): array
+    {
+        $translations = $this->buildTranslationChain($lang);
+
+        // Backfill gaps from English. `flattenByLang()` returns the requested
+        // language *only* — it does not merge a base locale — so any key a
+        // translator hasn't reached yet simply vanishes from the response and the
+        // client humanizes it: `ADMIN_NEXT.CACHE_CLEAR_BUTTON.LABEL` rendered as
+        // "Label" instead of "Cache" (admin2#129). Worse, a humanized key reads as
+        // plausible English, so gaps stay invisible until someone runs the admin in
+        // another language. Merging here fixes it once for every client, needs no
+        // extra request, and keeps the checksum honest.
+        //
+        // The requested language always wins: we only add keys it doesn't already
+        // resolve. The `ICU.<key>` / `<key>` pair counts as one key for that test —
+        // backfilling `ICU.FOO` from English when the requested language only ships
+        // the flat `FOO` would shadow a real translation, because the client checks
+        // ICU first.
+        if ($lang !== self::FALLBACK_LANG) {
+            $base = $this->buildTranslationChain(self::FALLBACK_LANG);
+            foreach ($base as $key => $value) {
+                if (!is_string($key) || isset($translations[$key])) {
+                    continue;
+                }
+                $twin = str_starts_with($key, 'ICU.') ? substr($key, 4) : 'ICU.' . $key;
+                if (isset($translations[$twin])) {
+                    continue;
+                }
+                $translations[$key] = $value;
+            }
+        }
+
+        return $translations;
+    }
+
+    /**
+     * The entries under one key prefix, e.g. `PLUGIN_ADMIN`, matched case-insensitively.
+     *
+     * @param array<string, string> $translations
+     * @return array<string, string>
+     */
+    private static function filterByPrefix(array $translations, string $prefix): array
+    {
+        $prefixLower = strtolower($prefix) . '.';
+
+        return array_filter(
+            $translations,
+            fn($key) => str_starts_with(strtolower((string) $key), $prefixLower),
+            ARRAY_FILTER_USE_KEY
+        );
+    }
+
+    /**
+     * Stat-only signature of everything a translations response is built from:
+     * the language and prefix asked for, the provider inventory (extensions,
+     * enabled flags, active theme), the mtime of every language file in the
+     * requested chain and the English fallback chain (which covers this site's
+     * `user/languages` overrides), the compiled language checksum, and whether
+     * runtime overrides are on. Computing it reads no YAML.
+     */
+    private function translationsFingerprint(string $lang, ?string $prefix): string
+    {
+        return $this->translationsFingerprints[$lang . '|' . strtolower((string) $prefix)] ??= $this->computeTranslationsFingerprint($lang, $prefix);
+    }
+
+    private function computeTranslationsFingerprint(string $lang, ?string $prefix): string
+    {
+        $sources = TranslationSourceIndex::shared($this->grav);
+
+        $parts = [
+            self::TRANSLATIONS_CACHE_VERSION,
+            $lang,
+            $prefix === null ? '' : strtolower($prefix),
+            $sources->metaFingerprint(),
+            (int) (bool) $this->config->get('plugins.api.translation_overrides', true),
+        ];
+
+        $codes = self::translationChainFor($lang);
+        if ($lang !== self::FALLBACK_LANG) {
+            $codes = array_merge($codes, self::translationChainFor(self::FALLBACK_LANG));
+        }
+        foreach (array_unique($codes) as $code) {
+            $parts[] = $code . '=' . $sources->languageFingerprint($code);
+        }
+
+        $languages = $this->grav['languages'] ?? null;
+        if (is_object($languages) && method_exists($languages, 'checksum')) {
+            $parts[] = (string) $languages->checksum();
+        }
+
+        return md5(implode('|', $parts));
+    }
+
+    /**
+     * If-None-Match test for the translations ETag. The header may carry the
+     * value quoted, unquoted or weak (`W/`), and a compressing proxy may have
+     * appended a transport suffix; all of those match.
+     */
+    private function translationsEtagMatches(string $ifNoneMatch, string $checksum): bool
+    {
+        return $this->etagMatches($ifNoneMatch, '"' . $checksum . '"');
+    }
+
+    private function translationsNotModified(string $checksum): ResponseInterface
+    {
+        return new \Grav\Framework\Psr7\Response(304, [
+            'ETag' => '"' . $checksum . '"',
+            'Cache-Control' => 'no-cache, private',
+        ], '');
+    }
+
+    /**
+     * GET /admin/languages - Locales the admin UI itself can be rendered in.
+     *
+     * Distinct from GET /languages, which returns *site content* languages
+     * configured in system.yaml. This endpoint returns locales for which a
+     * translation file exists in the admin2 plugin's languages directory —
+     * i.e. languages a user can pick for their admin interface.
+     *
+     * Needs only api.access: every admin user picks their own language from
+     * this list, and the answer is locale codes and names, nothing about the
+     * system (getgrav/grav-plugin-api#73).
+     */
+    public function adminLanguages(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $dir = $this->grav['locator']->findResource('plugins://admin2/languages', true);
+        $languages = [];
+
+        if ($dir && is_dir($dir)) {
+            foreach (glob($dir . '/*.yaml') ?: [] as $file) {
+                $code = basename($file, '.yaml');
+                $languages[] = [
+                    'code' => $code,
+                    'name' => LanguageCodes::getName($code) ?: $code,
+                    'native_name' => LanguageCodes::getNativeName($code) ?: $code,
+                    'rtl' => LanguageCodes::isRtl(self::primarySubtag($code)),
+                ];
+            }
+        }
+
+        // Stable sort by native name so the dropdown order doesn't depend on
+        // filesystem readdir order.
+        usort($languages, fn($a, $b) => strcmp($a['native_name'], $b['native_name']));
+
+        return ApiResponse::create([
+            'languages' => $languages,
+        ]);
+    }
+
+    private function getPluginsInfo(): array
+    {
+        $plugins = [];
+        $gpm = $this->grav['plugins'];
+
+        foreach ($gpm as $plugin) {
+            $name = $plugin->name;
+            // Plugin::getBlueprint() asserts the plugin's metadata is in
+            // the Plugins manager. On Grav 2.0-rc.2 a number of registered
+            // plugin instances have no companion entry there (login, form,
+            // error, several first-party + side-car plugins), and the
+            // assert blows up for the whole /system/info request. Fall
+            // back to a read-from-disk path so partial info still ships.
+            $bpName = null;
+            $bpVersion = null;
+            if ($gpm->get($name) !== null) {
+                try {
+                    $blueprint = $plugin->getBlueprint();
+                    $bpName = $blueprint->get('name');
+                    $bpVersion = $blueprint->get('version');
+                } catch (\Throwable $e) {
+                    // Defensive: even past the null check, blueprint
+                    // hydration can throw on malformed yaml. Treat as
+                    // metadata-unavailable.
+                }
+            } else {
+                // Direct file read — bypasses Plugin::loadBlueprint() entirely.
+                $file = $this->grav['locator']->findResource("plugins://{$name}/blueprints.yaml", true);
+                if ($file && is_file($file)) {
+                    try {
+                        $raw = \Symfony\Component\Yaml\Yaml::parseFile($file);
+                        if (is_array($raw)) {
+                            $bpName = $raw['name'] ?? null;
+                            $bpVersion = $raw['version'] ?? null;
+                        }
+                    } catch (\Throwable $e) {
+                        // ignore — leave metadata blank
+                    }
+                }
+            }
+
+            // Cast: YAML types bare scalars, so `version: 1.0` in a package's
+            // blueprint parses as the float 1, not the string "1.0". Shipping
+            // that through as a JSON number breaks every consumer that treats
+            // it as text — the admin's Info page went blank on any site with
+            // one such plugin installed. Same for a numeric `name`.
+            $plugins[] = [
+                'name' => (string) ($bpName ?? $name),
+                'version' => (string) ($bpVersion ?? '0.0.0'),
+                'enabled' => (bool) $this->config->get("plugins.{$name}.enabled", false),
+            ];
+        }
+
+        return $plugins;
+    }
+
+    private function getThemesInfo(): array
+    {
+        $themes = [];
+        $activeTheme = $this->config->get('system.pages.theme');
+        $themesDir = $this->grav['locator']->findResource('themes://');
+
+        if (!$themesDir || !is_dir($themesDir)) {
+            return $themes;
+        }
+
+        $iterator = new \DirectoryIterator($themesDir);
+        foreach ($iterator as $item) {
+            if ($item->isDot() || !$item->isDir()) {
+                continue;
+            }
+
+            $blueprintFile = $item->getPathname() . '/blueprints.yaml';
+            if (!file_exists($blueprintFile)) {
+                continue;
+            }
+
+            $blueprint = \Grav\Common\Yaml::parse(file_get_contents($blueprintFile));
+            $themeName = $item->getFilename();
+
+            // See getPluginsInfo() — a bare `version: 1.0` in the theme's
+            // blueprint is a float, and must not leave here as one.
+            $themes[] = [
+                'name' => (string) ($blueprint['name'] ?? $themeName),
+                'version' => (string) ($blueprint['version'] ?? '0.0.0'),
+                'active' => $themeName === $activeTheme,
+            ];
+        }
+
+        return $themes;
+    }
+
+    /**
+     * Map a raw lang code (`en`, `fr`, `zh-hans`) to its BCP 47 canonical form
+     * (`en-US`, `fr-FR`, `zh-Hans`). Admin2 + admin-next standardize on BCP 47
+     * for their UI surfaces, so any short or lowercase variant arriving on the
+     * wire is coerced here before disk lookup. Anything not in the alias map
+     * (or already in canonical region/script casing) passes through.
+     */
+    /**
+     * Primary language subtag of a BCP 47 code. `he-IL` → `he`, `zh-Hans` →
+     * `zh`. Grav core's `LanguageCodes` table is keyed by short codes only,
+     * so any lookup against it has to go through here when the input might
+     * be region/script-qualified.
+     */
+    /**
+     * Build the flat translation dictionary for a single language.
+     *
+     * Wraps core's `flattenByLang()` and applies the two filters admin2 relies on:
+     * disabled-plugin provenance stripping, and dropping flat `<key>` entries that
+     * an `ICU.<key>` already shadows. Both run per-language, before any cross-language
+     * merge, so each language is filtered against its own sources.
+     *
+     * @return array<string, string>
+     */
+    private function buildTranslationDictionary(string $lang): array
+    {
+        /** @var \Grav\Common\Config\Languages $languages */
+        $languages = $this->grav['languages'];
+
+        try {
+            $translations = $languages->flattenByLang($lang);
+        } catch (\Throwable) {
+            $translations = [];
+        }
+
+        if (!is_array($translations)) {
+            return [];
+        }
+
+        // Strip strings contributed only by disabled plugins. Grav core's
+        // `flattenByLang()` reads every plugin's lang yaml regardless of enabled
+        // state — fine for the legacy admin, broken for admin2: a disabled plugin
+        // would still influence what admin2 renders. The service walks each
+        // plugin's lang yaml to determine provenance and returns keys unique to
+        // disabled plugins. Keys also shipped by enabled sources stay.
+        $disabledIndex = DisabledPluginLangIndex::shared($this->grav);
+        foreach ($disabledIndex->disabledOnlyKeys($lang) as $key) {
+            unset($translations[$key]);
+        }
+
+        return self::stripIcuShadowedKeys($translations);
+    }
+
+    /**
+     * Build the dictionary for a language, merging every bucket in its chain.
+     *
+     * Grav keeps one bucket per language code exactly as spelled on disk, and
+     * `flattenByLang()` reads a single bucket with no fallback. Admin2 ships
+     * region-suffixed files (`en-US.yaml`) while Grav core and every plugin ship
+     * bare-code ones (`en.yaml`), and `normalizeLangCode()` coerces a request for
+     * `en` up to `en-US`. The result was that `/translations/en-US` returned
+     * admin2's own strings and nothing else: no core strings and no plugin
+     * strings at all, so `window.__GRAV_I18N.t('PLUGIN_*.KEY')` humanized for
+     * every plugin (git-sync#259).
+     *
+     * Merging a code with its primary subtag fixes both directions: `en-US`
+     * reaches `en` for core- and plugin-owned strings, and `ru-RU` reaches `ru`.
+     * The requested code always wins, so a region-specific translation still
+     * overrides the bare one.
+     *
+     * @return array<string, string>
+     */
+    private function buildTranslationChain(string $lang): array
+    {
+        $merged = [];
+
+        // Least specific first, so the requested code overwrites what it shares.
+        foreach (array_reverse(self::translationChainFor($lang)) as $code) {
+            $merged = array_merge($merged, $this->buildTranslationDictionary($code));
+        }
+
+        // Re-strip after merging. Each bucket was filtered against itself, so a
+        // flat `<key>` from the bare bucket can still land next to an `ICU.<key>`
+        // that only the region bucket ships.
+        return self::stripIcuShadowedKeys($merged);
+    }
+
+    /**
+     * Language codes to merge for a request, most specific first.
+     *
+     * @return array<int, string>
+     */
+    private static function translationChainFor(string $lang): array
+    {
+        $chain = [$lang];
+
+        $primary = self::primarySubtag($lang);
+        if ($primary !== '' && $primary !== $lang) {
+            $chain[] = $primary;
+        }
+
+        return $chain;
+    }
+
+    /**
+     * Drop flat `<key>` entries when an `ICU.<key>` shadow exists. Admin2 ships
+     * the canonical PLUGIN_ADMIN.* vocabulary under ICU; if a 3rd-party plugin
+     * still using the Grav 1 flat convention is also installed, its values would
+     * otherwise leak into the dictionary served to the client. Keeping only the
+     * ICU side guarantees admin2 is the source of truth.
+     *
+     * @param array<string, string> $translations
+     * @return array<string, string>
+     */
+    private static function stripIcuShadowedKeys(array $translations): array
+    {
+        foreach (array_keys($translations) as $key) {
+            if (is_string($key) && !str_starts_with($key, 'ICU.') && isset($translations['ICU.' . $key])) {
+                unset($translations[$key]);
+            }
+        }
+
+        return $translations;
+    }
+
+    private static function primarySubtag(string $code): string
+    {
+        return strtolower(explode('-', $code, 2)[0]);
+    }
+
+    private static function normalizeLangCode(string $code): string
+    {
+        static $aliases = [
+            'en'      => 'en-US',
+            'ar'      => 'ar-SA',
+            'cs'      => 'cs-CZ',
+            'de'      => 'de-DE',
+            'es'      => 'es-ES',
+            'es-mx'   => 'es-MX',
+            'fi'      => 'fi-FI',
+            'fr'      => 'fr-FR',
+            'fr-ca'   => 'fr-CA',
+            'he'      => 'he-IL',
+            'it'      => 'it-IT',
+            'nl'      => 'nl-NL',
+            'pt'      => 'pt-PT',
+            'ru'      => 'ru-RU',
+            'sv'      => 'sv-SE',
+            'uk'      => 'uk-UA',
+            'zh-hans' => 'zh-Hans',
+            'zh-hant' => 'zh-Hant',
+        ];
+        $key = strtolower(str_replace('_', '-', trim($code)));
+        if (isset($aliases[$key])) {
+            return $aliases[$key];
+        }
+        if (preg_match('/^([a-z]{2,3})-([a-z0-9]{2,4})$/i', $code, $m)) {
+            $tag = strlen($m[2]) === 4
+                ? ucfirst(strtolower($m[2]))
+                : strtoupper($m[2]);
+            return strtolower($m[1]) . '-' . $tag;
+        }
+        return $code;
+    }
+}

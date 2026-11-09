@@ -1,0 +1,830 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Grav\Plugin\Api\Controllers;
+
+use Grav\Common\Helpers\YamlLinter;
+use Grav\Common\Page\Pages;
+use Grav\Common\Security;
+use Grav\Plugin\Api\Exceptions\ValidationException;
+use Grav\Plugin\Api\Response\ApiResponse;
+use Grav\Plugin\Api\Services\AdminModules;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use RocketTheme\Toolbox\Event\Event;
+use RocketTheme\Toolbox\File\YamlFile;
+
+class ReportsController extends AbstractApiController
+{
+    private const PERMISSION_READ = 'api.reports.read';
+
+    /**
+     * GET /reports - Generate plugin-extensible reports.
+     *
+     * Built-in reports: Security Check, YAML Linter.
+     * Plugins can add reports via the onApiGenerateReports event.
+     */
+    public function index(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        $refresh = filter_var($request->getQueryParams()['refresh'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $scans = $this->builtInScans($refresh);
+
+        $reports = [];
+
+        // Built-in: Grav Security Check (XSS scan)
+        $reports[] = $scans['security'];
+
+        // Built-in: Twig in Content (gate/sandbox state, leaking pages, blocks)
+        $reports[] = $this->twigContentReport($scans['twig_leaks']);
+
+        // Built-in: YAML Linter
+        $reports[] = $scans['yaml'];
+
+        // Fire event for plugins to add their own reports
+        $event = new Event(['reports' => $reports]);
+        $this->grav->fireEvent('onApiGenerateReports', $event);
+        $reports = $event['reports'];
+
+        // A report drawn by a plugin web component gets `v`, the version of
+        // its module URL (/admin-next/modules/plugins/{provider}/report/...).
+        foreach ($reports as $i => $report) {
+            if (is_array($report) && is_string($report['provider'] ?? null) && is_string($report['component'] ?? null) && !isset($report['v'])) {
+                $reports[$i]['v'] = AdminModules::versionFor($this->grav, 'report', $report['provider'], $report['component']);
+            }
+        }
+
+        return ApiResponse::create($reports);
+    }
+
+    /** Bump when the cached scan payload changes structure. */
+    private const SCAN_CACHE_VERSION = 1;
+
+    /**
+     * The three whole-site scans behind the built-in reports: the XSS check and
+     * the Twig leak check read every page, and the YAML linter parses every
+     * page's frontmatter plus the config and blueprint files. Together they
+     * were 300-450 ms per visit to the Reports screen.
+     *
+     * The result is cached against everything it is computed from: the pages
+     * cache id (which changes when page content changes), the config checksum
+     * (security settings, the Twig gate), the active language and theme, the
+     * Grav version, and a stat of the config, blueprint and environment YAML
+     * the linter reads outside the pages tree. The recent Twig block events
+     * and reports added by plugins are always live. `refresh=true` rebuilds.
+     *
+     * @return array{security: array, twig_leaks: array, yaml: array}
+     */
+    private function builtInScans(bool $refresh = false): array
+    {
+        /** @var Pages $pages */
+        $pages = $this->grav['pages'];
+        $pages->enablePages();
+
+        $cache = $this->grav['cache'];
+        $pagesId = method_exists($pages, 'getPagesCacheId') ? $pages->getPagesCacheId() : null;
+        $key = null;
+        if ($pagesId) {
+            $key = 'api-reports-' . md5(json_encode([
+                self::SCAN_CACHE_VERSION,
+                $pagesId,
+                $this->config->checksum(),
+                $this->grav['language']->getActive(),
+                (string) $this->config->get('system.pages.theme'),
+                \defined('GRAV_VERSION') ? GRAV_VERSION : '',
+                $this->lintedFilesFingerprint(),
+            ]));
+
+            if (!$refresh) {
+                $cached = $cache->fetch($key);
+                if (is_array($cached) && isset($cached['security'], $cached['twig_leaks'], $cached['yaml'])) {
+                    return $cached;
+                }
+            }
+        }
+
+        $scans = [
+            'security' => $this->securityReport(),
+            'twig_leaks' => Security::detectTwigLeaksFromPages($pages),
+            'yaml' => $this->yamlLinterReport(),
+        ];
+
+        if ($key !== null) {
+            $cache->save($key, $scans, 86400);
+        }
+
+        return $scans;
+    }
+
+    /**
+     * Name, size and modification time of every YAML and Markdown file the
+     * linter reads outside the pages tree (config, blueprints, the active
+     * theme's blueprints and each environment's config), which the pages
+     * cache id doesn't see. About 1 ms of stat calls on a typical site.
+     */
+    private function lintedFilesFingerprint(): string
+    {
+        $locator = $this->grav['locator'];
+
+        $dirs = array_merge(
+            (array) $locator->findResources('config://'),
+            (array) $locator->findResources('blueprints://'),
+        );
+        $theme = (string) $this->config->get('system.pages.theme');
+        if ($theme !== '') {
+            $themeBlueprints = $locator->findResource('themes://' . $theme . '/blueprints');
+            if (is_string($themeBlueprints)) {
+                $dirs[] = $themeBlueprints;
+            }
+        }
+        $userPath = GRAV_ROOT . '/' . GRAV_USER_PATH;
+        foreach (array_merge(glob($userPath . '/*/config', GLOB_ONLYDIR) ?: [], glob($userPath . '/env/*/config', GLOB_ONLYDIR) ?: []) as $dir) {
+            $dirs[] = $dir;
+        }
+
+        $hash = hash_init('md5');
+        foreach (array_unique($dirs) as $dir) {
+            if (!is_string($dir) || !is_dir($dir)) {
+                continue;
+            }
+            $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(
+                $dir,
+                \FilesystemIterator::SKIP_DOTS | \FilesystemIterator::FOLLOW_SYMLINKS
+            ));
+            foreach ($files as $file) {
+                if (preg_match('/\.(md|yaml)$/i', $file->getFilename())) {
+                    hash_update($hash, $file->getPathname() . '|' . $file->getMTime() . '|' . $file->getSize() . "\n");
+                }
+            }
+        }
+
+        return hash_final($hash);
+    }
+
+    /**
+     * Scan all pages for potential XSS vulnerabilities.
+     */
+    private function securityReport(): array
+    {
+        /** @var Pages $pages */
+        $pages = $this->grav['pages'];
+        $pages->enablePages();
+
+        $result = Security::detectXssFromPages($pages, true);
+
+        $items = [];
+        foreach ($result as $route => $fields) {
+            foreach ($fields as $field) {
+                $items[] = [
+                    'route' => $route,
+                    'field' => $field,
+                ];
+            }
+        }
+
+        $issueCount = count($items);
+
+        return [
+            'id' => 'security-check',
+            'title' => 'Grav Security Check',
+            'provider' => 'core',
+            'component' => null,
+            'status' => $issueCount === 0 ? 'success' : 'warning',
+            'message' => $issueCount === 0
+                ? 'Security Scan complete: No issues found.'
+                : "Security Scan complete: {$issueCount} potential XSS issue" . ($issueCount > 1 ? 's' : '') . ' found...',
+            'items' => $items,
+        ];
+    }
+
+    /**
+     * Map a sandbox rule (the suffix of a `sandbox_*` event type) to the
+     * security.twig_sandbox config key that gates it, and whether that key is a
+     * flat list (tags/filters/functions) or a class-keyed map (methods/properties).
+     *
+     * @var array<string,array{key:string,kind:string}>
+     */
+    private const SANDBOX_ALLOWLIST_KEYS = [
+        'tag'      => ['key' => 'allowed_tags', 'kind' => 'list'],
+        'filter'   => ['key' => 'allowed_filters', 'kind' => 'list'],
+        'function' => ['key' => 'allowed_functions', 'kind' => 'list'],
+        'method'   => ['key' => 'allowed_methods', 'kind' => 'map'],
+        'property' => ['key' => 'allowed_properties', 'kind' => 'map'],
+    ];
+
+    /**
+     * Report on the "Twig in Content" pipeline: whether the master gate and the
+     * sandbox are on, which pages would leak raw {{ }} / {% %} to visitors, and
+     * the recent blocked tokens (with the core remediation hint) from the
+     * Phase 1 diagnostics ring buffer. Each sandbox-block row carries an
+     * `allowlist` descriptor the UI turns into a one-click "Add to allowlist".
+     */
+    private function twigContentReport(array $leaks): array
+    {
+        $config = $this->grav['config'];
+        $gate        = (bool) $config->get('security.twig_content.process_enabled', false);
+        $sandbox     = (bool) $config->get('security.twig_sandbox.enabled', true);
+        $editorWide  = (bool) $config->get('security.twig_content.editor_enabled', false);
+
+        // The 1.7-migration trap: a site-wide `system.pages.process.twig: true`
+        // (or frontmatter.process_twig) requests content Twig, but in 2.0 it is
+        // subordinate to the gate — so with the gate off it renders raw. Flag it
+        // so the report can call out the demoted global switch explicitly.
+        $globalRequest      = $config->get('system.pages.process.twig') === true;
+        $frontmatterRequest = (bool) $config->get('system.pages.frontmatter.process_twig', false);
+
+        $events = $this->withBlockedPartials(Security::recentTwigContentEvents());
+
+        $items = [];
+
+        // Pages whose raw Twig markers will render verbatim to visitors.
+        foreach ($leaks as $leak) {
+            $items[] = [
+                'kind'      => 'leak',
+                'route'     => $leak['route'],
+                'reason'    => $leak['reason'],      // gate_off | page_off
+                'requested' => $leak['requested'],
+            ];
+        }
+
+        // Recent blocked/blanked tokens, newest first, with remediation hint.
+        foreach ($events as $event) {
+            $items[] = [
+                'kind'      => 'event',
+                'type'      => $event['type'],
+                'route'     => $event['route'],
+                'token'     => $event['token'],
+                'class'     => $event['class'],
+                'hint'      => $event['hint'],
+                'timestamp' => $event['timestamp'],
+                'template'  => $event['template'],
+                'partial'   => $event['partial'],
+                'allowlist' => $event['partial'] === null ? $this->allowlistDescriptor($event) : null,
+            ];
+        }
+
+        $leakCount  = count($leaks);
+        $eventCount = count($events);
+
+        $status = ($leakCount > 0 || $eventCount > 0) ? 'warning' : 'success';
+        if ($leakCount === 0 && $eventCount === 0) {
+            $message = $gate
+                ? 'Twig in Content is enabled. No leaking pages or recent blocks detected.'
+                : 'Twig in Content is disabled. No pages are leaking raw Twig.';
+        } else {
+            $parts = [];
+            if ($leakCount > 0) {
+                $parts[] = "{$leakCount} page" . ($leakCount > 1 ? 's' : '') . ' leaking raw Twig';
+            }
+            if ($eventCount > 0) {
+                $parts[] = "{$eventCount} recent block" . ($eventCount > 1 ? 's' : '');
+            }
+            $message = 'Twig in Content: ' . implode(', ', $parts) . '.';
+        }
+
+        return [
+            'id'        => 'twig-content',
+            'title'     => 'Twig in Content',
+            'provider'  => 'core',
+            'component' => null,
+            'status'    => $status,
+            'message'   => $message,
+            'meta'      => [
+                'gate'                => $gate,
+                'sandbox'             => $sandbox,
+                'editor_enabled'      => $editorWide,
+                'leak_count'          => $leakCount,
+                'event_count'         => $eventCount,
+                // True when a demoted global request flag is on but the gate is
+                // off — the classic migrated-from-1.7 misconfiguration.
+                'global_request_gated'      => $globalRequest && !$gate,
+                'frontmatter_request_gated' => $frontmatterRequest && !$gate,
+            ],
+            'items'     => $items,
+        ];
+    }
+
+    /**
+     * Build the "Add to allowlist" descriptor for a sandbox-block event, or null
+     * for events with no allowlist remedy (gate_blocked).
+     *
+     * @param array{type:string,token:string,class:string} $event
+     * @return array{rule:string,key:string,kind:string,token:string,class:string}|null
+     */
+    private function allowlistDescriptor(array $event): ?array
+    {
+        if (!str_starts_with($event['type'], 'sandbox_')) {
+            return null;
+        }
+        $rule = substr($event['type'], strlen('sandbox_'));
+        $target = self::SANDBOX_ALLOWLIST_KEYS[$rule] ?? null;
+        if ($target === null || $event['token'] === '') {
+            return null;
+        }
+        // method/property rules need the owning class to target the right row.
+        if ($target['kind'] === 'map' && $event['class'] === '') {
+            return null;
+        }
+
+        return [
+            'rule'  => $rule,
+            'key'   => $target['key'],
+            'kind'  => $target['kind'],
+            'token' => $event['token'],
+            'class' => $event['class'],
+        ];
+    }
+
+    /**
+     * POST /reports/twig-content/allowlist
+     *
+     * Append a single blocked token to the matching security.twig_sandbox
+     * allowlist. Since the 2026-08-12 audit the shipped defaults live in code
+     * (SandboxDefaults) and `allowed_*` is ADDITIVE, so this writes just the
+     * user's growing delta to user/config/security.yaml — the defaults are always
+     * merged in underneath. Restricted to API super users, mirroring the
+     * security-scope write rule in ConfigController.
+     *
+     * Body: { rule: tag|filter|function|method|property, token: string, class?: string }
+     */
+    public function allowlistAdd(ServerRequestInterface $request): ResponseInterface
+    {
+        // requireSuper() runs the API-key scope cap before the super check, so a
+        // key scoped to api.config.write on a super account can no longer widen the
+        // Twig sandbox allowlist (an SSTI precursor). A bare isSuperAdmin() after
+        // the api.config.write check skipped the cap (GHSA-v5ph-7v92-wqm6).
+        $this->requireSuper($request);
+
+        $body  = $this->getRequestBody($request);
+        $rule  = is_string($body['rule'] ?? null) ? trim($body['rule']) : '';
+        $token = is_string($body['token'] ?? null) ? trim($body['token']) : '';
+        $class = is_string($body['class'] ?? null) ? trim($body['class']) : '';
+
+        $target = self::SANDBOX_ALLOWLIST_KEYS[$rule] ?? null;
+        if ($target === null) {
+            throw new ValidationException("Unknown sandbox rule '{$rule}'. Expected one of: tag, filter, function, method, property.");
+        }
+        if ($token === '') {
+            throw new ValidationException('A non-empty token is required.');
+        }
+        if ($target['kind'] === 'map' && $class === '') {
+            throw new ValidationException("Rule '{$rule}' requires the owning class.");
+        }
+
+        $configPath = 'security.twig_sandbox.' . $target['key'];
+        $current = (array) $this->grav['config']->get($configPath, []);
+
+        $updated = $target['kind'] === 'list'
+            ? $this->appendToList($current, $token)
+            : $this->appendToMethodMap($current, $class, $token);
+
+        $this->persistSecurityKey($target['key'], $updated);
+
+        // The block the operator just allowed is now resolved — drop the matching
+        // events from the ring buffer so the report's row and count clear instead
+        // of leaving a stale "still blocked" entry behind.
+        $resolved = Security::resolveTwigContentEvents($rule, $token, $class);
+
+        return ApiResponse::ok([
+            'rule'     => $rule,
+            'key'      => $target['key'],
+            'value'    => $updated,
+            'resolved' => $resolved,
+        ]);
+    }
+
+    /**
+     * POST /reports/twig-content/trusted-partial
+     *
+     * Add a theme or plugin template to `security.twig_sandbox.trusted_partials`,
+     * the fix for a page whose `{% include %}` of a partial is blocked since
+     * Grav 2.2.18. Allowing the blocked filter or function instead (e.g. `raw`)
+     * would open it to every page editor on the site. Super users only, like the
+     * allowlist. The report drops blocks from partials that are now trusted.
+     *
+     * Body: { template: string }
+     */
+    public function trustedPartialAdd(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requireSuper($request);
+
+        if (!method_exists(Security::class, 'twigTrustedPartials')) {
+            throw new ValidationException('Trusted partials need Grav 2.2.18 or later.');
+        }
+
+        $body = $this->getRequestBody($request);
+        $template = is_string($body['template'] ?? null) ? trim($body['template']) : '';
+        if (!self::isTrustablePartialName($template)) {
+            throw new ValidationException('A theme or plugin template name such as partials/teams.html.twig is required.');
+        }
+
+        $current = (array) $this->grav['config']->get('security.twig_sandbox.trusted_partials', []);
+        $updated = $this->appendToList($current, $template);
+        $this->persistSecurityKey('trusted_partials', $updated);
+
+        return ApiResponse::ok([
+            'key'      => 'trusted_partials',
+            'template' => $template,
+            'value'    => $updated,
+        ]);
+    }
+
+    /**
+     * A name content may include and the site can trust: a relative `.twig`
+     * template path, not page content, a string template or a path that climbs
+     * out of the template folders.
+     */
+    private static function isTrustablePartialName(string $name): bool
+    {
+        if ($name === '' || strlen($name) > 255) {
+            return false;
+        }
+        if (!preg_match('#^[A-Za-z0-9_@][A-Za-z0-9_\-./@]*\.twig$#', $name)) {
+            return false;
+        }
+
+        return !str_contains($name, '..') && !str_contains($name, '//') && !str_starts_with($name, '@Page');
+    }
+
+    /**
+     * Add `template` (the template the block happened in) and `partial` (the
+     * name to trust, when trusting it is the fix) to each sandbox event, and
+     * drop events from partials the site now trusts. A block recorded again by
+     * later requests of the same page is listed once.
+     *
+     * The event store has no template field, so the name comes from the same
+     * block's line in logs/security.log, whose message says where it happened
+     * ('Filter "raw" is not allowed in "partials/teams.html.twig" at line 7.').
+     * A partial is only offered when the page's own content names it, since a
+     * template that a partial includes in turn can't be fixed by trusting it.
+     *
+     * @param list<array<string,mixed>> $events
+     * @return list<array<string,mixed>>
+     */
+    private function withBlockedPartials(array $events): array
+    {
+        $templates = $this->sandboxBlockTemplates();
+        $trusted = method_exists(Security::class, 'twigTrustedPartials') ? Security::twigTrustedPartials() : null;
+        $contents = [];
+        $out = [];
+        $seen = [];
+
+        foreach ($events as $event) {
+            $type = (string) ($event['type'] ?? '');
+            $route = (string) ($event['route'] ?? '');
+            // Every request of a blocked page records the block again; list it
+            // once (the newest, as events come newest first).
+            $id = $type . '|' . ($event['token'] ?? '') . '|' . ($event['class'] ?? '') . '|' . $route;
+            if (isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $template = null;
+            if (str_starts_with($type, 'sandbox_')) {
+                $key = substr($type, 8) . '|' . ($event['token'] ?? '') . '|' . ($event['class'] ?? '') . '|' . $route;
+                $template = $templates[$key] ?? null;
+            }
+
+            $partial = null;
+            if ($template !== null && $trusted !== null && self::isTrustablePartialName($template)) {
+                if (in_array($template, $trusted, true)) {
+                    continue; // Trusted since the block happened, so it's fixed.
+                }
+                $contents[$route] ??= $this->pageContent($route);
+                if ($contents[$route] !== null && str_contains($contents[$route], $template)) {
+                    $partial = $template;
+                    $event['hint'] = "The page includes the theme or plugin template '{$template}', which uses '{$event['token']}'. "
+                        . 'Trust this partial so it renders as your theme renders it, or move the include into a page template.';
+                }
+            }
+            if ($partial === null && isset($event['hint']) && is_string($event['hint'])) {
+                // Turning the sandbox off is never the advice to act on.
+                $event['hint'] = (string) preg_replace('/\s+—\s+OR disable the sandbox via .*$/u', '. Every page editor will be able to use it.', $event['hint']);
+            }
+
+            $event['template'] = $template;
+            $event['partial'] = $partial;
+            $out[] = $event;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Template names of recent sandbox blocks, keyed `rule|token|class|route`,
+     * read from the end of logs/security.log (newest wins).
+     *
+     * @return array<string,string>
+     */
+    private function sandboxBlockTemplates(): array
+    {
+        $file = $this->grav['locator']->findResource('log://security.log', true, true);
+        if (!is_string($file) || !is_file($file)) {
+            return [];
+        }
+
+        $size = (int) @filesize($file);
+        $handle = @fopen($file, 'rb');
+        if ($handle === false) {
+            return [];
+        }
+        $length = min($size, 262144);
+        if ($size > $length) {
+            fseek($handle, -$length, SEEK_END);
+        }
+        $tail = (string) fread($handle, max(1, $length));
+        fclose($handle);
+
+        $map = [];
+        foreach (explode("\n", $tail) as $line) {
+            if (!str_contains($line, '[TwigSandbox] blocked')) {
+                continue;
+            }
+            $start = strpos($line, '{"rule"');
+            if ($start === false) {
+                continue;
+            }
+            $end = strrpos($line, '}');
+            $context = $end !== false ? json_decode(substr($line, $start, $end - $start + 1), true) : null;
+            if (!is_array($context) || !preg_match('/ in "([^"]+)" at line \d+/', (string) ($context['extra'] ?? ''), $m)) {
+                continue;
+            }
+            $key = ($context['rule'] ?? '') . '|' . ($context['token'] ?? '') . '|' . ($context['class'] ?? '') . '|' . ($context['route'] ?? '');
+            $map[$key] = $m[1];
+        }
+
+        return $map;
+    }
+
+    /**
+     * The raw content of the page at a route, or null when there's none.
+     */
+    private function pageContent(string $route): ?string
+    {
+        try {
+            /** @var Pages $pages */
+            $pages = $this->grav['pages'];
+            $pages->enablePages();
+            $page = $pages->find($route);
+
+            return $page && $page->exists() ? (string) $page->rawMarkdown() : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * DELETE /reports/twig-content/events — clear the diagnostics ring buffer
+     * once the operator has dealt with the flagged blocks.
+     *
+     * Clearing is a write to a site-wide record every admin reads, so it takes
+     * the system write permission, the same gate as dismissing a dashboard
+     * notification. Under the report's read permission an account or key that
+     * may only view reports could empty it, and the demo write-lock, which
+     * skips anything ending in `.read`, never applied. (grav-plugin-api#35)
+     */
+    public function clearTwigEvents(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.system.write');
+        $cleared = Security::clearTwigContentEvents();
+
+        return ApiResponse::ok(['cleared' => $cleared]);
+    }
+
+    /**
+     * GET /reports/twig-content/page?route=/blog/post
+     *
+     * Focused, single-page status for the page-editor banner: whether THIS page
+     * would leak raw Twig and the recent blocked/blanked events recorded for its
+     * route. Cheap — checks one page instead of scanning the whole site.
+     */
+    public function twigContentPageStatus(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.reports.read');
+
+        $route = $request->getQueryParams()['route'] ?? '';
+        $route = is_string($route) ? trim($route) : '';
+        if ($route === '') {
+            throw new ValidationException("A 'route' query parameter is required.");
+        }
+
+        $config  = $this->grav['config'];
+        $gate    = (bool) $config->get('security.twig_content.process_enabled', false);
+        $sandbox = (bool) $config->get('security.twig_sandbox.enabled', true);
+
+        /** @var Pages $pages */
+        $pages = $this->grav['pages'];
+        $pages->enablePages();
+
+        $leak = null;
+        try {
+            $page = $pages->find($route);
+            if ($page && $page->exists()) {
+                $leak = Security::detectTwigLeakForPage($page, $gate);
+            }
+        } catch (\Throwable) {
+            // A missing/unreadable page simply has no leak to report.
+        }
+
+        // Recent events whose route matches this page (newest-first order kept).
+        $events = array_values(array_filter(
+            $this->withBlockedPartials(Security::recentTwigContentEvents()),
+            static fn($e) => ($e['route'] ?? '') === $route
+        ));
+        foreach ($events as &$event) {
+            $event['allowlist'] = $event['partial'] === null ? $this->allowlistDescriptor($event) : null;
+        }
+        unset($event);
+
+        return ApiResponse::ok([
+            'route'   => $route,
+            'gate'    => $gate,
+            'sandbox' => $sandbox,
+            'leak'    => $leak,
+            'events'  => $events,
+        ]);
+    }
+
+    /**
+     * GET /reports/twig-content/scan
+     *
+     * Scan all page content for Twig tags/filters/functions the sandbox does not
+     * currently allow — what content would need before the gate is enabled.
+     * Informational (a lexical approximation); the authoritative signal is the
+     * render-time block list in the report's events.
+     */
+    public function twigContentScan(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.reports.read');
+
+        /** @var Pages $pages */
+        $pages = $this->grav['pages'];
+        $pages->enablePages();
+
+        return ApiResponse::ok(Security::scanContentTwigUsage($pages));
+    }
+
+    /**
+     * GET /reports/twig-content/sandbox-policy
+     *
+     * The effective Twig-sandbox policy, broken down per list into the built-in
+     * code defaults, the site's additive `allowed_*` entries, its `denied_*`
+     * tightenings, and the resulting effective set. Read-only: it explains what
+     * page-content Twig may do and why, now that the ~300-line default baseline
+     * lives in code (Grav\Common\Twig\Sandbox\SandboxDefaults) rather than in the
+     * editable security.yaml. Operators still widen via POST .../allowlist and by
+     * hand-editing `allowed_*`/`denied_*`.
+     */
+    public function twigContentSandboxPolicy(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.reports.read');
+
+        return ApiResponse::ok(Security::describeEffectiveSandbox($this->grav['config']));
+    }
+
+    /**
+     * Append a token to a flat allowlist (tags/filters/functions), de-duped
+     * case-insensitively, preserving existing order.
+     *
+     * @param array<int,mixed> $list
+     * @return list<string>
+     */
+    private function appendToList(array $list, string $token): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($list as $value) {
+            if (!is_string($value)) {
+                continue;
+            }
+            $out[] = $value;
+            $seen[strtolower($value)] = true;
+        }
+        if (!isset($seen[strtolower($token)])) {
+            $out[] = $token;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Append a method/property to a class-keyed allowlist. Each row is
+     * {class, methods} where `methods` is a comma-separated string (the
+     * security.yaml shape). Appends to the matching row's list, de-duped, or
+     * adds a new row when the class isn't present yet.
+     *
+     * @param array<int,mixed> $rows
+     * @return list<array{class:string,methods:string}>
+     */
+    private function appendToMethodMap(array $rows, string $class, string $token): array
+    {
+        $out = [];
+        $matched = false;
+        foreach ($rows as $row) {
+            if (!is_array($row) || !isset($row['class'])) {
+                continue;
+            }
+            $rowClass = (string) $row['class'];
+            $methods = $this->splitMethods((string) ($row['methods'] ?? ''));
+            if (strcasecmp($rowClass, $class) === 0) {
+                $matched = true;
+                if (!$this->hasCaseInsensitive($methods, $token)) {
+                    $methods[] = $token;
+                }
+            }
+            $out[] = ['class' => $rowClass, 'methods' => implode(', ', $methods)];
+        }
+        if (!$matched) {
+            $out[] = ['class' => $class, 'methods' => $token];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function splitMethods(string $methods): array
+    {
+        $parts = array_map('trim', explode(',', $methods));
+
+        return array_values(array_filter($parts, static fn($m) => $m !== ''));
+    }
+
+    /**
+     * @param list<string> $haystack
+     */
+    private function hasCaseInsensitive(array $haystack, string $needle): bool
+    {
+        foreach ($haystack as $item) {
+            if (strcasecmp($item, $needle) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Persist a single twig_sandbox key to user/config/security.yaml, merging
+     * with any existing user overrides, then update the in-memory config and
+     * clear caches. Mirrors ConfigController's save side effects (onApiConfigUpdated
+     * + cache clear) without routing through the full env-aware update flow —
+     * the sandbox allowlist is a global, base-config concern.
+     */
+    private function persistSecurityKey(string $key, mixed $value): void
+    {
+        $file = $this->grav['locator']->findResource('user://config/security.yaml', true, true);
+        if (!is_string($file)) {
+            throw new \RuntimeException('Unable to resolve user/config/security.yaml for writing.');
+        }
+
+        $yaml = YamlFile::instance($file);
+        $data = (array) $yaml->content();
+        $data['twig_sandbox'] ??= [];
+        if (!is_array($data['twig_sandbox'])) {
+            $data['twig_sandbox'] = [];
+        }
+        $data['twig_sandbox'][$key] = $value;
+        $yaml->save($data);
+        $yaml->free();
+
+        // Update the live config so subsequent reads in this request agree.
+        $this->grav['config']->set('security.twig_sandbox.' . $key, $value);
+        $this->grav['cache']->clearCache('standard');
+
+        $this->fireEvent('onApiConfigUpdated', ['scope' => 'security', 'data' => $this->grav['config']->get('security')]);
+    }
+
+    /**
+     * Lint all YAML files for syntax errors.
+     */
+    private function yamlLinterReport(): array
+    {
+        $result = YamlLinter::lint();
+
+        $items = [];
+        foreach ($result as $file => $error) {
+            $items[] = [
+                'file' => $file,
+                'error' => $error,
+            ];
+        }
+
+        $errorCount = count($items);
+
+        return [
+            'id' => 'yaml-linter',
+            'title' => 'Grav Yaml Linter',
+            'provider' => 'core',
+            'component' => null,
+            'status' => $errorCount === 0 ? 'success' : 'error',
+            'message' => $errorCount === 0
+                ? 'YAML Linting: No errors found.'
+                : "YAML Linting: {$errorCount} error" . ($errorCount > 1 ? 's' : '') . ' found.',
+            'items' => $items,
+        ];
+    }
+}

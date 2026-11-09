@@ -1,0 +1,102 @@
+actions:
+  api.super:
+    label: API Super User
+    type: access
+
+  api.access:
+    label: API Access
+    type: access
+
+  api.demo:
+    label: Demo Mode (read-only account)
+    type: access
+
+  api.pages:
+    type: access
+    label: Pages API
+    actions:
+      read:
+        label: Read Pages
+      write:
+        label: Create/Update/Delete Pages
+
+  api.media:
+    type: access
+    label: Media API
+    actions:
+      read:
+        label: Read Media
+      write:
+        label: Upload/Delete Media
+
+  api.config:
+    type: access
+    label: Configuration API
+    actions:
+      read:
+        label: Read Configuration
+      write:
+        label: Update Configuration
+
+  api.users:
+    type: access
+    label: Users API
+    actions:
+      read:
+        label: Read Users
+      write:
+        label: Create/Update/Delete Users
+
+  api.system:
+    type: access
+    label: System API
+    actions:
+      read:
+        label: Read System Info/Logs
+      write:
+        label: Cache/Updates
+      backup:
+        label: Create/Download/Delete Backups
+
+  api.translations:
+    type: access
+    label: Translations API
+    actions:
+      read:
+        label: Browse Translation Strings
+      write:
+        label: Override/Revert Translation Strings
+
+  api.gpm:
+    type: access
+    label: GPM API
+    actions:
+      read:
+        label: List Packages / Check Updates
+      write:
+        label: Install/Remove/Update Packages
+
+  api.scheduler:
+    type: access
+    label: Scheduler API
+    actions:
+      read:
+        label: View Jobs/Status/History
+      write:
+        label: Run Jobs
+
+  api.reports:
+    type: access
+    label: Reports API
+    actions:
+      read:
+        label: View Reports
+
+  api.webhooks:
+    type: access
+    label: Webhooks API
+    actions:
+      read:
+        label: View Webhooks
+      write:
+        label: Manage Webhooks

@@ -1,0 +1,2622 @@
+# Admin2 (admin-next) UI translations.
+#
+# All admin-next-only keys live under the ICU root block. Values may use
+# ICU MessageFormat syntax for placeholders, plurals, and select cases —
+# admin-next pipes ICU.* values through @formatjs/intl-messageformat.
+#
+# Plain (non-ICU) keys without a leading ICU prefix are looked up by
+# admin-next as a fallback for legacy strings (and continue to be the
+# only thing legacy admin / Grav 1 sees).
+#
+# Convention: keep keys grouped by section and alphabetised within a
+# section where reasonable. Use ADMIN_NEXT.* for keys specific to the
+# new UI.
+
+ICU:
+  ADMIN_NEXT:
+    ADD_PAGE: Add Page
+    CANCEL: Cancel
+    CLEAR_SEARCH: Clear search
+    CLOSE: Close
+    COLLAPSE_SIDEBAR: Collapse sidebar
+    EXPAND_SIDEBAR: Expand sidebar
+    CONFIRM: Confirm
+    CONFIRM_DELETE: Delete "{title}" at {route}?
+    DELETE: Delete
+    UNDO: Undo
+    DONE: Done
+    EDIT: Edit
+    HELP: Help
+    HELP_FOR_LABEL: Help for {label}
+    LOADING: Loading...
+    NO_CHANGES: No changes to save
+    RETRY: Retry
+    SAVE: Save
+    SAVING: Saving...
+    SEARCH: Search
+    SIGN_OUT: Sign out
+    TOGGLE_DARK_MODE: Toggle dark mode
+    TOGGLE_MENU: Toggle menu
+    UNSAVED_CHANGES: Unsaved changes
+    NOTICES:
+      HEADING: '{count, plural, one {Notice} other {Notices}}'
+      SHOW: Show notices
+      HIDE: Hide notices
+    UNSAVED_CHANGES_DIALOG:
+      LEAVE_MESSAGE: You have unsaved changes. Leave anyway?
+      LEAVE: Leave
+      STAY: Stay
+      SWITCH_LANGUAGE_MESSAGE: You have unsaved changes. Switch language anyway?
+      SWITCH_LANGUAGE: Switch
+    VALIDATION:
+      FIELD_REQUIRED: '{label} is required'
+      REQUIRED_GENERIC: This field is required
+      LIST_ROW_REQUIRED: 'Item {row}: {label} is required'
+      LIST_KEY_REQUIRED: '{key}: {label} is required'
+      LIST_NEW_ROW_REQUIRED: 'New item: {label} is required'
+      FORM_HAS_ERRORS: '{count, plural, one {# field needs your attention} other {# fields need your attention}}'
+    SECURITY_CHECK:
+      USER_FOLDER_EXPOSED_TITLE: 'Your web server is not applying Grav''s access rules'
+      USER_FOLDER_EXPOSED_BODY: 'Your web server is not applying Grav''s recommended access rules, so files in user/ can be reached directly over the web. It is worth tightening up, since some plugins do store data here.'
+      STORAGE_EXPOSED_BODY: 'The web server served test files from directories that should be private. The file types listed below may expose stored submissions, backups or temporary files. Ask your host to block direct access, or move private storage outside the web root.'
+      USER_FOLDER_EXPOSED_LEARN_MORE: How to fix this
+      STORAGE_EXPOSED_TITLE: 'Files that should be private can be downloaded from this site'
+      STORAGE_EXPOSED_COUNT: '{n, plural, one {# file type} other {# file types}}'
+      STORAGE_EXPOSED_TMP: 'Test files in tmp/ could be downloaded, while the other folders were blocked. Your server rules probably date from before Grav 2.1.7, which added tmp/ to the list of blocked folders. Add tmp to that list in your .htaccess, or in your nginx, Caddy or IIS configuration, to match the rules Grav ships.'
+      STORAGE_EXPOSED_BY_TYPE: 'Some file types were blocked in these folders while others could be downloaded. That usually means something in front of Grav''s rules, such as nginx serving static files ahead of Apache, answers for common file types like .zip before the rules are checked. Block these folders in that layer''s configuration as well.'
+      STORAGE_EXPOSED_ALL: 'Every test file could be downloaded, so your web server is not applying Grav''s access rules at all. On Apache, check that AllowOverride lets the site''s .htaccess take effect. On nginx, Caddy or IIS, add the security rules from Grav''s webserver-configs folder.'
+      STORAGE_EXPOSED_CDN: 'If the site is behind a CDN such as Cloudflare, purge its cache after fixing this. Copies it already stored stay downloadable until you do.'
+      COLLAPSE: Collapse
+      SHOW_DETAILS: Show details
+      SNOOZE: Snooze
+      SNOOZE_HINT: 'Hide this warning for 24 hours. It comes back sooner if different files are found.'
+    DASHBOARD:
+      TITLE: Dashboard
+      CUSTOMIZE: Customize
+      CUSTOMIZE_TITLE: Customize dashboard
+      EDIT_HINT: Customize mode — drag, resize, hide widgets, then save.
+      PRESETS: Presets
+      SAVE_SITE_DEFAULT: Save as site default
+      RESET_LAYOUT: Reset my layout
+      ADD_WIDGET: Add a widget
+      HIDE_WIDGET: Hide widget
+      PICKER_TITLE: Add a widget
+      PICKER_SUBTITLE: Pick a widget to add back to your dashboard.
+      PICKER_EMPTY: All available widgets are already on your dashboard.
+      EMPTY: Your dashboard is empty
+      EMPTY_HINT: Click the pencil icon above to add widgets
+      LAYOUT_SAVED: Dashboard layout saved
+      SITE_LAYOUT_SAVED: Site default saved
+      LAYOUT_RESET: Layout reset to default
+      WIDGETS:
+        STATS: Site Stats
+        POPULARITY: Page Views
+        SYSTEM_HEALTH: System Health
+        RECENT_PAGES: Recent Pages
+        TOP_PAGES: Top Pages
+        BACKUPS: Backups
+        NOTIFICATIONS: Notifications
+        NEWS_FEED: News Feed
+      PRESET_DEFAULT: Default
+      PRESET_DEFAULT_DESC: Server-recommended layout — clears your customizations.
+      PRESET_MINIMAL: Minimal
+      PRESET_MINIMAL_DESC: Stats and recent pages only.
+      PRESET_COMPACT: Compact
+      PRESET_COMPACT_DESC: All widgets at the smallest size each supports.
+    PAGES:
+      DROP_INSIDE: Drop a page here to move it inside {title}
+      SHOW_DROP_INSIDE: Move pages inside {title}
+      MOVE_UNNUMBERED_KEEPS_NAME_ORDER: "{title} has no order number, so it stays sorted by name"
+      TITLE: Pages
+      SEARCH_PLACEHOLDER: Search pages...
+      NO_PAGES: No pages found
+      NO_SEARCH_RESULTS: No pages match your search
+      LOADING: Loading pages...
+      REORDER_MOVE: Move
+      REORDER_DONE: Done
+      REORDER_EXIT_TITLE: Exit reorder mode
+      REORDER_START_TITLE: Reorder pages
+      STATS_TOTAL: "{n} total"
+      STATS_PUBLISHED: "{n} published"
+      STATS_UNPUBLISHED: "{n} unpublished"
+      MOVED: Moved "{title}"
+      REORDERED: Reordered "{title}"
+      MOVE_FAILED: Failed to move page
+      REORDER_FAILED: Failed to reorder
+      DELETED: Deleted "{title}"
+      DELETE_FAILED: Failed to delete page
+      DELETE_CANNOT_UNDO: This cannot be undone.
+      DELETE_RECOVERABLE: You can restore it from Trash.
+      DELETE_TRANSLATION_TITLE: Delete Translation
+      DELETE_TRANSLATION_CONFIRM: "Delete the {language} translation of “{title}”? {n, plural, one{The other language is kept.} other{The other # languages are kept.}}"
+      DELETE_LAST_LANGUAGE: This is the page’s only language, so the whole page folder is removed, including its media and any child pages.
+      TRANSLATION_DELETED: "{language} translation deleted"
+      TRANSLATION_DELETED_OF: "Deleted the {language} translation of “{name}”"
+      DELETE_UNDONE: Page restored
+      TRANSLATION_RESTORED: "{language} translation restored"
+      DELETE_UNDONE_NAMED: "Restored “{name}”"
+      DELETE_UNDO_FAILED: "Couldn’t undo the delete: {detail}"
+      SAVED: Page saved successfully
+      SAVE_FAILED: Failed to save page
+      VALIDATION_FAILED_FOR_FIELDS: "Couldn't save — these fields are invalid: {fields}"
+      VIEW_TREE: Tree
+      VIEW_LIST: List
+      VIEW_COLUMNS: Columns
+      FILTER:
+        BUTTON: Filter
+        TITLE: Filter pages
+        PUBLISHED: Published
+        VISIBLE: Visible
+        ROUTABLE: Routable
+        TEMPLATE: Template
+        ALL: All
+        YES: 'Yes'
+        NO: 'No'
+        ALL_TEMPLATES: All templates
+        CLEAR: Clear
+      CHUNK_SIZE: Chunk
+      CHUNK_SIZE_HELP: Rows to fetch per request as you scroll. Larger values load slower the first time but reduce follow-up requests.
+      LOADING_CHUNK: Loading rows {from}–{to}…
+      LOAD_CHILDREN_FAILED: Couldn't load the pages in this folder.
+      LOADED_OF: '{n, plural, one {# loaded} other {# loaded}} of {total}'
+      NO_MATCH: No pages match your search
+      SEARCH_MATCH_COUNT: '{n, plural, one {# match} other {# matches}} across all pages'
+      SEARCH_SHOWING: Showing {shown} of {total} matches
+      SEARCH_SHOW_MORE: Show more
+      COLUMN_EMPTY: Empty
+      HEADER_TITLE: Title
+      PAGE_TITLE_HINT: 'Title: {title}'
+      HEADER_TEMPLATE: Template
+      HEADER_STATUS: Status
+      HEADER_MODIFIED: Modified
+      PUBLISHED: Published
+      DRAFT: Draft
+      PUBLISH: Publish
+      UNPUBLISH: Unpublish
+      STATUS:
+        SCHEDULED: Scheduled
+        EXPIRED: Expired
+        SCHEDULED_FOR: 'Scheduled to publish on {date}'
+        EXPIRED_ON: 'Unpublished since {date}'
+        TOGGLE_TITLE: '{action} ({status})'
+      SORT_ORDER: Order
+      SORT_TITLE_AZ: Title A-Z
+      SORT_TITLE_ZA: Title Z-A
+      SORT_NEWEST: Newest
+      SORT_OLDEST: Oldest
+      SORT_DATE_NEWEST: Date (newest)
+      RAW_HEADER: Raw Page Header (JSON)
+      PAGE_INFO: Page Info
+      EDIT_PAGE: Edit Page
+      MODE_NORMAL: Normal
+      MODE_EXPERT: Expert
+      FRONTMATTER: Frontmatter
+      TWIG_BANNER:
+        LEAK_GATE_OFF: This page contains Twig markup, but Twig in content is turned off site-wide, so it renders as raw text to visitors.
+        LEAK_PAGE_OFF: This page contains Twig markup, but Twig is turned off for this page, so it renders as raw text to visitors.
+        RECENT_BLOCKS: "{n, plural, one {# Twig construct on this page was recently blocked} other {# Twig constructs on this page were recently blocked}}."
+        VIEW_REPORT: View report
+      INFO_PUBLISHED: Published
+      INFO_VISIBLE: Visible in nav
+      INFO_ROUTABLE: Routable
+      INFO_ROUTE: Route
+      INFO_SLUG: Slug
+      INFO_TEMPLATE: Template
+      INFO_LANGUAGE: Language
+      INFO_ORDER: Order
+      INFO_DATE: Date
+      INFO_MODIFIED: Modified
+      INFO_PUBLISH_ON: Publish on
+      INFO_UNPUBLISH_ON: Unpublish on
+      PAGES_MILLER_VIEW:
+        DRAFT_UNPUBLISHED: Draft (unpublished)
+        FOLDER_ORDER: Folder Order
+        VISIBLE: Visible
+        HAS_CHILDREN: Has children
+        SUMMARY: Summary
+        DROP_HERE: Drop here
+      # A page the user can't read, listed only so the tree can be opened down
+      # to pages inside it that they can (admin2#209).
+      ANCESTOR_ONLY_HINT: You can't open this page. It's listed so you can reach the pages inside it.
+      ANCESTOR_ONLY_LABEL: "{title}: you can't open this page, only pages inside it"
+      ANCESTOR_ONLY_PARENT: You can't open the parent page
+      PAGES_TREE_VIEW:
+        FAILED_TO_REORGANIZE_PAGES: Failed to reorganize pages
+        SEARCHING: Searching…
+        NO_PAGES_MATCH: No pages match "{query}"
+      DELETE_PAGE: Delete Page
+      PAGES_GRAV_ADMIN: Pages — Grav Admin
+      ADD_PAGE: Add Page
+      ADD_FOLDER: Add Folder
+      ADD_MODULE: Add Module
+      ADD_MENU: Add menu
+      EDIT:
+        READ_ONLY_NOTICE: You can view this page but not edit it.
+        TOGGLE_PAGE_NAVIGATOR: Toggle page navigator
+        PREVIEW_PAGE: Preview page
+        COPY_PAGE: Copy page
+        DELETE_PAGE: Delete Page
+        WRITE_YOUR_MARKDOWN_CONTENT_HERE: Write your markdown content here...
+        CONNECTING_TO_COLLAB: Connecting to collaboration session…
+        RESET_TRANSLATION: Reset Translation
+        PAGE_PREVIEW: Page Preview
+        PREVIEW_SHOWING_HOST_PAGE: shown in its parent page
+        INVALID_YAML_FRONTMATTER: Invalid YAML frontmatter
+        INVALID_YAML_FRONTMATTER_FIX_SYNTAX: Invalid YAML frontmatter — fix syntax before saving
+        PAGE_SAVED_AND_MOVED: Page saved and moved
+        SAVED_BY_PEER: '{user} saved this page'
+        SAVED_BY_PEER_ANON: Another user saved this page
+        FAILED_TO_CREATE_TRANSLATION: Failed to create translation
+        FAILED_TO_SYNC_TRANSLATION: Failed to sync translation
+        PAGE_DELETED: Page deleted
+        PAGE_COPIED: Page copied
+        PAGE_CHANGED_ELSEWHERE_SAVE_TO: Page changed elsewhere — save to overwrite or reload
+        PAGE_WAS_MODIFIED_ELSEWHERE_PLEASE: Page was modified elsewhere. Please reload.
+        COLLAB_UNSAVED_DIFFERS_FROM_FILE: "This page has unsaved changes from a shared editing session that don't match the page file, which may have been edited outside the admin. The editor shows the unsaved changes; saving replaces the file's version."
+        LOADING_PAGE: Loading page...
+        FOLDER_NAME: Folder Name
+        THE_FOLDER_NAME_ON_DISK_URL_SLUG: The folder name on disk (URL slug)
+        FALLBACK: (fallback)
+        NOT_TRANSLATED: "Not translated:"
+        RESET_CONTENT_FROM: "Reset content from:"
+        OPEN_IN_NEW_TAB: Open in New Tab
+        SAVE_AS_LANGUAGE: Save as {language}
+        CREATE_LANGUAGE: Create {language}
+        EDIT_PAGE: Edit Page
+        FALLBACK_NOTICE: No {active} translation exists. Viewing {effective} fallback. Use "Save as {active}" to create a translation you can edit.
+        FALLBACK_NOTICE_UNRESOLVED: The server returned the {effective} version of this page instead of {active}, and did not report {active} as missing. Saving is off here so the {effective} file is not overwritten. If every page does this, the web server is probably not passing query strings on to Grav.
+        TEMPLATE_MISSING_NOTICE: The template **{template}** for this module wasn't found in the theme, so the page it belongs to shows a "template not found" error. Pick a template under **Page Template** on the Advanced tab, or add the template to the theme.
+        PUBLISH_ON: Publish on
+        UNPUBLISH_ON: Unpublish on
+        RESET_FROM: Reset from {language}
+      NEW:
+        MY_NEW_PAGE: My New Page
+        FILTER_PAGES: Filter pages...
+        FAILED_TO_LOAD_PAGE_TEMPLATES: Failed to load page templates
+        ADD_PAGE_GRAV_ADMIN: Add Page — Grav Admin
+        PAGE_DETAILS: Page Details
+        PAGE_TITLE: Page Title
+        FOLDER_NAME: Folder Name
+        URL_SAFE_FOLDER_NAME_FOR_THIS_PAGE: URL-safe folder name for this page
+        PARENT_PAGE: Parent Page
+        ROOT: <root> /
+        PAGE_TEMPLATE: Page Template
+        LOADING_TEMPLATES: Loading templates...
+        CHILD_TYPE_HINT: 'The parent page suggests "{template}" for its children. You can still choose a different template.'
+        STATUS_HELP: Drafts are saved but not visible on the site until you publish them
+        VISIBLE: Visible
+        CONTROLS_WHETHER_THIS_PAGE_APPEARS_IN: Controls whether this page appears in navigation menus
+        CONTINUE: Continue
+        PAGE_CREATED: 'Page "{title}" created'
+        FOLDER_CREATED: 'Folder "{title}" created'
+        MODULE_CREATED: 'Module "{title}" created'
+        FAILED_TO_CREATE: Failed to create page
+        ORDERING: Ordering
+        ORDERING_HELP_MODULE: Adds a numeric prefix that sets this module's position inside its modular parent.
+        ORDERING_HELP_FOLDER: Adds a numeric prefix that sets this folder's position among its siblings.
+        ORDERING_NONE: None
+        FOLDER_DETAILS: Folder Details
+        PICK_MODULAR_PAGE: Pick a modular page
+        MODULE_NEEDS_PARENT: A module goes inside a modular page, so pick the page it belongs to.
+      MODULES:
+        TITLE: Modules
+        HELP: The parts this page is built from, in the order the page shows them. Drag a module to move it, or focus its handle and press Alt+Up or Alt+Down. Click its status icon to publish or unpublish it.
+        ADD: Add module
+        EMPTY: No modules yet.
+        LOAD_FAILED: The modules could not be loaded.
+        MOVE: Move "{title}"
+      PAGE_COUNT: "{n, plural, one{# page} other{# pages}}"
+      SUBTITLE: Manage your site content and structure
+    FIELDS:
+      CLEAR_DATE: Clear date
+      SET_DATE_NOW: Set to now
+      REGENERATE_SLUG: Auto-regenerate from page title
+      ADD_ENTRY: Add entry
+      ADD_ITEM: Add item
+      SELECTIZE_PLACEHOLDER: Type and press Enter...
+      SELECT_A_PAGE: Select a page...
+      SELECT_AN_ICON: Select an icon...
+      NO_TAXONOMY_TYPES: No taxonomy types configured
+      FILE_PICKER_SOON: File picker — coming soon
+      CRON:
+        AT_MINUTE: At minute
+        ON_DAY: On day
+        CRON: "Cron:"
+        MIN_HR_DOM_MON_DOW: min hr dom mon dow
+      CRON_STATUS:
+        FAILED_TO_LOAD_SCHEDULER_STATUS: Failed to load scheduler status
+        PROCESS_UNAVAILABLE: "Jobs cannot be run from here on this host, because PHP's proc_open function is disabled. They still run whenever your scheduler is triggered by cron or a webhook."
+        SCHEDULER_RUN_COMPLETED: Scheduler run completed
+        FAILED_TO_RUN_SCHEDULER: Failed to run scheduler
+        LOADING_SCHEDULER_STATUS: Loading scheduler status...
+        SCHEDULER_STATUS: Scheduler Status
+        NO_SCHEDULED_JOBS_REGISTERED: No scheduled jobs registered.
+        JOB_ID: Job ID
+        HEALTH_STATUS: Health Status
+        STATUS: "Status:"
+        LAST_RUN: Last Run
+        SCHEDULED_JOBS: Scheduled Jobs
+        QUEUE_SIZE: "Queue Size:"
+        ACTIVE_TRIGGERS: Active Triggers
+        CRON: "Cron:"
+        NOT_CONFIGURED: NOT CONFIGURED
+        WEBHOOK: "Webhook:"
+        NOT_INSTALLED: NOT INSTALLED
+        NOT_ENABLED: NOT ENABLED
+        NO_TRIGGERS_ACTIVE_ENABLE_WEBHOOKS_OR: No triggers active! Enable webhooks or configure cron.
+        RUNNING: Running...
+        RUN_ALL: Run All
+        RUN_ALL_HELP: Run every enabled job now, whatever its schedule says.
+        RUN_PENDING: Run Pending
+        RUN_NOW: Run this job now
+        PENDING: Pending
+        NEVER: Never
+        BY_HAND: by hand
+        MANUAL_RUN_HELP: "Run Pending runs the jobs that have missed their last scheduled time, which is what you want on a site with no cron entry. Runs you start here are recorded as manual, and do not count towards the cron status above."
+      CUSTOM_FIELD_WRAPPER:
+        LOADING_CUSTOM_FIELD: Loading custom field...
+      DATE_FORMAT:
+        SELECT_FORMAT: — Select format —
+        FORMAT_STRING: "Format string:"
+        CUSTOM: Custom…
+        CUSTOM_PLACEHOLDER: "e.g. Y-m-d H:i"
+        PREVIEW: "Preview:"
+      ICON_PICKER:
+        SEARCH_ICONS: Search icons...
+        NO_ICONS_FOUND: No icons found
+        SHOWING_FIRST_200_RESULTS_TYPE_TO_NARROW: Showing first 200 results — type to narrow
+        FAMILY_ALL: All
+        FAMILY_SOLID: Solid
+        FAMILY_REGULAR: Regular
+        FAMILY_BRANDS: Brands
+        SET_MISSING: 'No icon set called "{set}" is registered on this site.'
+      PAGE_EXISTS:
+        CHECKING_PAGE: Checking page...
+      PAGE_MEDIA:
+        PAGE_MEDIA_UNAVAILABLE: Page media unavailable
+      PAGES:
+        FILTER_PAGES: Filter pages...
+        ROOT: / (root)
+      PERMISSIONS:
+        NO_PERMISSIONS_CONFIGURED: No permissions configured
+        NOT_SET: Not Set
+      TABS:
+        NO_FIELDS_MATCH_YOUR_FILTER: No fields match your filter
+      THEME_SELECT:
+        LOADING_THEMES: Loading themes...
+        SELECT_THEME: — Select theme —
+      WEBHOOK_EXAMPLES:
+        HOW_TO_USE_WEBHOOKS: "How to use webhooks:"
+        TRIGGER_ALL_DUE_JOBS_RESPECTS_SCHEDULE: "Trigger all due jobs (respects schedule):"
+        FORCE_RUN_SPECIFIC_JOB_IGNORES_SCHEDULE: "Force-run specific job (ignores schedule):"
+        CHECK_HEALTH_STATUS: "Check health status:"
+        GITHUB_ACTIONS_EXAMPLE: "GitHub Actions example:"
+      WEBHOOK_STATUS:
+        CHECKING_WEBHOOK_PLUGIN_STATUS: Checking webhook plugin status...
+        PLUGIN_IS_INSTALLED_AND_ENABLED: plugin is installed and enabled.
+        PLUGIN_IS_INSTALLED_ENABLE_WEBHOOK: plugin is installed. Enable Webhook Triggers below to activate.
+        WEBHOOK_PLUGIN_REQUIRED: Webhook Plugin Required
+        PLUGIN_IS_REQUIRED_FOR_WEBHOOK: plugin is required for webhook functionality.
+        INSTALL_PLUGIN_NOW: Install Plugin Now
+        OR_RUN: "or run:"
+        BIN_GPM_INSTALL_SCHEDULER_WEBHOOK: bin/gpm install scheduler-webhook
+      FILE_PICKER:
+        NO_MEDIA_UPLOADED: No media files uploaded yet
+        NO_MATCHING_FILES: No matching files
+        SELECT_FILE: Select a file…
+        SELECT_FILES: Select files…
+      FILE:
+        LIMIT_REACHED: "This field accepts at most {limit} file(s)."
+      MEDIA:
+        TITLE: Select media
+        SELECT: Select media…
+        ADD: Add media…
+        CHANGE: Change
+        REMOVE: Remove
+        MOVE_EARLIER: Move earlier
+        MOVE_LATER: Move later
+        DONE: Done
+        SELECTED_COUNT: "{count, plural, =0 {Nothing selected} one {# selected} other {# selected}}"
+    NAV:
+      DASHBOARD: Dashboard
+      CONFIGURATION: Configuration
+      PAGES: Pages
+      MEDIA: Media
+      USERS: Users
+      PLUGINS: Plugins
+      THEMES: Themes
+      TRANSLATIONS: Translations
+      TOOLS: Tools
+      SYSTEM: System
+      SETTINGS: Settings
+      UPDATES_AVAILABLE: "{count} update(s) available"
+    LANG:
+      SWITCH_LANGUAGE: Switch content language
+      TRANSLATIONS: Translations
+      TRANSLATED: Translated
+      NOT_TRANSLATED: Not translated
+      SAVE_AS: Save as {language}
+      CREATE_TRANSLATION: Create {language} translation
+      FALLBACK_NOTICE: No {language} translation. Showing default content.
+      SYNC_FROM: Reset from {language}
+      TRANSLATION_CREATED: "{language} translation created"
+      DELETE_TRANSLATION: Delete {language} translation
+      CURRENT: current
+      DEFAULT: default
+    TIME:
+      JUST_NOW: just now
+      MINUTES_AGO: "{n}m ago"
+      HOURS_AGO: "{n}h ago"
+      DAYS_AGO: "{n}d ago"
+    ADD_PLUGIN_MODAL:
+      FILTER_PLUGINS: Filter plugins...
+      FAILED_TO_LOAD_AVAILABLE_PLUGINS_FROM: Failed to load available plugins from GPM
+      ADD_PLUGIN: Add Plugin
+      SELECT_A_PLUGIN_TO_VIEW_DETAILS: Select a plugin to view details
+    PREMIUM: Premium
+    AUTHOR: Author
+    HOMEPAGE: Homepage
+    README: README
+    DOCUMENTATION: Documentation
+    REPORT_ISSUE: Report an Issue
+    VERSION: Version
+    KEYWORDS: Keywords
+    DEPENDENCIES: Dependencies
+    COMPATIBILITY: Compatibility
+    ADD_THEME_MODAL:
+      FILTER_THEMES: Filter themes...
+      FAILED_TO_LOAD_AVAILABLE_THEMES_FROM_GPM: Failed to load available themes from GPM
+      ADD_THEME: Add Theme
+      SELECT_A_THEME_TO_VIEW_DETAILS: Select a theme to view details
+    API_CLIENT:
+      INVALID_JSON_TITLE: Unexpected response from the server
+      INVALID_JSON_DETAIL: "The server's reply could not be read because it is not valid JSON. Something on the server may be printing extra output, such as a PHP warning, alongside the API response. The browser console has the details."
+      UNEXPECTED_RESPONSE_TITLE: Unexpected response from the server
+      UNEXPECTED_RESPONSE_DETAIL: The server replied with data in a format this screen does not expect. The browser console has the details.
+      SERVER_PAGE_TITLE: Blocked by the web server
+      SERVER_PAGE_DETAIL: "Your web server answered this request itself (HTTP {status}) instead of passing it to Grav. A security filter on the server, such as mod_security or a hosting firewall, may have blocked it. Your host or the server's error log can tell you which rule fired."
+    API_KEYS_FIELD:
+      REVOKE_KEY: Revoke key
+      E_G_MY_CLI_TOOL: e.g. My CLI Tool
+      REVOKE_API_KEY: Revoke API Key
+      FAILED_TO_LOAD_API_KEYS: Failed to load API keys
+      PLEASE_ENTER_A_KEY_NAME: Please enter a key name
+      API_KEY_GENERATED: API key generated
+      FAILED_TO_GENERATE_API_KEY: Failed to generate API key
+      FAILED_TO_REVOKE_API_KEY: Failed to revoke API key
+      FAILED_TO_COPY_TO_CLIPBOARD: Failed to copy to clipboard
+      API_KEYS: API Keys
+      NO_API_KEYS_HAVE_BEEN_GENERATED_YET: No API keys have been generated yet.
+      KEY_PREFIX: Key Prefix
+      CREATED: Created
+      EXPIRES: Expires
+      LAST_USED: Last Used
+      COPY_THIS_KEY_NOW_IT_WILL_NOT_BE_SHOWN: Copy this key now — it will not be shown again.
+      KEY_NAME: Key Name
+      EXPIRY: Expiry
+      BLANK_NEVER: (blank = never)
+      GENERATING: Generating...
+      GENERATE_KEY: Generate Key
+    APP_SHELL:
+      CLOSE_MENU: Close menu
+      GRAV_VERSION: Grav v{version}
+      ADMIN_VERSION: Admin v{version}
+      MADE_BY: Grav was {code} with {love} by {company}.
+      MADE_BY_PLAIN: Grav was coded with love by Trilby Media
+      MORE_ACTIONS: More actions
+    SIDEBAR_EDIT:
+      CUSTOMIZE: Customize sidebar
+      HINT: Drag items to reorder them, or focus a handle and use the arrow keys. The eye hides an item, and the star picks a plugin's shortcuts to show under it.
+      MOVE: Move {label}
+      HIDE: Hide {label}
+      SHOW: Show {label}
+      STAR: Show {label} in the sidebar
+      UNSTAR: Remove {label} from the sidebar
+      DIVIDER: Divider
+      MOVED: "{label} moved to position {position} of {total}"
+      SUB_ITEMS: "Shortcuts ({count} of {total} starred)"
+      FOLD: Collapse {label} shortcuts
+      UNFOLD: Expand {label} shortcuts
+      SAVE_FOR_EVERYONE: Save for everyone
+      SAVE_FOR_EVERYONE_HINT: Make this the sidebar for every user who hasn't arranged their own
+      SAVE_FOR_EVERYONE_TITLE: Make this everyone's sidebar?
+      SAVE_FOR_EVERYONE_MESSAGE: Every user who hasn't arranged their own sidebar will see this order. Anyone can still change their own, and hiding an item doesn't change what they're allowed to open.
+      RESTORE_BUILT_IN: Original order
+      USE_SITE_DEFAULT: Use the site's sidebar
+      SAVED: Sidebar saved
+      SITE_SAVED: Sidebar saved for everyone
+      RESET_DONE: Your sidebar follows the site's again
+      SAVE_FAILED: Couldn't save the sidebar
+    NORMAL_MODE: Normal mode
+    EXPERT_MODE: Expert mode
+    ALLOWED: Allowed
+    DENIED: Denied
+    PERMISSIONS_FIELD:
+      NOT_SET: Not set
+      FAILED_TO_LOAD_PERMISSIONS: Failed to load permissions
+      ADMIN_LEGACY: Admin (legacy)
+      INHERITED_ALLOWED: 'Allowed via group: {groups}'
+      INHERITED_DENIED: 'Denied via group: {groups}'
+      OVERRIDES_GROUP: 'Your direct setting overrides the group: {groups}'
+      LEGEND_INTRO: 'Faint toggles come from group membership and are shown for reference. Set one to make it a direct permission on this user.'
+      LEGEND_DIRECT: Set directly
+      LEGEND_INHERITED: Inherited from a group
+      LEGEND_OVERRIDE: Overrides a group
+      LEGEND_SUPER: Granted by super admin
+      NOT_GRANTABLE: "You can't grant this permission because your own account doesn't have it"
+      LOCKED_NOTE: "You can only grant permissions your own account has. The ones you can't grant have Allow greyed out, but you can still deny them or clear them."
+    TWO_FACTOR_FIELD:
+      REGENERATE: Regenerate
+      ENTER_CODE_TO_REGENERATE: Enter your current 6-digit code to make a new secret. 2FA stays off until you scan the new QR code and verify a code from it.
+      CURRENT_CODE_WRONG: That code is not correct.
+      TOO_MANY_CODES: Too many wrong codes. Try again in a few minutes.
+      2FA_QR_CODE: 2FA QR Code
+      SCAN_THE_QR_CODE_WITH_YOUR: Scan the QR code with your authenticator app
+      FAILED_TO_GENERATE_2FA_SECRET: Failed to generate 2FA secret
+      ENTER_THE_6_DIGIT_CODE_FROM_YOUR: Enter the 6-digit code from your authenticator
+      2FA_ENABLED: 2FA enabled
+      2FA_DISABLED: 2FA disabled
+      TWO_FACTOR_AUTHENTICATION_IS_OFF: Two-factor authentication is off
+      ADD_AN_EXTRA_LAYER_OF_SECURITY_BY: Add an extra layer of security by requiring a one-time code on sign-in.
+      FINISH_ENABLING_2FA: Finish enabling 2FA
+      SCAN_THE_QR_CODE_WITH_YOUR_2: Scan the QR code with your authenticator app, then enter the 6-digit code to verify and activate.
+      SECRET_FOR_MANUAL_ENTRY: "Secret (for manual entry):"
+      A_SECRET_IS_ALREADY_GENERATED_BUT_NOT: A secret is already generated but not shown for security reasons.
+      REGENERATE_AND_SHOW_QR: Regenerate and show QR
+      VERIFICATION_CODE: Verification code
+      2FA_IS_ENABLED: 2FA is enabled
+      A_ONE_TIME_CODE_IS_REQUIRED_WHENEVER: A one-time code is required whenever this account signs in.
+      ENTER_YOUR_CURRENT_6_DIGIT_CODE_TO: Enter your current 6-digit code to confirm
+      ENABLE_2FA: Enable 2FA
+      VERIFY_ENABLE: Verify & Enable
+      FORCE_DISABLE: Force disable
+      CONFIRM_DISABLE: Confirm disable
+      FORCE_DISABLE_PROMPT: Force-disable 2FA for **{username}**? Use this only for lost-device recovery.
+    PASSKEYS_FIELD:
+      TITLE: Passkeys
+      HELP: A passkey signs you in with your fingerprint, face or device PIN, from a password manager or a security key. It works on the site and in Admin, and counts as both sign-in steps.
+      HELP_OTHER: Passkeys this account signs in with. Remove one when the device or password manager holding it is lost.
+      PROOF_UNAVAILABLE: Set a password or 2FA on your account first. Passkeys can't be added or removed with a signed-in session alone.
+      NONE: No passkeys yet.
+      NONE_OTHER: This account has no passkeys.
+      ADD: Add a passkey
+      WAITING: Waiting for your passkey…
+      CONTINUE: Continue
+      CURRENT_PASSWORD: Current password
+      CURRENT_CODE: Current 2FA code
+      PROOF_PASSWORD_ADD: Enter your current password to add a passkey.
+      PROOF_CODE_ADD: Enter your current 6-digit 2FA code to add a passkey.
+      PASSWORD_REQUIRED: Enter your current password.
+      CODE_REQUIRED: Enter your current 6-digit code.
+      PASSWORD_WRONG: Your current password is not correct.
+      CODE_WRONG: That code is not correct.
+      TOO_MANY: Too many wrong tries. Try again in a few minutes.
+      ADDED_ON: "Added {date}"
+      LAST_USED: "last used {date}"
+      NEVER_USED: not used yet
+      SYNCED: synced
+      SYNCED_HELP: Kept in a password manager that syncs it across your devices.
+      RENAME: Rename
+      NAME_LABEL: Passkey name
+      NAME_REQUIRED: Give the passkey a name.
+      SAVE: Save
+      REMOVE: Remove
+      REMOVE_CONFIRM: "Remove “{name}”? It will no longer sign you in."
+      REMOVE_CONFIRM_PASSWORD: "Remove “{name}”? It will no longer sign you in. Enter your current password to confirm."
+      REMOVE_CONFIRM_CODE: "Remove “{name}”? It will no longer sign you in. Enter your current 6-digit 2FA code to confirm."
+      REMOVE_CONFIRM_OTHER: "Remove “{name}” from {username}? It will no longer sign them in."
+      ADDED: "Passkey added ({name}). It signs you in on its own from now on."
+      REMOVED: "Passkey removed ({name})."
+      RENAMED: Passkey renamed.
+      CANCELLED: No passkey was added. Try again when you're ready.
+      ALREADY_SAVED: That password manager or device already holds a passkey for this account.
+      UNSUPPORTED: This browser can't use passkeys here.
+      ADD_FAILED: The passkey couldn't be added. Please try again.
+      RENAME_FAILED: The passkey couldn't be renamed.
+      REMOVE_FAILED: The passkey couldn't be removed.
+    DISABLE: Disable
+    USER_AVATAR_CARD:
+      AVATAR_UPDATED: Avatar updated
+      FAILED_TO_UPLOAD_AVATAR: Failed to upload avatar
+      AVATAR_REMOVED: Avatar removed
+      FAILED_TO_REMOVE_AVATAR: Failed to remove avatar
+      UPLOAD_AVATAR: Upload Avatar
+    REAUTH_MODAL:
+      SESSION_EXPIRED: Session expired
+      PLEASE_RE_ENTER_YOUR_PASSWORD_TO: Please re-enter your password to continue. Your work has been preserved.
+      SIGN_IN_AGAIN_TO_CONTINUE: Sign in again to continue. Your work has been preserved.
+    USERNAME: Username
+    PASSWORD: Password
+    REMOVE: Remove
+    ENABLED: Enabled
+    DISABLED: Disabled
+    EXPAND_ALL: Expand all
+    COLLAPSE_ALL: Collapse all
+    CONFIG_INFO_PAGE:
+      LOADING_SYSTEM_INFORMATION: Loading system information...
+      EXPORT_YAML: Export YAML
+      SERVER: Server
+      GRAV_VERSION: Grav Version
+      PHP_VERSION: PHP Version
+      SERVER_SOFTWARE: Server Software
+      ENVIRONMENT: Environment
+      PHP_EXTENSIONS: PHP Extensions
+      PHP_CONFIGURATION: PHP Configuration
+    DASHBOARD_GRID:
+      DRAG_TO_REORDER: Drag to reorder
+    EDIT_MODE_TOOLBAR:
+      SAVE_AS_SITE_DEFAULT_FOR_ALL_USERS: Save as site default for all users
+      LAYOUT_PRESETS: Layout presets
+    PLUGIN_WIDGET_LOADER:
+      WIDGET_FAILED_TO_LOAD: Widget failed to load
+    TOP_BANNER:
+      SITE_NOTIFICATION: Site notification
+      PREVIOUS: Previous
+    PROMO_BANNER:
+      LABEL: Announcements
+      NEXT: Next
+      SHOW_SLIDE: "Show slide {n}"
+    DISMISS: Dismiss
+    BACKUPS_WIDGET:
+      CREATE_A_NEW_BACKUP_NOW: Create a new backup now
+      NO_BACKUPS_FOUND: No backups found
+      BACKING_UP: Backing up…
+      BACKUP_NOW: New
+      DOWNLOAD_FILE: Download {filename}
+    NEWS_FEED_WIDGET:
+      NO_FEED_ITEMS: No feed items
+    NOTIFICATIONS_WIDGET:
+      NO_NOTIFICATIONS: No notifications
+    POPULARITY_WIDGET:
+      LAST_7_DAYS: Last 7 days
+      LAST_14_DAYS: Last 14 days
+      LAST_30_DAYS: Last 30 days
+      LAST_90_DAYS: Last 90 days
+      LAST_12_MONTHS: Last 12 months
+      SHORT_7D: 7D
+      SHORT_14D: 14D
+      SHORT_30D: 30D
+      SHORT_90D: 90D
+      SHORT_12M: 12M
+      TIME_FRAME: Time frame
+      CHART_RANGE_LABEL: 'Page views, {range}'
+      PREVIOUS_PERIOD: '{count, plural, one {# view} other {# views}} in the previous period'
+      VS_PREVIOUS: compared with the previous period
+      LOAD_FAILED: Couldn't load this time frame
+      SO_FAR: so far
+      TODAY: Today
+      VIEWS: '{count, plural, one {# view} other {# views}}'
+      CHART_LABEL: Page views per day for the last 14 days
+      THIS_WEEK: This Week
+      THIS_MONTH: This Month
+    RECENT_PAGES_WIDGET:
+      VIEW_ALL: View all
+    STATS_WIDGET:
+      ACTIVE_THEME: Active Theme
+      UPDATE_COUNT: "{n, plural, one{# update} other{# updates}}"
+      ACTIVE_COUNT: "({n} active)"
+    DEMO:
+      BANNER_LABEL: Demo Mode
+      BANNER_READONLY: "Read-only demo — changes are disabled"
+      BANNER_MESSAGE: "Demo Mode — changes reset every {minutes, plural, one{# minute} other{# minutes}}"
+      BANNER_COUNTDOWN: "Next reset in {time}"
+    SYSTEM_HEALTH_WIDGET:
+      UPDATES: Updates
+      EVERYTHING_UP_TO_DATE: Everything up to date
+      GRAV_UPDATE_AVAILABLE: Grav Update Available
+      GRAV_IS_INSTALLED_VIA_SYMLINK_UPGRADE: Grav is installed via symlink — upgrade manually.
+      SERVER: Server
+      UPGRADE_GRAV: Upgrade Grav
+      UPDATE_ALL: Update All
+      UPDATE_ALL_CONFIRM_TITLE: Update all packages?
+      UPDATE_ALL_CONFIRM_MESSAGE: '{n, plural, one{# package will be updated:} other{# packages will be updated:}}'
+      PERCENT_USED: "{percent}% used"
+      UPDATES_AVAILABLE_COUNT: "{n} available"
+      PACKAGES_OUTDATED: "{n, plural, one{# package outdated} other{# packages outdated}}"
+      MORE_COUNT: "+ {n} more…"
+      CACHE: Cache
+      DISK: Disk
+      BYTES_USED: "{size} used"
+      BYTES_FREE: "{size} free"
+    TOP_PAGES_WIDGET:
+      NO_VIEW_DATA_YET: No view data yet
+    MARKDOWN_EDITOR:
+      NOTHING_TO_PREVIEW: Nothing to preview
+      IMAGE_INSERT:
+        TITLE: Insert image
+        PAGE_MEDIA: Page media
+        SITE_MEDIA: Site media
+        NO_MEDIA: No images are attached to this page yet.
+        FROM_URL: Insert from URL
+        URL_LABEL: Image URL
+        URL_PLACEHOLDER: https://example.com/image.jpg or media://file.jpg
+        ALT_LABEL: Alt text
+        ALT_PLACEHOLDER: Describe the image
+        INSERT: Insert
+    FLOATING_WIDGET_LOADER:
+      CLOSE_WIDGETS_MENU: Close widgets menu
+    MEDIA:
+      # Images pasted or dropped into a page's content editor (markdown or
+      # Editor Pro) are uploaded to the page media (grav-premium-issues#628).
+      PASTE_UPLOAD:
+        UPLOADING: '{count, plural, one {Uploading image…} other {Uploading # images…}}'
+        UPLOADED: '{count, plural, one {Image added to the page media} other {# images added to the page media}}'
+        FAILED: "Couldn't upload {filename}: {message}"
+        UNSUPPORTED_TYPE: "{filename} can't be added here. Paste or drop a PNG, JPEG, GIF, WebP, AVIF or SVG image."
+        SAVE_PAGE_FIRST: Save the page first, then paste or drop images into it.
+        PAGES_ONLY: Pasting or dropping images works in page content only. Upload the image to the media manager and insert it from there.
+        NO_PERMISSION: You don't have permission to upload media, so the image wasn't added.
+      FILE_DETAILS:
+        TITLE: File details
+        PATH: Path
+        TYPE: Type
+        SIZE: Size
+        URL: URL
+        MEDIA_PATH: Media path
+        MARKDOWN: Markdown
+        OPEN: Open
+      MEDIA_INSPECTOR:
+        PREVIOUS_FILE: Previous file
+        NEXT_FILE: Next file
+        RENAME: Rename
+        FAILED_TO_COPY: Failed to copy
+        FILE_RENAMED: File renamed
+        DIMENSIONS: Dimensions
+      MEDIA_MANAGER:
+        ROOT: Media
+        NO_RESULTS_FOUND: No results found
+        TRY_A_DIFFERENT_SEARCH_TERM: Try a different search term
+        FOLDER_IS_EMPTY: This folder is empty
+        DROP_FILES_OR_CLICK_UPLOAD: Drop files here or click Upload to get started
+        DROP_FILES_TO_UPLOAD: Drop files to upload
+        # Rendered with tHtml so the path can be emphasised without splitting the
+        # sentence into fragments translators can't reorder.
+        DROP_FILES_TO_UPLOAD_TO_PATH: Drop files to upload to **{path}**
+        FOLDER_NAME: Folder name
+        FILES_DELETED: Files deleted
+        UPLOAD_FILES: Upload Files
+        NEW_FOLDER: New Folder
+        CREATE: Create
+        CUSTOM_ORDER: Custom order
+        REORDER: Drag to reorder
+        REORDER_MODE: Reorder
+        REORDER_DONE: Done
+        ORDER_SAVE_FAILED: Failed to save the new order
+      MEDIA_TOOLBAR:
+        SEARCH_MEDIA: Search media...
+        SEARCHING_FOR: 'Search: "{query}"'
+        GRID_VIEW: Grid view
+        LIST_VIEW: List view
+        NEW_FOLDER: New folder
+        FOLDER: Folder
+        FILTER_ALL: All
+        FILTER_IMAGES: Images
+        FILTER_VIDEO: Video
+        FILTER_AUDIO: Audio
+        FILTER_DOCS: Docs
+        SORT_NAME: Name
+        SORT_SIZE: Size
+        SORT_DATE: Date
+        SORT_TYPE: Type
+        DELETE_SELECTED: '{count, plural, one {Delete # file} other {Delete # files}}'
+      MEDIA_GRAV_ADMIN: Media — Grav Admin
+      MANAGE_SITE_WIDE_MEDIA_FILES: Manage site-wide media files
+      PAGE_MEDIA:
+        PAGE_MEDIA: Page Media
+        DROP_FILES_HERE: Drop files here
+        DROP_OR_CLICK_TO_ADD_MORE: Drop or click to add more
+        DROP_FILES_OR_CLICK_TO_UPLOAD: Drop files or click to upload
+        DRAG_INTO_EDITOR: Drag into editor
+        REORDER: Drag to reorder
+        REORDER_MODE: Reorder
+        REORDER_DONE: Done
+        REORDER_HINT: Drag images to set their order.
+        INSERT_AT_CURSOR: Insert at cursor
+        INSERTED: Inserted {filename}
+        NOT_ALLOWED: You can't change the media of this page.
+        NO_FILES: No media files
+      METADATA:
+        TITLE: Metadata
+        EDIT: Edit metadata
+        SAVING: Saving…
+        RESET: Reset
+        SAVED: Metadata saved
+        SAVE_FAILED: Could not save metadata
+        LOAD_FAILED: Could not load metadata
+        EMPTY: No editable metadata fields are configured.
+        STORED: Stored metadata
+        TAGS_PLACEHOLDER: Add tag…
+        BATCH_EDITING: 'Editing {n} selected files — changed fields apply to all.'
+        APPLY_TO_N: 'Apply to {n} files'
+        BATCH_SAVED: 'Updated {n} files'
+        BATCH_PARTIAL: 'Updated {saved} files, {failed} failed'
+    UPLOAD: Upload
+    CACHE_CLEAR_BUTTON:
+      LABEL: Cache
+      CLEAR_CACHE: Clear cache
+      CACHE_OPTIONS: Cache options
+      FAILED_TO_CLEAR_CACHE: Failed to clear cache
+    CONFIRM_ACTION: Confirm Action
+    VIEW_SITE_BUTTON:
+      OPEN_SITE_FRONTEND_IN_A_NEW_TAB: Open site frontend in a new tab
+      VIEW_SITE: View site
+    PLUGIN_PAGE_COMPONENT:
+      LOADING_PLUGIN_PAGE: Loading plugin page...
+    CSP:
+      TITLE: Content Security Policy
+      ENABLED: Strict Content Security Policy
+      ENABLED_HELP: "Send a strict <code>Content-Security-Policy</code> header with the admin page, so the browser only runs the scripts the page itself carries and the scripts they load. A script injected into the page, for example through a field that wasn't escaped, is blocked. Plugin pages, fields and widgets built for Admin2 keep working. A plugin that runs code from text (<code>eval</code>) needs <code>script-src 'unsafe-eval'</code> under Extra Policy Sources. Needs API 1.1.14 or later."
+      EXTRA: Extra Policy Sources
+      EXTRA_HELP: "Sources to add to the policy, one directive per line, such as <code>connect-src https://hub.example.com</code> for a Mercure hub on another host or <code>img-src https://cdn.example.com</code>. A directive the policy already has gets these sources added; any other directive is added as written. Only used while the policy is on."
+    SYNC:
+      EDITOR_LOCK_NOTICE:
+        SWITCH_YOUR_EDITOR_PREFERENCE: switch your editor preference
+        TO_COLLABORATE_LIVE: to collaborate live.
+        LOCKED: Read-only — {owner} is editing with **{editor}**. Mixed editor types can't co-edit; [switch your editor preference]({href}) to collaborate live.
+        LOCKED_EXPERT: "Read-only: {owner} is editing with **{editor}**, which can't co-edit with Expert mode's markdown editor. Switch back to Normal mode to collaborate live."
+        BUILTIN_MARKDOWN_EDITOR: the built-in markdown editor
+    DOWNLOAD: Download
+    TRANSLATIONS:
+      TITLE: Translations
+      DESCRIPTION: "Reword any string this site displays, in any language. Changes are stored as overrides in user/languages and never touch a plugin or theme's own files, so an update can't wipe them."
+      IMPORT_TITLE: Overrides waiting in the Translation Strings plugin
+      IMPORT_BODY: "{count, plural, one {# override is still stored inside the Translation Strings plugin. Import it to manage it here.} other {# overrides across {languages, plural, one {# language} other {# languages}} are still stored inside the Translation Strings plugin. Import them to manage them here.}}"
+      IMPORT_CONFLICTS: "{count, plural, one {# key is} other {# keys are}} set in both places with different wording. The plugin's version wins, because that is what your site shows today."
+      IMPORT_ACTION: Import overrides
+      IMPORT_DONE: "Imported {count, plural, one {# override} other {# overrides}}"
+      IMPORT_FAILED: Import failed
+      IMPORT_UNKNOWN_WARNING: "{count, plural, one {# imported key names a string} other {# imported keys name strings}} nothing on this site provides. Find them with the Unknown filter."
+      IMPORT_UNKNOWN_NOTE: "{count, plural, one {# key names a string no plugin, theme or core file provides. It is kept so you can review it, but it has no effect.} other {# keys name strings no plugin, theme or core file provides. They are kept so you can review them, but they have no effect.}}"
+      IMPORT_ALREADY_DONE: "All {count, plural, one {# override is} other {# overrides are}} already here"
+      IMPORT_STILL_ENABLED_TITLE: The Translation Strings plugin is still enabled
+      IMPORT_STILL_ENABLED_BODY: It applies its strings after this editor does, so it still overrides anything you change here. Check the site reads correctly, then disable it to finish the switch. Its settings are left in place, so this is reversible.
+      IMPORT_DISABLE_ACTION: Disable the plugin
+      IMPORT_DISABLE_BLOCKED: Import the overrides first, or they will drop off the site.
+      IMPORT_DISABLE_FAILED: Could not disable the plugin
+      IMPORT_PLUGIN_DISABLED: Translation Strings disabled. This editor is now in charge.
+      IMPORT_SHOW_DETAIL: Show what will be imported
+      IMPORT_HIDE_DETAIL: Hide detail
+      IMPORT_COL_LANGUAGE: Language
+      IMPORT_COL_NEW: New
+      IMPORT_COL_CONFLICT: Conflicting
+      IMPORT_COL_ALREADY: Already here
+      IMPORT_COL_SHIPPED: Same as original
+      IMPORT_COL_UNKNOWN: Unknown
+      IMPORT_LEGEND: Strings marked "same as original" match what the plugin or theme already ships, so they are dropped rather than stored as overrides that do nothing.
+      IMPORT_NO_PERMISSION: You do not have permission to write translation overrides, so the import is unavailable.
+      IMPORT_NO_CONFIG_PERMISSION: You do not have permission to change plugin settings, so the plugin has to be disabled by an administrator.
+      TRANSLATE_UNAVAILABLE_NOT_INSTALLED: AI-powered translation of missing strings is available with the AI Translate premium plugin.
+      TRANSLATE_UNAVAILABLE_NOT_ENABLED: AI Translate is installed but switched off, so machine translation is unavailable.
+      TRANSLATE_UNAVAILABLE_NOT_CONFIGURED: AI Translate has no translation provider set up yet, so machine translation is unavailable.
+      TRANSLATE_UNAVAILABLE_FIND_IT: Get the plugin
+      TRANSLATE_UNAVAILABLE_OPEN_IT: Open its settings
+      SUPERSEDED_TITLE: Built into Grav 2.0
+      SUPERSEDED_BODY: The Translations section does everything this plugin does, and adds search across every string on the site, per-language coverage, machine translation and a report of keys nothing provides any more. This plugin stays supported on Grav 1.7.
+      SUPERSEDED_PENDING: "{count, plural, one {# override is} other {# overrides are}} still stored here and can be imported."
+      SUPERSEDED_ACTION: Open Translations
+      SEARCH_PLACEHOLDER: Search text or key...
+      SOURCE_LANGUAGE: Source
+      SOURCE: source
+      LANGUAGES: Languages
+      FILTER_LANGUAGES: Filter languages
+      EDITED: edited
+      KEY: Key
+      ALL_SOURCES: All sources
+      KIND_SYSTEM: Core
+      KIND_PLUGINS: Plugins
+      KIND_THEMES: Themes
+      KIND_USER: This site
+      INACTIVE: inactive
+      INACTIVE_HELP: This plugin is disabled or this theme is not the active one, so its strings are not used on the site.
+      STATUS_ALL: All
+      STATUS_MISSING: Missing
+      STATUS_OVERRIDDEN: Overridden
+      STATUS_UNKNOWN: Unknown
+      STATE_OVERRIDDEN: overridden
+      STATE_MISSING: missing
+      STATE_MISSING_FALLBACK: falling back
+      UNKNOWN_KEY_HELP: No plugin, theme or core file provides this key. It is probably a typo, or left over from something no longer installed.
+      SHIPPED_VALUE: "Originally: {value}"
+      REVERT: Revert
+      REVERT_HELP: Remove this override and go back to what the plugin or theme provides.
+      REVERTED_TO_SHIPPED: Reverted to the original wording
+      OVERRIDE_REMOVED: Override removed
+      SAVED_UNKNOWN_KEY: "Saved, but nothing provides {key} — check the spelling"
+      EDIT_HINT: Enter to save, Escape to cancel, Shift+Enter for a new line. Clear the box to remove your override.
+      REFRESH: Refresh
+      LOADING: Loading translations...
+      NO_RESULTS: No strings match these filters.
+      NO_RESULTS_FILTERED: "You are looking inside: {filters}"
+      FILTERED_BY: Showing only
+      REMOVE_FILTER: Remove this filter
+      CLEAR_ALL_FILTERS: Clear filters
+      FAILED_TO_LOAD: Failed to load translations
+      FAILED_TO_SAVE: Failed to save that change
+      SHOWING: "Showing {from}–{to} of {total}"
+      PREVIOUS: Previous
+      NEXT: Next
+      EDIT_AS_YAML: Edit as YAML
+      EDIT_AS_GRID: Back to grid
+      EDITING_LANGUAGE: Editing
+      SCOPED_TO: "Only {namespace}"
+      SCOPE_WHOLE_FILE: Editing every override for this language
+      SAVE: Save
+      SAVING: Saving...
+      YAML_SAVED: "{count, plural, =0 {No overrides left in {lang}} one {# override saved in {lang}} other {# overrides saved in {lang}}}"
+      YAML_PLACEHOLDER: "MY_PLUGIN:\n  SOME_KEY: Your wording here"
+      YAML_HELP: Paste or edit overrides directly. Values matching what the plugin or theme already provides are dropped, so the file only ever holds real changes.
+      UNKNOWN_KEYS_SAVED: Saved, but nothing provides these keys
+      TRANSLATE_MISSING: Translate missing
+      TRANSLATING: Translating...
+      TRANSLATE_FAILED: Translation failed
+      PICK_A_TARGET_LANGUAGE: Add a language column first — there is nothing to translate into.
+      NOTHING_TO_TRANSLATE: Nothing on this page is missing a translation.
+      PROPOSALS_PENDING: "{count, plural, one {# suggestion to review} other {# suggestions to review}}"
+      SKIPPED_COUNT: "{count, plural, one {# skipped} other {# skipped}}"
+      ACCEPT_ALL: Accept all
+      DISCARD_ALL: Discard
+      ACCEPTED_ALL: "{count, plural, one {# translation saved} other {# translations saved}}"
+      SUGGESTED: Suggested
+      ACCEPT: Accept
+      DISCARD: Discard
+      TRANSLATE_THIS: Suggest a translation for this string
+      TRANSLATE_ROW: Suggest translations for this string in every language shown
+      SKIP_NO_SOURCE: There is no wording in the source language to translate from.
+      SKIP_ICU: This message changes with a number or a choice, and each language needs its own set of forms. Write this one by hand.
+      SKIP_NOTHING: This string is only placeholders, so there are no words to translate.
+      SKIP_EMPTY: The translation service returned nothing for this string.
+      SKIP_PLACEHOLDERS: The translation came back with its placeholders altered, so it was discarded rather than saved.
+
+    TOOLS:
+      BACKUPS:
+        DELETE_BACKUP: Delete Backup
+        FAILED_TO_LOAD_BACKUPS: Failed to load backups
+        BACKUP_CREATED_SUCCESSFULLY: Backup created successfully
+        FAILED_TO_CREATE_BACKUP: Failed to create backup
+        BACKUP_DELETED: Backup deleted
+        FAILED_TO_DELETE_BACKUP: Failed to delete backup
+        BACKUP_STATISTICS: Backup Statistics
+        NUMBER_OF_BACKUPS: Number of Backups
+        NUMBER_OF_PROFILES: Number of Profiles
+        NEWEST_BACKUP: Newest Backup
+        OLDEST_BACKUP: Oldest Backup
+        BACKUP_HISTORY: Backup History
+        LOADING_BACKUPS: Loading backups...
+        NO_BACKUPS_FOUND_CREATE_ONE_TO_GET: No backups found. Create one to get started.
+        BACKUP_DATE: Backup Date
+        ACTION: Action
+        CREATING: Creating...
+        BACKUP_NOW: Backup Now
+      DIRECT_INSTALL:
+        PACKAGE_INSTALLED_SUCCESSFULLY: Package installed successfully
+        ONLY_ZIP_FILES_ARE_SUPPORTED: Only .zip files are supported
+        INSTALL_FROM_FILE: Install from File
+        DROP_A_ZIP_FILE_HERE_OR_CLICK_TO_BROWSE: Drop a .zip file here or click to browse
+        SUPPORTS_GRAV_PLUGIN_AND_THEME_PACKAGES: Supports Grav plugin and theme packages
+        INSTALL_FROM_URL: Install from URL
+      LOGS:
+        SEARCH_MESSAGES: Search messages...
+        FAILED_TO_LOAD_LOGS: Failed to load logs
+        FAILED_TO_LOAD_LOG_FILES: Failed to load log files
+        LOG_FILE: Log file
+        ALL_LEVELS: All Levels
+        EMERGENCY: Emergency
+        CRITICAL: Critical
+        WARNING: Warning
+        NOTICE: Notice
+        25_LINES: 25 lines
+        50_LINES: 50 lines
+        100_LINES: 100 lines
+        200_LINES: 200 lines
+        REFRESH: Refresh
+        LOADING_LOGS: Loading logs...
+        MESSAGE: Message
+        CLEAR_LOG: Clear log
+        CLEAR_LOG_CONFIRM: 'Permanently delete every entry in {file}? This cannot be undone, and any record of what went wrong before now goes with it.'
+        LOG_CLEARED: Cleared {file}
+        FAILED_TO_CLEAR_LOG: Failed to clear log
+      AUDIT:
+        DESCRIPTION: "A record of API activity: logins, content, user, configuration, and package changes. Admin Next routes through the API, so this covers the admin plus any external API clients."
+        COVERAGE_DETAILED: Detailed
+        SEARCH_PLACEHOLDER: Search actor, target, event, IP...
+        EVENT: Event
+        ALL_EVENTS: All events
+        SEVERITY: Severity
+        ALL_SEVERITIES: All severities
+        FROM: From
+        TO: To
+        REFRESH: Refresh
+        FAILED_TO_LOAD: Failed to load audit trail
+        LOADING: Loading audit trail...
+        NO_ENTRIES: No audit entries found.
+        WHEN: When
+        ACTOR: Actor
+        TARGET: Target
+        IP: IP
+        EVENT_CODE: Event code
+        AUTH_METHOD: Auth method
+        USER_AGENT: User agent
+        CHANGES: Changes
+        DETAILS: Details
+        SHOWING: Showing
+      REPORT_COMPONENT_WRAPPER:
+        LOADING_REPORT_COMPONENT: Loading report component...
+      REPORTS:
+        FAILED_TO_LOAD_REPORTS: Failed to load reports
+        LOADING_REPORTS: Loading reports...
+        NO_REPORTS_AVAILABLE: No reports available.
+        CONTENT_FIELD: "content: {field}"
+        TWIG_CONTENT:
+          GATE_ON: Twig in content enabled
+          GATE_OFF: Twig in content disabled
+          SANDBOX_ON: Sandbox on
+          SANDBOX_OFF: Sandbox off
+          SECTION_LEAKS: Pages leaking raw Twig
+          SECTION_EVENTS: Recent blocks
+          LEAK_GATE_OFF: "The site gate is off, so this page's Twig markup renders as raw text to visitors."
+          LEAK_PAGE_OFF: "Twig is turned off for this page, so its Twig markup renders as raw text to visitors."
+          ADD_TO_ALLOWLIST: Add to allowlist
+          ADDED_TO_ALLOWLIST: "Added ''{token}'' to {key}"
+          ADD_FAILED: Could not update the allowlist
+          IN_PARTIAL: "Blocked inside the included template"
+          TRUST_PARTIAL: Trust this partial
+          TRUSTED_PARTIAL: "Trusted {template}. Pages that include it render it as your theme does."
+          TRUST_FAILED: Could not trust the partial
+          TROUBLESHOOTING_LINK: How to fix Twig in content
+          CLEAR_EVENTS: Clear blocks
+          CLEARED_EVENTS: Cleared recent blocks
+          CLEAR_FAILED: Could not clear blocks
+          OPEN_SECURITY_SETTINGS: Open Security settings
+          EVENT_GATE_BLOCKED: Gate blocked Twig in this page's content
+          EVENT_SANDBOX_TAG: "Sandbox blocked tag"
+          EVENT_SANDBOX_FILTER: "Sandbox blocked filter"
+          EVENT_SANDBOX_FUNCTION: "Sandbox blocked function"
+          EVENT_SANDBOX_METHOD: "Sandbox blocked method"
+          EVENT_SANDBOX_PROPERTY: "Sandbox blocked property"
+          SCAN_INTRO: Scan all page content for Twig the sandbox would block.
+          SCAN_CONTENT: Scan content
+          SCAN_FAILED: Content scan failed
+          SCAN_CLEAN: No content uses Twig outside the current allowlists.
+          SCAN_TAGS: Blocked tags in content
+          SCAN_FILTERS: Blocked filters in content
+          SCAN_FUNCTIONS: Blocked functions in content
+          POLICY_INTRO: "The sandbox baseline ships in code; your config only widens or tightens it."
+          POLICY_VIEW: View effective policy
+          POLICY_HIDE: Hide effective policy
+          POLICY_FAILED: Could not load the sandbox policy
+          POLICY_TAGS: Tags
+          POLICY_FILTERS: Filters
+          POLICY_FUNCTIONS: Functions
+          POLICY_METHODS: Methods
+          POLICY_PROPERTIES: Properties
+          POLICY_EFFECTIVE_COUNT: "{count} effective"
+          POLICY_CLASS_COUNT: "{count, plural, one {# class} other {# classes}}"
+          POLICY_ADDED: "+{count} added"
+          POLICY_DENIED: "−{count} denied"
+          POLICY_ALL_DEFAULTS: All defaults, unchanged
+          GLOBAL_REQUEST_GATED: "system.pages.process.twig is on, but Twig in content is disabled site-wide, so those pages render raw. Pick a profile above to enable it, or remove the global flag."
+          FRONTMATTER_REQUEST_GATED: "Frontmatter Twig is requested (pages.frontmatter.process_twig), but Twig in content is disabled site-wide, so it won't run. Pick a profile above to enable it."
+      SCHEDULER:
+        FAILED_TO_LOAD_SCHEDULER_CONFIGURATION: Failed to load scheduler configuration.
+        STATUS_UNAVAILABLE: Scheduler status could not be read on this host. Your jobs are still listed below and can be edited as usual.
+        PROCESS_UNAVAILABLE: "This host has PHP's proc_open function disabled, so jobs cannot be started from the admin. They still run whenever your scheduler is triggered by cron or a webhook."
+        CRON_UNDETERMINED: Grav cannot inspect this server's crontab, so it cannot confirm how the scheduler is being triggered.
+        LAST_TRIGGERED: Last triggered
+        LAST_MANUAL_RUN: Last run by hand
+        ENVIRONMENT_MISMATCH: "The scheduler last ran under the **{last}** environment, but this site is using **{current}**, which has its own configuration in user/env/{current}/config. Custom jobs and settings defined only there never run from that trigger. Update the bin/grav scheduler line in your crontab to the command below (it passes --env={current}), or export GRAV_ENVIRONMENT={current} before it runs."
+        SCHEDULER_CONFIGURATION_SAVED: Scheduler configuration saved
+        FAILED_TO_SAVE: Failed to save
+        LOADING_SCHEDULER: Loading scheduler...
+        NOT_ENABLED_FOR_USER: "Not Enabled for user:"
+        GRAV_SCHEDULER: Grav Scheduler
+        INFO_BANNER: The scheduler can use either system crontab or webhook triggers to execute commands. Webhooks are recommended for cloud environments.
+        CRONTAB_INSTRUCTIONS: To enable the Scheduler's functionality, you must add the **Grav Scheduler** to your system's crontab file for the **{user}** user. Run the command above from the terminal to add it automatically. Once saved, refresh this page to see the status.
+        WEBHOOK_ALTERNATIVE: Alternatively, install the **scheduler-webhook** plugin to use webhook-based cron firing, which is recommended for cloud environments where system crontab access is not available.
+        SECURITY_WARNING: Only advanced users should configure custom scheduler jobs. Incorrect configuration can cause performance issues or security vulnerabilities.
+      SYSTEM_INFO:
+        FAILED_TO_LOAD_SYSTEM_INFO: Failed to load system info
+        LOADING_SYSTEM_INFO: Loading system info...
+        GRAV_VERSION: Grav Version
+        PHP_VERSION: PHP Version
+        PHP_SAPI: PHP SAPI
+        MEMORY_LIMIT: Memory Limit
+        MAX_EXECUTION: Max Execution
+        MAX_UPLOAD: Max Upload
+        MAX_POST: Max POST
+        DISK_USAGE: Disk Usage
+        DRIVER: Driver
+        DISK_FREE_OF: "{free} free of {total}"
+      TOOLS_GRAV_ADMIN: Tools — Grav Admin
+      BACKUPS_SCHEDULER_LOGS_AND_DIAGNOSTICS: Backups, scheduler, logs, and diagnostics
+    INSTALLING: Installing...
+    ACCESS_DENIED:
+      ACCESS_DENIED: Access Denied
+    ARE_YOU_SURE: Are you sure?
+    ENVIRONMENT_SWITCHER:
+      PREFIX: 'Env:'
+      SELECT_WHERE_CONFIG_WRITES_ARE_SAVED: Select the active environment — controls which config you see and where saves go
+      HAS_OVERRIDES: has overrides
+      SELECTED_ENV: Selected env
+      NO_LONGER_EXISTS_PICK_ANOTHER: no longer exists. Pick another.
+      SAVE_CONFIG_TO: Active environment
+      SWITCH_DISCARDS_UNSAVED: Switching environment reloads the admin and discards unsaved changes. Continue?
+      SWITCH_AND_RELOAD: Switch & reload
+      CREATES_PATH: Creates user/env/{name}/config/
+      DEFAULT: Default
+      SAVING_TO_DEFAULT: Saving to default (user/config)
+      SAVING_TO_ENV: "Saving to env: {name}"
+      ENV_CREATED: "Environment {name} created and selected"
+      ENV_DELETED: "Environment {name} deleted"
+      FAILED_TO_CREATE: Failed to create environment
+      FAILED_TO_DELETE: Failed to delete environment
+      CREATE_ENVIRONMENT: "Create environment…"
+      CREATE_ENV_NAMED: "Create env \"{name}\"…"
+      CREATE: Create
+      DELETE: Delete
+      DELETE_ENV_TOOLTIP: "Delete environment {name}"
+      CONFIRM_DELETE: "Delete {name}?"
+      CONFIRM_DELETE_WITH_OVERRIDES: "Delete {name} and all its config overrides?"
+    INLINE_ICON_PICKER:
+      SEARCH_ICONS: Search icons...
+      NO_ICONS_FOUND: No icons found
+      TYPE_TO_NARROW_RESULTS: Type to narrow results
+    PASSWORD_FIELD:
+      PASSWORD_REQUIREMENTS: Password requirements
+      PASSWORD_STRENGTH: Password strength
+      REQUIREMENTS: Requirements
+    TOP_PROGRESS_BAR:
+      WORKING: Working
+    UNSAVED_INDICATOR:
+      SAVING_CHANGES: Saving changes…
+      SAVING_CHANGES_2: Saving changes
+      UNSAVED_CHANGES_CLICK_SAVE_TO_PERSIST: Unsaved changes — click Save to persist them
+      YOU_HAVE_UNSAVED_CHANGES: You have unsaved changes
+    ALL_CHANGES_SAVED: All changes saved
+    APP:
+      CREATING_BACKUP: Creating backup…
+      DASHBOARD_GRAV_ADMIN: Dashboard — Grav Admin
+      REFRESH: Refresh
+      WELCOME_BACK: Welcome back, {name}
+      PAGE_TITLE: "{name} — Grav Admin"
+    CONFIG:
+      TITLE: Configuration
+      TITLE_SCROLLED: "Configuration: {scope}"
+      LOADING_CONFIGURATION: Loading configuration...
+      FAILED_TO_LOAD_CONFIGURATION: Failed to load configuration.
+      SCOPE_NOT_FOUND: No configuration scope named {scope} was found.
+      TWIG_PROFILE:
+        LABEL: Twig in Content
+        HELP: Choose who can run Twig inside page content. This sets the advanced toggles below.
+        OFF: 'Off'
+        TRUSTED: Trusted roles only
+        ALL: All editors
+        CUSTOM: Custom
+        OFF_DESC: Twig in page content is disabled. Markup is shown as written.
+        TRUSTED_DESC: Only super users and holders of the "pages twig" permission can enable Twig on a page.
+        ALL_DESC: Any editor can enable Twig on the pages they edit.
+        CUSTOM_DESC: The current settings don't match a named profile. Adjust the advanced toggles below, or pick a profile to reset them.
+      FILTER_FIELDS: Filter fields...
+      CLEAR_FILTER: Clear filter
+      NO_MATCHES_FOUND: No matches found
+      CONFIGURATION_SAVED_SUCCESSFULLY: Configuration saved successfully
+      CONFIGURATION_WAS_MODIFIED_ELSEWHERE: Configuration was modified elsewhere. Reload to see the latest changes.
+      FAILED_TO_SAVE_CONFIGURATION: Failed to save configuration
+      VALIDATION_FAILED_FOR_FIELDS: "Couldn't save — these fields are invalid: {fields}"
+      CONFIGURATION_RELOADED: Configuration reloaded
+      CONFIGURATION_CHANGED_ELSEWHERE_SAVE_TO: Configuration changed elsewhere — save to overwrite or reload
+      RELOAD: Reload
+      NO_CONFIGURATION_BLUEPRINT_AVAILABLE: No configuration blueprint available for this scope.
+      PAGE_TITLE: "Configuration: {scope} — Grav Admin"
+      OVERRIDE:
+        REVERT_TOOLTIP: "Overrides default ({value}). Click to revert."
+        DEFAULT_EMPTY: empty
+        REVERTED: Reverted to the inherited value
+        REVERT_FAILED: Could not revert
+        RESET_BUTTON: Reset overrides
+        RESET_TOOLTIP: Remove every override and restore inherited values
+        RESET_TITLE: Reset all overrides?
+        RESET_MESSAGE: "This removes every override on {scope} and restores the inherited values. This cannot be undone."
+        RESET_CONFIRM: Reset
+        RESET_DONE: Overrides reset
+      SHADOWED:
+        MARKER_ENV: "Overridden by the {env} environment"
+        MARKER_SERVER: Set by a server environment variable
+        EXPLAIN_ENV: "The {env} environment sets this in its own config file, so what you save here won't apply on this site."
+        EXPLAIN_SERVER: A GRAV_CONFIG server environment variable sets this, so what you save here won't apply.
+        ENABLED_ENV: "Set by the {env} environment"
+        ENABLED_SERVER: Set by a server environment variable
+        ENABLED_EXPLAIN_ENV: "The {env} environment turns this plugin on or off in its own config file, so the switch here won't change what the site does."
+        ENABLED_EXPLAIN_SERVER: A GRAV_CONFIG server environment variable turns this plugin on or off, so the switch here won't change what the site does.
+        SITE_USES: This site uses
+        VALUE_ON: 'on'
+        VALUE_OFF: 'off'
+        REMOVE_OVERRIDE: Remove override
+        SWITCH_TO: "Switch to {env}"
+        REMOVED: "Override removed from the {env} environment"
+        REMOVE_FAILED: Could not remove the override
+        BANNER_ENV: "{count, plural, one {# setting here is} other {# settings here are}} overridden by the {env} environment, so changes to {count, plural, one {it} other {them}} won't take effect."
+        BANNER_SERVER: "{count, plural, one {# setting here is} other {# settings here are}} set by server environment variables, so changes to {count, plural, one {it} other {them}} won't take effect."
+        BANNER_MIXED: "{count, plural, one {# setting here is} other {# settings here are}} overridden by the {env} environment or by server environment variables, so changes to {count, plural, one {it} other {them}} won't take effect."
+        SAVED_ENV: "Saved, but {field} is overridden by the {env} environment, so the site still uses \"{value}\"."
+        SAVED_SERVER: "Saved, but {field} is set by a server environment variable, so the site still uses \"{value}\"."
+        SAVED_MANY_ENV: "Saved, but {count} of these changes are overridden by the {env} environment, so the site won't use them."
+        SAVED_MANY_SERVER: "Saved, but {count} of these changes are set by server environment variables, so the site won't use them."
+        SAVED_MANY_MIXED: "Saved, but {count} of these changes are overridden by the {env} environment or by server environment variables, so the site won't use them."
+        TOGGLE_ENV: "Saved, but the {env} environment keeps {name} {state, select, off {disabled} other {enabled}}."
+        TOGGLE_SERVER: "Saved, but a server environment variable keeps {name} {state, select, off {disabled} other {enabled}}."
+    FLEX_OBJECTS:
+      ADD: Add
+      SEARCH: Search...
+      PREVIOUS: Previous
+      DELETE_OBJECT: Delete Object
+      FAILED_TO_LOAD_DIRECTORY: Failed to load directory
+      FAILED_TO_LOAD_OBJECTS: Failed to load objects
+      OBJECT_DELETED: Object deleted
+      FAILED_TO_DELETE_OBJECT: Failed to delete object
+      EXPORT_FAILED: Export failed
+      EXPORT: Export
+      ACTIONS: Actions
+      OBJECT_WAS_MODIFIED_ELSEWHERE_PLEASE: Object was modified elsewhere. Please reload.
+      FAILED_TO_SAVE: Failed to save.
+      OBJECT_CHANGED_ELSEWHERE_SAVE_TO: Object changed elsewhere — save to overwrite or reload
+      BACK_TO_LIST: Back to List
+      INFO:
+        TITLE: Object info
+        ID: ID
+        DIRECTORY: Directory
+        STORAGE_KEY: Storage key
+        LOCATION: Location
+        SHOW_INFO: Show object info
+      NEW:
+        OBJECT_CREATED: Object created
+        BACK_TO_LIST: Back to List
+        CREATE: Create
+    FORGOT:
+      UNABLE_TO_CONNECT_TO_SERVER: Unable to connect to server.
+      FORGOT_PASSWORD_GRAV_ADMIN: Forgot password — Grav Admin
+      FORGOT_PASSWORD: Forgot password
+      EMAIL_ADDRESS: Email address
+      ENTER_A_VALID_EMAIL_ADDRESS: Enter a valid email address
+      IF_AN_ACCOUNT_EXISTS_FOR_THAT_EMAIL_A: If an account exists for that email, a reset link has been sent.
+      BACK_TO_SIGN_IN: Back to sign in
+      SENDING: Sending...
+      SEND_RESET_LINK: Send reset link
+      CHECK_INBOX: Check your inbox for a reset link.
+      SUBTITLE: Enter your email and we'll send you a reset link.
+    LOGIN:
+      SIGNED_IN_SUCCESSFULLY: Signed in successfully
+      PLEASE_FILL_IN_ALL_REQUIRED_FIELDS: Please fill in all required fields
+      INVALID_USERNAME_OR_PASSWORD: Invalid username or password
+      UNABLE_TO_CONNECT_TO_SERVER_CHECK_YOUR: Unable to connect to server. Check your server URL and try again.
+      UNABLE_TO_VERIFY_CODE_CHECK_YOUR: Unable to verify code. Check your connection and try again.
+      LOGIN_GRAV_ADMIN: Login — Grav Admin
+      GRAV_ADMIN: Grav Admin
+      SERVER_CONFIGURATION: Server Configuration
+      SERVER_URL: Server URL
+      ENVIRONMENT: Environment
+      USERNAME_IS_REQUIRED: Username is required
+      PASSWORD_IS_REQUIRED: Password is required
+      FORGOT_PASSWORD: Forgot password?
+      AUTHENTICATION_CODE: Authentication code
+      ENTER_A_VALID_6_DIGIT_CODE: Enter a valid 6-digit code
+      BACK_TO_SIGN_IN: Back to sign in
+      POWERED_BY_GRAV_CMS: Powered by Grav CMS
+      SIGNING_IN: Signing in...
+      SIGN_IN: Sign In
+      VERIFYING: Verifying...
+      VERIFY: Verify
+      TWOFA_SUBTITLE: Enter your authenticator code to continue
+      SUBTITLE: Sign in to manage your site
+      AUTH_CODE_PROMPT: Open your authenticator app and enter the 6-digit code for **{username}**.
+      OR_CONTINUE_WITH: Or continue with
+      CONTINUE_WITH: Continue with {provider}
+      SSO_FAILED: Could not sign in with that provider. Please try again.
+      INVALID_AUTHENTICATION_CODE: Invalid authentication code
+      CAPTCHA_VERIFYING: Checking you're human...
+      CAPTCHA_VERIFIED: Verified you're human
+      CAPTCHA_NOT_COMPLETED: Please complete the challenge to continue
+      CAPTCHA_FAILED_TO_LOAD: The challenge could not be loaded. Reload the page and try again.
+      PASSKEY_SIGN_IN: Sign in with a passkey
+      PASSKEY_OR: or
+      PASSKEY_USE_INSTEAD: Use your passkey instead
+      PASSKEY_WAITING: Waiting for your passkey…
+      PASSKEY_CANCELLED: No passkey was used. Try again when you're ready, or sign in with your password.
+      PASSKEY_CANCELLED_TWO_STEP: No passkey was used. Try again when you're ready, or enter your code.
+      PASSKEY_SIGN_IN_FAILED: That passkey didn't sign you in. If you removed it from your account, sign in with your password.
+      PASSKEY_NOT_THIS_ACCOUNT: That passkey isn't one of this account's. Try another, or enter your code.
+      PASSKEY_TOO_MANY_TRIES: Too many passkey attempts. Wait a few minutes and try again.
+      PASSKEY_OFF: Passkeys are switched off on this site. Sign in with your password.
+      PASSKEY_FAILED: Something went wrong with the passkey. Please try again.
+    PLUGIN:
+      BACK_TO_DASHBOARD: Back to Dashboard
+      NO_CONTENT_AVAILABLE_FOR_THIS_PLUGIN: No content available for this plugin page.
+    PLUGINS:
+      SEARCH_PLUGINS: Search plugins...
+      SYMLINKED: Symlinked
+      FAILED_TO_LOAD_PLUGINS: Failed to load plugins
+      FAILED_TO_CHECK_FOR_UPDATES: Failed to check for updates
+      PLUGINS_GRAV_ADMIN: Plugins — Grav Admin
+      CHECK_UPDATES: Check Updates
+      CONFIGURE: Configure
+      SELECT_A_PLUGIN_TO_VIEW_DETAILS: Select a plugin to view details
+      REMOVE_PLUGIN: Remove Plugin
+      CONFIGURATION_WAS_MODIFIED_ELSEWHERE: Configuration was modified elsewhere. Please reload.
+      FAILED_TO_SAVE_CONFIGURATION: Failed to save configuration.
+      PLUGIN_CHANGED_ELSEWHERE_SAVE_TO: Plugin changed elsewhere — save to overwrite or reload
+      BACK_TO_PLUGINS: Back to Plugins
+      CHANGELOG: Changelog
+      PLUGIN_MUST_BE_ENABLED_TO_CONFIGURE: Plugin must be enabled to configure.
+      NO_CONFIGURATION_OPTIONS_AVAILABLE_FOR: No configuration options available for this plugin.
+      ENABLE_PLUGIN: Enable Plugin
+      PAGE_TITLE: "{name} — Plugins — Grav Admin"
+      REMOVE_CONFIRM_TITLE: Remove plugin?
+      REMOVE_CONFIRM_MESSAGE: 'Remove {name}? This will uninstall the plugin and delete its files. Configuration will be preserved.'
+      UPDATE_CONFIRM_TITLE: Update plugin?
+      UPDATE_CONFIRM_MESSAGE: 'Update {name} to v{version}?'
+      UPDATE_ALL_CONFIRM_TITLE: Update plugins?
+      UPDATE_ALL_CONFIRM_MESSAGE: '{n, plural, one{# plugin will be updated:} other{# plugins will be updated:}}'
+      UPDATE_ALL: Update All
+      TITLE: Plugins
+    RESET:
+      PASSWORD_RESET_SUCCESSFULLY_PLEASE_SIGN: Password reset successfully. Please sign in.
+      UNABLE_TO_CONNECT_TO_SERVER: Unable to connect to server.
+      RESET_PASSWORD_GRAV_ADMIN: Reset password — Grav Admin
+      RESET_PASSWORD: Reset password
+      THIS_RESET_LINK_IS_MISSING_REQUIRED: This reset link is missing required parameters. Request a new one from the forgot password page.
+      CONFIRM_PASSWORD: Confirm password
+      PASSWORDS_DO_NOT_MATCH: Passwords do not match
+      BACK_TO_SIGN_IN: Back to sign in
+      RESETTING: Resetting...
+      INVALID_LINK: Invalid reset link.
+      NEW_PASSWORD_FOR: Choose a new password for **{username}**.
+    SETTINGS:
+      LIGHT_LOGO: Light logo
+      DARK_LOGO: Dark logo
+      REMOVE_LINK: Remove link
+      RESET_PREFERENCES: Reset Preferences
+      PREFERENCES_RESET_RELOAD_TO_APPLY: Preferences reset. Reload to apply.
+      SETTINGS_GRAV_ADMIN: Settings — Grav Admin
+      ADMIN_PREFERENCES_AND_APPEARANCE: Admin preferences and appearance
+      CUSTOMIZE_THE_LOGO_SHOWN_IN_THE_SIDEBAR: Customize the logo shown in the sidebar and login page
+      LOGO_TYPE: Logo Type
+      CHOOSE_HOW_THE_LOGO_IS_DISPLAYED: Choose how the logo is displayed
+      GRAV_LOGO: Grav Logo
+      CUSTOM_TEXT: Custom Text
+      CUSTOM_IMAGE: Custom Image
+      LOGO_TEXT: Logo Text
+      THE_FIRST_LETTER_BECOMES_THE_ICON: The first letter becomes the icon
+      LIGHT_MODE_LOGO: Light Mode Logo
+      USED_ON_LIGHT_BACKGROUNDS: Used on light backgrounds
+      DARK_MODE_LOGO: Dark Mode Logo
+      SIDEBAR_LOGO_HEIGHT: Sidebar Logo Height
+      SIDEBAR_LOGO_HEIGHT_DESC: How tall your logo appears at the top of the sidebar.
+      LOGO_HEIGHT_DEFAULT: Default
+      LOGO_HEIGHT_CUSTOM: Custom
+      USED_ON_DARK_BACKGROUNDS: Used on dark backgrounds
+      APPEARANCE: Appearance
+      CUSTOMIZE_THE_LOOK_AND_FEEL_OF_THE_ADMIN: Customize the look and feel of the admin
+      COLOR_MODE: Color Mode
+      CHOOSE_BETWEEN_LIGHT_AND_DARK_APPEARANCE: Choose between light and dark appearance
+      ACCENT_COLOR: Accent Color
+      PRIMARY_COLOR_USED_FOR_BUTTONS_LINKS: Primary color used for buttons, links, and highlights
+      DARK_SHADE: Dark Shade
+      DARK_SHADE_DESC: How dark mode looks. It only takes effect while dark mode is on.
+      DARK_SHADE_GRAPHITE: Graphite
+      DARK_SHADE_ZINC: Onyx
+      DARK_SHADE_MIDNIGHT: Midnight
+      SATURATION: Saturation
+      CURRENT_COLOR: Color
+      COPY_COLOR: Copy this color
+      TYPEFACE_USED_THROUGHOUT_THE_ADMIN: Typeface used throughout the admin
+      FONT_SIZE: Font Size
+      TEXT_SIZE_USED_THROUGHOUT_THE_ADMIN: Text size used throughout the admin
+      FONT_SIZE_SMALL: Small
+      FONT_SIZE_NORMAL: Normal
+      FONT_SIZE_LARGE: Large
+      FONT_SIZE_XLARGE: X-Large
+      HELP_TEXT: Help Text
+      HELP_TEXT_DESC: Where the short explanation for each field goes. In a tooltip, hover the info icon next to a label, or tap it on a phone, to read it.
+      HELP_MODE_INLINE: Below the label
+      HELP_MODE_TOOLTIP: In a tooltip
+      DEFAULT_SETTINGS_FOR_THE_PAGE_BROWSER: Default settings for the page browser
+      DEFAULT_VIEW: Default View
+      HOW_PAGES_ARE_DISPLAYED_BY_DEFAULT: How pages are displayed by default
+      OTHER_LIST_VIEWS: Other List Views
+      OTHER_LIST_VIEWS_DESC: Default layout for the users, plugins, and themes lists
+      ITEMS_PER_PAGE: Items per Page
+      NUMBER_OF_PAGES_SHOWN_IN_LIST_VIEW: Number of pages shown in list view
+      EDITING: Editing
+      AUTO_SAVE_AND_UNDO_BEHAVIOR_FOR_FORM: Auto-save and undo behavior for form editors
+      AUTO_SAVE: Auto-Save
+      AUTOMATICALLY_SAVE_WHEN_YOU_LEAVE_A: Automatically save when you leave a field
+      TOOLBAR_UNDO_BUTTON: Toolbar Undo Button
+      SHOW_AN_UNDO_BUTTON_IN_THE_EDITOR: Show an undo button in the editor toolbar
+      UNDO_BATCH_WINDOW: Undo Batch Window
+      GROUP_RAPID_FIELD_CHANGES_INTO_A_SINGLE: Group rapid field changes into a single undo step
+      NONE_1_FIELD_1_UNDO: None (1 field = 1 undo)
+      1_SECOND: 1 second
+      2_SECONDS: 2 seconds
+      REAL_TIME_COLLABORATION: Real-time Collaboration
+      PLUGIN_ON_THE_SERVER_EXPERIMENTAL: plugin on the server. Experimental.
+      ADMIN_INTERFACE_LANGUAGE: Admin interface language
+      ADMIN_LANGUAGE: Admin Language
+      ENGLISH: English
+      FRAN_AIS: Français
+      DEUTSCH: Deutsch
+      ESPA_OL: Español
+      ITALIANO: Italiano
+      PORTUGU_S: Português
+      NEDERLANDS: Nederlands
+      MENUBAR_LINKS: Menubar Links
+      CUSTOM_SHORTCUTS_SHOWN_IN_THE_TOP: Custom shortcuts shown in the top menubar
+      EXTERNAL: External
+      ADD_LINK: Add Link
+      CONNECTION: Connection
+      SERVER_CONNECTION_DETAILS: Server connection details
+      SERVER_URL: Server URL
+      ENVIRONMENT: Environment
+      AUTHENTICATED_AS: Authenticated As
+      RESET_ALL_PREFERENCES: Reset All Preferences
+      COLLAB_DESCRIPTION: Live multi-user editing with presence. Requires the `sync` plugin on the server. Experimental.
+      ADMIN_LANGUAGE_DESC: Language for labels, menus, and messages ({count} strings loaded)
+      LANGUAGE_CHANGED: Language changed to {language}
+      HUE: Hue
+      FONT: Font
+      LIGHT: Light
+      DARK: Dark
+      FOLLOW_OS: Follow OS
+      "ON": "On"
+      "OFF": "Off"
+      RESET_TO_SITE_DEFAULTS: Reset my preferences to site defaults
+      SITE_DEFAULTS: Site Defaults
+      SITE_DEFAULTS_DESCRIPTION: Settings below apply to every admin user as the baseline. Tier B items (appearance, pages, language, editor) can be overridden in each user's own preferences above. Tier A items (editing, menubar) are site-wide and not overridable.
+      BRANDING: Branding
+      BRANDING_DESC: Logo, title, favicon and sign-in screen shown across the admin.
+      SAVED_AUTOMATICALLY: Saved automatically
+      SITE_SETTINGS_HEADING: Site Settings
+      SITE_SETTINGS_DESC: Default preferences for new users plus site-wide behavior. Changes apply on next reload for affected users.
+      DEFAULT_APPEARANCE: Default Appearance
+      DEFAULT_COLOR_APPEARANCE_DESC: Default color appearance for new users.
+      DEFAULT_PRIMARY_COLOR_DESC: Default primary color for buttons, links, and highlights.
+      DEFAULT_DARK_SHADE_DESC: Default dark shade for new users. It only takes effect while dark mode is on.
+      DEFAULT_TYPEFACE_DESC: Default typeface for the admin UI.
+      DEFAULT_TEXT_SIZE_DESC: Default text size for the admin UI.
+      DEFAULT_HELP_TEXT_DESC: Default place for field help text for new users, below the label or in a tooltip.
+      DEFAULT_PAGES: Default Pages
+      DEFAULT_LANGUAGE: Default Language
+      DEFAULT_INTERFACE_LANGUAGE_DESC: Default interface language for new users.
+      EDITOR_HEADING: Editor
+      EDITOR_MODE: Editor mode
+      DEFAULT_FORM_EDITOR_DENSITY: Default form editor density.
+      EDITOR_SECTION_DESC: How the Markdown editor behaves while you write.
+      EDITOR_KEYMAP: Keybindings
+      EDITOR_KEYMAP_DESC: Use Vim keybindings in the Markdown and code editors. Default keeps standard editing.
+      EDITOR_KEYMAP_DEFAULT: Default
+      EDITOR_KEYMAP_VIM: Vim
+      STICKY_TOOLBAR: Sticky toolbar
+      STICKY_TOOLBAR_DESC: Keep the formatting toolbar and Preview button pinned in view as you scroll.
+      EDITOR_HEIGHT: Editor height
+      EDITOR_HEIGHT_DESC: Let the editor grow with your content, or cap it at a fixed height with its own scrollbar.
+      EDITOR_HEIGHT_AUTO: Auto
+      EDITOR_HEIGHT_FIXED: Fixed
+      USERS_MAY_OVERRIDE: Users may override
+      SITE_WIDE_ONLY: Site-wide only
+      REVERT_CHANGES: Revert changes
+      SAVE_SITE_DEFAULTS: Save site defaults
+      RESET_PREFERENCES_MSG: Remove all your personal overrides and revert to the site defaults?
+      RESET: Reset
+      FAILED_TO_SAVE_LOGO_MODE: Failed to save logo mode.
+      FAILED_TO_SAVE_LOGO_TEXT: Failed to save logo text.
+      LIGHT_LOGO_UPLOADED: Light logo uploaded.
+      DARK_LOGO_UPLOADED: Dark logo uploaded.
+      LOGO_UPLOAD_FAILED: Logo upload failed.
+      LIGHT_LOGO_REMOVED: Light logo removed.
+      DARK_LOGO_REMOVED: Dark logo removed.
+      FAILED_TO_REMOVE_LOGO: Failed to remove logo.
+      FAILED_TO_SAVE_BRANDING: Failed to save branding.
+      ADMIN_TITLE: Admin title
+      ADMIN_TITLE_DESC: Shown in the browser tab, and as the sign-in heading unless a custom logo is set, since the logo already names the site. Leave blank for "Grav Admin".
+      LOGIN_SUBTITLE: Sign-in subtitle
+      LOGIN_SUBTITLE_DESC: Optional line shown under the sign-in heading.
+      SHOW_POWERED_BY: Show "Powered by Grav"
+      SHOW_POWERED_BY_DESC: Show the "Powered by Grav CMS" line on the sign-in and setup screens.
+      SHOW_CREDIT: Show Trilby Media credit
+      SHOW_CREDIT_DESC: Show the "Grav was coded with love by Trilby Media" line at the bottom of the sidebar.
+      FAVICON: Favicon
+      FAVICON_DESC: Custom browser-tab icon (SVG, PNG, WebP, or ICO). Leave blank for the generated icon.
+      FAVICON_UPLOADED: Favicon uploaded.
+      FAVICON_REMOVED: Favicon removed.
+      SITE_DEFAULTS_SAVED: Site defaults saved. All users will see these on next reload.
+      FAILED_TO_SAVE_SITE_DEFAULTS: Failed to save site defaults.
+      FAILED_TO_RESET_PREFERENCES: Failed to reset preferences.
+    CUSTOM: Custom
+    PREVIEW: Preview
+    SETUP:
+      PLEASE_FIX_THE_ERRORS_ABOVE_AND_TRY: Please fix the errors above and try again
+      ADMINISTRATOR_ACCOUNT_CREATED_WELCOME: Administrator account created — welcome to Grav
+      SETUP_HAS_ALREADY_BEEN_COMPLETED_PLEASE: Setup has already been completed. Please sign in.
+      UNABLE_TO_CONNECT_TO_SERVER_CHECK_YOUR: Unable to connect to server. Check your server URL and try again.
+      SETUP_GRAV_ADMIN: Setup — Grav Admin
+      WELCOME_TO_GRAV: Welcome to Grav
+      CREATE_YOUR_ADMINISTRATOR_ACCOUNT_TO: Create your administrator account to get started
+      CHECKING_SERVER: Checking server…
+      SERVER_CONFIGURATION: Server Configuration
+      SERVER_URL: Server URL
+      ENVIRONMENT: Environment
+      3_64_CHARACTERS_LETTERS_NUMBERS_HYPHENS: "3-64 characters: letters, numbers, hyphens, underscores"
+      FULL_NAME: Full name
+      OPTIONAL: (optional)
+      ENTER_A_VALID_EMAIL_ADDRESS: Enter a valid email address
+      CONFIRM_PASSWORD: Confirm password
+      PASSWORDS_DO_NOT_MATCH: Passwords do not match
+      POWERED_BY_GRAV_CMS: Powered by Grav CMS
+      CREATING_ACCOUNT: Creating account...
+      CREATE_ADMINISTRATOR: Create administrator
+    SYSTEM:
+      SYSTEM_GRAV_ADMIN: System — Grav Admin
+      COMING_SOON: Coming soon
+    THEMES:
+      UPDATE_CONFIRM_TITLE: Update theme?
+      UPDATE_CONFIRM_MESSAGE: 'Update {name} to v{version}?'
+      SEARCH_THEMES: Search themes...
+      SYMLINKED: Symlinked
+      FAILED_TO_LOAD_THEMES: Failed to load themes
+      FAILED_TO_CHECK_FOR_UPDATES: Failed to check for updates
+      THEMES_GRAV_ADMIN: Themes — Grav Admin
+      CHECK_UPDATES: Check Updates
+      CONFIGURE: Configure
+      SELECT_A_THEME_TO_VIEW_DETAILS: Select a theme to view details
+      ACTIVE_THEME: Active Theme
+      CLICK_TO_VIEW_FULL_SIZE: Click to view full size
+      REMOVE_THEME: Remove Theme
+      CONFIGURATION_WAS_MODIFIED_ELSEWHERE: Configuration was modified elsewhere. Please reload.
+      FAILED_TO_SAVE_CONFIGURATION: Failed to save configuration.
+      BACK_TO_THEMES: Back to Themes
+      CHANGELOG: Changelog
+      NO_CONFIGURATION_OPTIONS_AVAILABLE_FOR: No configuration options available for this theme.
+      PAGE_TITLE: "{name} — Themes — Grav Admin"
+      TITLE: Themes
+      ACTIVATE: Activate
+      ACTIVATE_THEME: 'Activate {name}'
+      ACTIVATE_CONFIRM_TITLE: Activate theme?
+      ACTIVATE_CONFIRM_MESSAGE: 'Switch the active site theme to {name}? Frontend rendering will use this theme immediately.'
+      REMOVE_CONFIRM_TITLE: Remove theme?
+      REMOVE_CONFIRM_MESSAGE: 'Remove {name}? This will uninstall the theme and delete its files.'
+      UPDATE_ALL_CONFIRM_TITLE: Update themes?
+      UPDATE_ALL_CONFIRM_MESSAGE: '{n, plural, one{# theme will be updated:} other{# themes will be updated:}}'
+      UPDATE_ALL: Update All
+      REMOVE_ACTIVE_CONFIRM_MESSAGE: '{name} is the currently active theme. Removing it will leave the site without a theme until another one is activated. Continue?'
+      DELETE_ACTIVE_WARNING: 'Currently active. Switching themes first is recommended before deleting.'
+    ACTIVE: Active
+    ACTIVATE: Activate
+    USERS:
+      TITLE: Users
+      STATUS: Status
+      STATUS_HELP: Disabled accounts cannot sign in or use the API.
+      SEARCH_USERS: Search users...
+      FAILED_TO_LOAD_USERS: Failed to load users
+      USERS_GRAV_ADMIN: Users — Grav Admin
+      ADD_USER: Add User
+      SUPER_ADMIN: Super Admin
+      CREATED: Created
+      PERMISSIONS: Permissions
+      SELECT_A_USER_TO_VIEW_DETAILS: Select a user to view details
+      DELETE_USER: Delete User
+      CONFIRM_DELETE_USER: "Delete user ''{username}''? This cannot be undone."
+      USER_WAS_MODIFIED_ELSEWHERE_PLEASE: User was modified elsewhere. Please reload.
+      FAILED_TO_SAVE_USER: Failed to save user.
+      YOU_CANNOT_DELETE_YOUR_OWN_ACCOUNT: You cannot delete your own account.
+      USER_CHANGED_ELSEWHERE_SAVE_TO: User changed elsewhere — save to overwrite or reload
+      EMAIL_CHANGE_WAITING: 'Waiting for confirmation: {email}'
+      EMAIL_CHANGE_RESEND: Resend
+      EMAIL_CHANGE_SENT: 'We sent a confirmation link to {email}. The email address changes once the link is opened.'
+      EMAIL_CHANGE_CANCELLED: Email change cancelled.
+      EMAIL_CHANGE_RESEND_FAILED: Failed to resend the confirmation link.
+      EMAIL_CHANGE_CANCEL_FAILED: Failed to cancel the email change.
+      EMAIL_CONFIRM:
+        TITLE: Confirm it's you
+        MESSAGE: "Enter your current password to change your email address to {email}."
+        NOT_SAVED: "Your new email address, {email}, isn't saved yet. Confirm it with your current password."
+      BACK_TO_USERS: Back to Users
+      2_FACTOR_AUTHENTICATION: 2-Factor Authentication
+      PASSWORD:
+        TITLE: Password
+        OWN_HELP: Enter your current password, then the new one twice. You stay signed in here, and every other browser and app signed in to your account is signed out.
+        NO_PASSWORD_HELP: Your account has no password yet because you sign in through another service. Set one to sign in with your username and password as well.
+        OTHER_HELP: "Set a new password for {name}. They are signed out of every browser and app, and sign in again with the new password."
+        CURRENT: Current password
+        NEW: New password
+        CONFIRM: Confirm new password
+        CHANGE: Change password
+        SET: Set password
+        CURRENT_REQUIRED: Enter your current password.
+        CURRENT_WRONG: Your current password is not correct.
+        NEW_REQUIRED: Enter a new password.
+        POLICY: The new password does not meet the requirements.
+        MISMATCH: The passwords do not match.
+        TOO_MANY: Too many wrong passwords. Try again in a few minutes.
+        NOT_ALLOWED: You don't have permission to change this password.
+        FAILED: Failed to change the password.
+        CHANGED_OWN: Your password has been changed. Other browsers and apps signed in to your account have been signed out.
+        CHANGED_OTHER: "The password for {name} has been changed."
+      NEW:
+        LOWERCASE_3_64_CHARS: "3-64 chars: letters, numbers, . - _"
+        NEW_USER_GRAV_ADMIN: New User — Grav Admin
+        NEW_USER: New User
+        ACCOUNT: Account
+        FULL_NAME: Full Name
+        PERMISSIONS: Permissions
+        CREATE: Create
+      PAGE_TITLE: "{name} — Users — Grav Admin"
+    USERS_NAV:
+      USERS: Users
+      GROUPS: Groups
+      INVITATIONS: Invitations
+      CONFIGURATION: Configuration
+    INVITATIONS:
+      INVITE: Invite
+      INVITE_USER: Invite User
+      SEND_INVITE: Send Invite
+      # Create form
+      RECIPIENT: Recipient
+      RECIPIENT_HINT: They'll choose their own username and password when they accept.
+      EMAIL: Email
+      FULL_NAME_OPTIONAL: Full name (optional)
+      MESSAGE_OPTIONAL: Personal message (optional)
+      EXPIRES_AFTER: Invitation expires after
+      EXPIRY_1_DAY: 1 day
+      EXPIRY_3_DAYS: 3 days
+      EXPIRY_7_DAYS: 7 days
+      EXPIRY_14_DAYS: 14 days
+      EXPIRY_30_DAYS: 30 days
+      GROUPS: Groups
+      GROUPS_HINT: Groups the invited user will be added to.
+      LOADING_GROUPS: Loading groups...
+      NO_GROUPS: No groups defined yet.
+      PERMISSIONS: Permissions
+      PERMISSIONS_HINT: Permissions the invited user will receive. They can't grant themselves more than you set here.
+      # Result panel
+      INVITE_READY: Invitation ready
+      EMAIL_SENT_TO: "An invitation email was sent to {email}."
+      INVITE_LINK: Invitation link
+      COPY: Copy
+      COPIED: Copied
+      INVITE_ANOTHER: Invite another
+      VIEW_PENDING: View pending
+      # Toasts
+      SENT_TOAST: "Invitation sent to {email}."
+      CREATED_NO_EMAIL_TOAST: Invitation created. Email isn't configured, so share the link manually.
+      RESENT_TOAST: "Invitation resent to {email}."
+      REVOKED_TOAST: Invitation revoked.
+      SEND_FAILED: Failed to send invitation.
+      RESEND_FAILED: Failed to resend invitation.
+      REVOKE_FAILED: Failed to revoke invitation.
+      LOAD_FAILED: Failed to load invitations.
+      COPY_FAILED: Couldn't copy the link.
+      # Pending list
+      PENDING_COUNT: "{count, plural, =0 {No pending invitations} one {# pending invitation} other {# pending invitations}}"
+      NONE_PENDING: No pending invitations
+      NONE_PENDING_HINT: Invite someone to join and their pending invitation will appear here.
+      INVITED_BY: "Invited by {name}"
+      EXPIRED: Expired
+      EXPIRES_IN_DAYS: "{count, plural, one {Expires in # day} other {Expires in # days}}"
+      EXPIRES_IN_HOURS: "{count, plural, one {Expires in # hour} other {Expires in # hours}}"
+      RESEND: Resend
+      REVOKE: Revoke
+      REVOKE_TITLE: Revoke invitation
+      CONFIRM_REVOKE: "Revoke the invitation for {email}? The link will stop working."
+      # Public accept page
+      ACCEPT_TITLE: Accept Invitation — Grav Admin
+      ACCEPT_HEADING: Accept invitation
+      ACCEPT_SUBHEADING: Set up your account to get started.
+      CHECKING_INVITE: Checking your invitation...
+      INVALID_INVITE: This invitation isn't valid.
+      INVALID_INVITE_BODY: This invitation link is invalid or has already been used.
+      EXPIRED_INVITE: This invitation has expired.
+      EXPIRED_INVITE_BODY: This invitation has expired. Ask an administrator to send a new one.
+      TITLE_OPTIONAL: Title (optional)
+      CHOOSE_PASSWORD: Choose a password
+      PASSWORD_POLICY: Password does not meet the required policy
+      USERNAME_INVALID: Username must be 3-64 characters.
+      USERNAME_TAKEN: That username is already taken.
+      CREATE_ACCOUNT: Create account
+      CREATING_ACCOUNT: Creating account...
+      ACCEPT_SUCCESS: Account created. Welcome!
+      ACCEPT_FAILED: Couldn't create your account.
+    USERS_TABLE:
+      USERNAME: Username
+      EMAIL: Email
+      FULL_NAME: Full Name
+      STATUS: Status
+      PERMISSIONS: Permissions
+      ACTIONS: Actions
+      ENABLED: Enabled
+      DISABLED: Disabled
+      ON: 'On'
+      OFF: 'Off'
+      EDIT: Edit
+      DELETE: Delete
+      NO_USERS: No users found
+      CARDS: Cards
+      TABLE: Table
+    USERS_FILTER:
+      PERMISSION: Permission
+      GROUP: Group
+      GROUPS: Groups
+      BACKEND_ACCESS: Backend access
+      CLEAR: Clear
+      CLEAR_ALL: Clear filters
+      TYPE_TO_FILTER: Type to filter…
+      LOADING: Loading…
+      NO_MATCHES: No matches
+      NO_MATCHES_FILTERS: No users match these filters
+      FILTER_BY_PERMISSION: Filter by this permission
+      FILTER_BY_GROUP: Filter by this group
+    PLUGINS_TABLE:
+      NAME: Name
+      VERSION: Version
+      NO_PLUGINS: No plugins installed
+      PROTECTED_PLUGIN: This plugin cannot be disabled from admin-next without locking yourself out.
+    THEMES_TABLE:
+      NO_THEMES: No themes installed
+    GROUPS:
+      GROUPS: Groups
+      GROUPS_GRAV_ADMIN: Groups — Grav Admin
+      ADD_GROUP: Add Group
+      NEW_GROUP: New Group
+      NEW_GROUP_GRAV_ADMIN: New Group — Grav Admin
+      GROUP_NAME: Group Name
+      GROUP_NAME_PLACEHOLDER: e.g. editors
+      GROUP_NAME_HELP: 1–200 characters of letters, numbers, hyphens or underscores. Used as the storage key.
+      DISPLAY_NAME: Display Name
+      DESCRIPTION: Description
+      SEARCH_GROUPS: Search groups...
+      NO_GROUPS: No groups found
+      NO_GROUPS_MATCH_SEARCH: No groups match your search
+      SELECT_A_GROUP_TO_VIEW_DETAILS: Select a group to view details
+      BACK_TO_GROUPS: Back to Groups
+      CREATE: Create
+      DELETE_GROUP: Delete Group
+      CONFIRM_DELETE_GROUP: "Delete group ''{name}''? This cannot be undone."
+      FAILED_TO_LOAD_GROUPS: Failed to load groups
+      FAILED_TO_LOAD_GROUP: "Failed to load group ''{name}''."
+      FAILED_TO_SAVE_GROUP: Failed to save group.
+      FAILED_TO_CREATE_GROUP: Failed to create group.
+      GROUP_SAVED: "Group ''{name}'' saved"
+      GROUP_CREATED: "Group ''{name}'' created"
+      GROUP_DELETED: "Group ''{name}'' deleted"
+      GROUP_DELETE_FAILED: "Failed to delete group ''{name}''"
+      GROUP_MODIFIED_ELSEWHERE: Group was modified elsewhere. Please reload.
+      GROUP_PAGE_TITLE: "{name} — Groups — Grav Admin"
+      GROUP_COUNT_ONE: "{n} group"
+      GROUP_COUNT_OTHER: "{n} groups"
+    ACCOUNTS_CONFIG:
+      TITLE: Accounts Configuration
+      SUBTITLE: Default settings for user accounts and registration
+      PAGE_TITLE: Accounts Configuration — Grav Admin
+      SAVED: Configuration saved
+      FAILED_TO_LOAD: Failed to load accounts configuration
+      FAILED_TO_SAVE: Failed to save accounts configuration
+      MODIFIED_ELSEWHERE: Configuration was modified elsewhere. Please reload.
+      NO_FIELDS: No configuration options available.
+    PAGINATION:
+      PAGE_OF: "Page {current} of {total}"
+    INFO: Info
+    INSTALL: Install
+    COPY_BUTTON:
+      COPIED: Copied!
+      COPY: Copy
+    WIDGET_HOST:
+      UNKNOWN_WIDGET: "Unknown widget: {id}"
+    UPDATE_AVAILABLE_VERSION: "Update available: v{version}"
+    UPDATE_CHANGELOG_TITLE: "Changes in v{version}"
+    UPDATE_TO_VERSION: Update to v{version}
+    UPDATE_WHATS_NEW: "What's new"
+    UPDATE_CHANGELOG_EMPTY: No changelog entries newer than the installed version.
+    UPDATE_CHANGELOG_FAILED: The changelog could not be loaded.
+    README_NOT_AVAILABLE: README not available.
+    CHANGELOG_NOT_AVAILABLE: Changelog not available.
+    CHANGELOG:
+      NEW: New
+      IMPROVED: Improved
+      BUGFIX: Bugfix
+      SECURITY: Security
+    2FA_ENABLED: 2FA Enabled
+    2FA_SECRET: 2FA Secret
+    2FA_SECRET_HELP: "Scan this QR code into your [Authenticator App](https://learn.getgrav.org/admin-panel/2fa#apps). Also it's a good idea to backup the secret in a safe location, in case you need to reinstall your app. Check the [Grav docs](https://learn.getgrav.org/admin-panel/2fa) for more information "
+    2FA_TITLE: 2-Factor Authentication
+    ABSOLUTE_URLS: Absolute URLs
+    ABSOLUTE_URLS_HELP: Absolute or relative URLs for `base_url`
+    ACCESS: Access
+    ACCESS_LEVELS: Access Levels
+    ACCOUNT: Account
+    ACCOUNTS: Accounts
+    ACCOUNTS_STORAGE: Account Storage
+    ACCOUNTS_STORAGE_HELP: The storage mechanism to be used for Flex Object Account type.  Files is the traditional approach where account are stored in a YAML file in a single folder, while Folder creates a new folder for each account
+    ACCOUNTS_TYPE: Accounts Type
+    ACCOUNTS_TYPE_HELP: Flex Object system to store user accounts
+    ACTIVE_LANGUAGE_IN_SESSION: Active language in session
+    ACTIVE_LANGUAGE_IN_SESSION_HELP: Store the active language in the session
+    ADD: Add
+    ADD_ACCOUNT: Add Account
+    ADMIN_CHILDREN_DISPLAY_ORDER: Children Display Order
+    ADMIN_CHILDREN_DISPLAY_ORDER_HELP: The order that children of this page should be displayed in the 'Pages' view of Admin plugin
+    ADMIN_SPECIFIC_OVERRIDES: Admin Specific Overrides
+    ADVANCED: Advanced
+    ALLOW_URL_TAXONOMY_FILTERS: URL Taxonomy Filters
+    ALLOW_URL_TAXONOMY_FILTERS_HELP: Page-based collections allow you to filter via `/taxonomy:value`.
+    ALLOW_WEBSERVER_GZIP: Allow WebServer Gzip
+    ALLOW_WEBSERVER_GZIP_HELP: Off by default. When enabled, WebServer-configured Gzip/Deflate compression will work, but http connection will not be closed before onShutDown() event causing slower page loading
+    APPEND_URL_EXT: Append URL extension
+    APPEND_URL_EXT_HELP: Will add a custom extension to the Page's URL. Note, this will mean Grav will look for `<template>.<extension>.twig` template
+    ASCENDING: Ascending
+    ASSETS: Assets
+    AUTO: Auto
+    AUTO_LINE_BREAKS: Auto line breaks
+    AUTO_LINE_BREAKS_HELP: Enable support for automatic line breaks in markdown
+    AUTO_URL_LINKS: Auto URL links
+    AUTO_URL_LINKS_HELP: Enable automatic conversion of URLs into HTML hyperlinks
+    AUTOESCAPE_VARIABLES: Autoescape variables
+    AUTOESCAPE_VARIABLES_HELP: Autoescapes all variables.  This will break your site most likely
+    AVATAR: Avatar Generator
+    AVATAR_HASH: "NOTE: Optional Avatar custom 'hash' string"
+    AVATAR_HELP: Multiavatar is a locally generated avatar.  Gravatar is an external service that uses your email address to pull a preconfigured Avatar remotely
+    BACK: Back
+    BACKUPS: Backups
+    BACKUPS_HISTORY: Backup History
+    BACKUPS_MAX_COUNT: Maximum Number of Backups
+    BACKUPS_MAX_RETENTION_TIME: Maximum Retention Time
+    BACKUPS_MAX_RETENTION_TIME_APPEND: in Days
+    BACKUPS_MAX_SPACE: Maximum Backups Space
+    BACKUPS_PROFILE_ENVIRONMENT: Environment
+    BACKUPS_PROFILE_ENVIRONMENT_HELP: Grav environment context the scheduled backup runs as.
+    BACKUPS_PROFILE_EXCLUDE_FILES: Exclude Files
+    BACKUPS_PROFILE_EXCLUDE_FILES_HELP: Specific Files or Folders to exclude, one per line
+    BACKUPS_PROFILE_EXCLUDE_PATHS: Exclude Paths
+    BACKUPS_PROFILE_EXCLUDE_PATHS_HELP: Absolute paths to exclude, one per line
+    BACKUPS_PROFILE_NAME: Backup Name
+    BACKUPS_PROFILE_ROOT_FOLDER: Root Folder
+    BACKUPS_PROFILE_ROOT_FOLDER_HELP: Can be an absolute path or a stream
+    BACKUPS_PROFILE_SCHEDULE: Enable Scheduled Job
+    BACKUPS_PROFILE_SCHEDULE_AT: Run Scheduled Job
+    BACKUPS_PROFILES: Backup Profiles
+    BACKUPS_PURGE_CONFIG: Backup Purge Configuration
+    BACKUPS_STORAGE_PURGE_TRIGGER: Backup Storage Purge Trigger
+    BODY_CLASSES: Body classes
+    CACHE_ALL: Cache all images
+    CACHE_ALL_HELP: Run all images through Grav's cache system even if they have no media manipulations
+    CACHE_CHECK_METHOD: Cache check method
+    CACHE_CHECK_METHOD_HELP: Select the method that Grav uses to check if page files have been modified.
+    CACHE_CLEAR_JOB: Run Scheduled Clear Job
+    CACHE_CLEAR_JOB_HELP: With the scheduler you can periodically clear the Grav Cache
+    CACHE_CONTROL: HTTP Cache-Control
+    CACHE_CONTROL_HELP: Set to a valid cache-control value such as `no-cache, no-store, must-revalidate`
+    CACHE_DRIVER: Cache driver
+    CACHE_DRIVER_HELP: Choose which cache driver Grav should use. 'Auto Detect' attempts to find the best for you
+    CACHE_JOB_TYPE: Cache Job Type
+    CACHE_JOB_TYPE_HELP: Either clear with the 'standard' folders cache clear, or with 'all' folders
+    CACHE_PERMS: Cache Permissions
+    CACHE_PERMS_HELP: Default cache folder perms. Usually 0755 or 0775 depending on setup
+    CACHE_PREFIX: Cache prefix
+    CACHE_PREFIX_HELP: An identifier for part of the Grav key.  Don't change unless you know what your doing.
+    CACHE_PREFIX_PLACEHOLDER: Derived from base URL (override by entering random string)
+    CACHE_PURGE_AGE: Cache Purge Age
+    CACHE_PURGE_AGE_HELP: Purge all cache items older than this age (in days)
+    CACHE_PURGE_JOB: Run Scheduled Purge Job
+    CACHE_PURGE_JOB_HELP: With the scheduler you can periodically clear out old Doctrine file cache folders with this job
+    CACHING: Caching
+    CACHING_HELP: Global ON/OFF switch to enable/disable Grav caching
+    CHARACTERS: characters
+    CLEAR_IMAGES_BY_DEFAULT: Clear image cache by default
+    CLEAR_IMAGES_BY_DEFAULT_HELP: By default processed images are cleared for all cache clears, this can be disabled
+    CLI_COMPATIBILITY: CLI Compatibility
+    CLI_COMPATIBILITY_HELP: Ensures that only non-volatile Cache drivers are used (file, redis, memcache, etc.)
+    COLLECTIONS: Collections
+    COMMAND: Command
+    CONFIGURATION: Configuration
+    CONTENT: Content
+    CONTENT_EDITOR: Content Editor
+    CONTENT_EDITOR_HELP: Custom editors can be preferred for content editing
+    CONTENT_FALLBACK_LANGUAGE_HELP: Specify language code which you want to customize.
+    CONTENT_LANGUAGE_FALLBACK: Fallback Languages
+    CONTENT_LANGUAGE_FALLBACK_HELP: Please enter a list of language codes. Note that if you omit default language code, it will not be used.
+    CONTENT_LANGUAGE_FALLBACKS: Content Language Fallback
+    CONTENT_LANGUAGE_FALLBACKS_HELP: By default if the content isn't translated, Grav will display content in the default language. Use this setting to override that behavior per language basis.
+    COPY: Copy
+    CREATE: Create
+    CSS_ASSETS: CSS Assets
+    CSS_MINIFY: CSS minify
+    CSS_MINIFY_HELP: Minify the CSS during pipelining
+    CSS_MINIFY_WINDOWS_OVERRIDE: CSS minify Windows override
+    CSS_MINIFY_WINDOWS_OVERRIDE_HELP: Minify Override for Windows platforms. False by default due to ThreadStackSize
+    CSS_PIPELINE: CSS pipeline
+    CSS_PIPELINE_BEFORE_EXCLUDES: CSS pipeline render first
+    CSS_PIPELINE_BEFORE_EXCLUDES_HELP: Render the CSS pipeline before any other CSS references that are not included
+    CSS_PIPELINE_HELP: The CSS pipeline is the unification of multiple CSS resources into one file
+    CSS_PIPELINE_INCLUDE_EXTERNALS: Include externals in CSS pipeline
+    CSS_PIPELINE_INCLUDE_EXTERNALS_HELP: External URLs sometimes have relative file references and shouldn't be pipelined
+    CSS_REWRITE: CSS rewrite
+    CSS_REWRITE_HELP: Rewrite any CSS relative URLs during pipelining
+    CURL: cURL
+    CUSTOM_BASE_URL: Custom base URL
+    CUSTOM_BASE_URL_HELP: "Use if you want to rewrite the site domain or use a different subfolder than the one used by Grav. Example: http://localhost"
+    CUSTOM_REDIRECTS: Custom Redirects
+    CUSTOM_REDIRECTS_HELP: routes to redirect to other pages. Standard Regex replacement is valid
+    CUSTOM_REDIRECTS_PLACEHOLDER_KEY: /your/alias
+    CUSTOM_REDIRECTS_PLACEHOLDER_VALUE: /your/redirect
+    CUSTOM_ROUTES: Custom Routes
+    CUSTOM_ROUTES_HELP: routes to alias to other pages. Standard Regex replacement is valid
+    CUSTOM_ROUTES_PLACEHOLDER_KEY: /your/alias
+    CUSTOM_ROUTES_PLACEHOLDER_VALUE: /your/route
+    DATE: Date
+    DATE_BASED_PUBLISHING: Date-based publishing
+    DATE_BASED_PUBLISHING_HELP: Automatically (un)publish posts based on their date
+    DATE_HELP: The date variable allows you to specifically set a date associated with this page.
+    DEBUGGER: Debugger
+    DEBUGGER_CENSORED: Censor Sensitive Data
+    DEBUGGER_CENSORED_HELP: "Clockwork Provider ONLY: If Yes, censor potentially sensitive information (POST parameters, cookies, files, configuration and most array/object data in log messages)"
+    DEBUGGER_CLOCKWORK: Clockwork Browser Extension
+    DEBUGGER_DEBUGBAR: PHP Debug Bar
+    DEBUGGER_FLEX_RENDER_HINTS: Flex Render Hints
+    DEBUGGER_FLEX_RENDER_HINTS_HELP: Wrap every rendered Flex object and collection in an HTML comment naming it, so the source of a block can be found in the page markup. Only applies to HTML pages
+    DEBUGGER_HELP: Enable Grav debugger and following settings
+    DEBUGGER_PROVIDER: Debugger Provider
+    DEBUGGER_PROVIDER_HELP: Default is PHP Debug Bar, but Clockwork browser extension provides for a less intrusive approach
+    DEFAULT: Default
+    DEFAULT_AUTHOR: Default Author
+    DEFAULT_AUTHOR_HELP: A default author name, often used in themes or page content
+    DEFAULT_CHILD_TYPE: Default Child Type
+    DEFAULT_DATE_FORMAT: Page date format
+    DEFAULT_DATE_FORMAT_HELP: "Page date format used by Grav. By default, Grav attempts to guess your date format, however you can specifiy a format using PHP's date syntax (e.g.: Y-m-d H:i)"
+    DEFAULT_DATE_FORMAT_PLACEHOLDER: Guess automatically
+    DEFAULT_EMAIL: Default Email
+    DEFAULT_EMAIL_HELP: A default email to reference in themes or pages
+    DEFAULT_IMAGE_QUALITY: Default image quality
+    DEFAULT_IMAGE_QUALITY_HELP: Default image quality to use when resampling or caching images (85%)
+    DEFAULT_LANG: Override Default Language
+    DEFAULT_LANG_HELP: Default is the first supported language. This can be overridden by setting this option but it must be one of the supported languages
+    DEFAULT_ORDER_DIRECTION: Default order direction
+    DEFAULT_ORDER_DIRECTION_HELP: The direction of pages in a list
+    DEFAULT_ORDERING: Default ordering
+    DEFAULT_ORDERING_DATE: Date - based on date field in header
+    DEFAULT_ORDERING_DEFAULT: Default - based on folder name
+    DEFAULT_ORDERING_FOLDER: Folder - based on prefix-less folder name
+    DEFAULT_ORDERING_HELP: Pages in a list will render using this order unless it is overridden
+    DEFAULT_ORDERING_TITLE: Title - based on title field in header
+    DEFAULT_PAGE_COUNT: Default page count
+    DEFAULT_PAGE_COUNT_HELP: Default maximum pages count in a list
+    DEFAULT_THEME: Default theme
+    DEFAULT_THEME_HELP: Set the default theme for Grav to use (default is Antimatter)
+    DEFAULTS: Defaults
+    DELIMITER: Delimiter
+    DELIMITER_HELP: The summary delimiter (default '===')
+    DESCENDING: Descending
+    DESCRIPTION: Description
+    DETAILS: Details
+    DETECT_CHANGES: Detect changes
+    DETECT_CHANGES_HELP: Twig will automatically recompile the Twig cache if it detects any changes in Twig templates
+    DISPLAY_ERRORS: Display errors
+    DISPLAY_ERRORS_HELP: Display full backtrace-style error page
+    DISPLAY_NAME: Display Name
+    DISPLAY_TEMPLATE: Display Template
+    EMAIL: Email
+    EMAIL_VALIDATION_MESSAGE: Must be a valid email address
+    ENABLE_AUTO_METADATA: Auto metadata from Exif
+    ENABLE_AUTO_METADATA_HELP: Automatically generate metadata files for images with exif information
+    ENABLE_MEDIA_TIMESTAMP: Enable timestamps on media
+    ENABLE_MEDIA_TIMESTAMP_HELP: Appends a timestamp based on last modified date to each media item
+    ENABLED_HELP: Enable page summary (the summary returns the same as the page content)
+    ENABLED_SRI_ON_ASSETS: Enable SRI on assets
+    ENABLED_SRI_ON_ASSETS_HELP: Enable asset SRI
+    ENABLED_TIMESTAMPS_ON_ASSETS: Enable timestamps on assets
+    ENABLED_TIMESTAMPS_ON_ASSETS_HELP: Enable asset timestamps
+    ERROR_FULL_BACKTRACE: Full Backtrace Error
+    ERROR_HANDLER: Error handler
+    ERROR_SIMPLE: Simple Error
+    ERROR_SYSTEM: System Error
+    ESCAPE_MARKUP: Escape markup
+    ESCAPE_MARKUP_HELP: Escape markup tags into HTML entities
+    ETAG: ETag
+    ETAG_HELP: Sets the etag header to help identify when a page has been modified
+    EVENTS: Events
+    EVENTS_HELP: Enable or Disable specific events.  Disabling these can break plugins
+    EXPERIMENTAL: Experimental
+    EXPIRES: Expires
+    EXPIRES_HELP: Sets the expires header. The value is in seconds.
+    EXTERNAL: External Page
+    EXTERNAL_URL: External URL
+    EXTRA_ARGUMENTS: Extra Arguments
+    FALLBACK_TYPES: Allowed fallback types
+    FALLBACK_TYPES_HELP: Allowed file types that can be found if accessed via Page route. Defaults to any supported media type.
+    FILE: File
+    FILE_EXTENSION: File Extension
+    FILE_STREAMS: File Streams
+    FLEX: Flex Object (EXPERIMENTAL)
+    FLEX_CACHING: Flex Caching
+    FLEX_INDEX_CACHE_ENABLED: Enable Index Caching
+    FLEX_INDEX_CACHE_LIFETIME: Index Cache Lifetime (seconds)
+    FLEX_OBJECT_CACHE_ENABLED: Enable Object Caching
+    FLEX_OBJECT_CACHE_LIFETIME: Object Cache Lifetime (seconds)
+    FLEX_RENDER_CACHE_ENABLED: Enable Render Caching
+    FLEX_RENDER_CACHE_LIFETIME: Render Cache Lifetime (seconds)
+    FOLDER: Folder
+    FOLDER_NAME: Folder Name
+    FOLDER_NUMERIC_PREFIX: Folder Numeric Prefix
+    FOLDER_NUMERIC_PREFIX_HELP: Numeric prefix that provides manual ordering and implies visibility
+    FOPEN: fopen
+    FORCE_LOWERCASE_URLS: Force lowercase URLs
+    FORCE_LOWERCASE_URLS_HELP: By default Grav will set all slugs and routes to be lowercase. With this set to false, Uppercase slugs and routes can be used
+    FORCE_SSL: Force SSL
+    FORCE_SSL_HELP: Globally force SSL, if enabled when the site is reached through HTTP, Grav sends a redirect to the HTTPS page
+    FORMAT: Format
+    FORMAT_HELP: short = use the first occurrence of delimiter or size; long = summary delimiter will be ignored
+    FRONTMATTER_IGNORE_FIELDS: Ignore frontmatter fields
+    FRONTMATTER_IGNORE_FIELDS_HELP: Certain frontmatter fields may contain Twig but should not be processed, such as 'forms'
+    FRONTMATTER_NATIVE_YAML: Fast frontmatter parsing
+    FRONTMATTER_NATIVE_YAML_HELP: Read page frontmatter with the libyaml PHP extension when it is installed, which makes rebuilding the pages cache faster. It reads a few values differently, so check your pages first. An unquoted date stays text instead of becoming a timestamp, and unquoted yes, no, on and off become true or false.
+    PAGES_LAZY_INDEX: Lazy page index
+    PAGES_LAZY_INDEX_HELP: Load pages, routes and taxonomy on demand from a per-page SQLite index instead of one large cache file. Auto uses it on sites with 1,000 pages or more. Falls back to the classic cache when no database engine is available.
+    SESSION_LAZY: Start sessions only when needed
+    SESSION_LAZY_HELP: Visitors without a session cookie get a session only when something is stored in it, such as a login, a form or a message, so anonymous page views can be cached by a proxy or CDN. Plugins that store data on every page view still start one.
+    CACHE_MODULES: Cache module output
+    CACHE_MODULES_HELP: Cache the rendered output of this page's modules. Use it only when the modules show the same content to every visitor. Modules with their own Twig or a form, logged-in visitors and form submissions are always rendered fresh. Editing only a partial template needs a cache clear.
+    FRONTMATTER_PROCESS_TWIG: Process frontmatter Twig
+    FRONTMATTER_PROCESS_TWIG_HELP: When enabled you can use Twig config variables in page front matter
+    FULL_NAME: Full name
+    GENERAL_CONFIG: General Asset Configuration
+    GPM_METHOD: Remote Fetch Method
+    GPM_METHOD_HELP: When set to Auto, Grav will determine if fopen is available and use it, otherwise fall back to cURL. To force the use of one or the other switch the setting.
+    GPM_OFFICIAL_ONLY: Official GPM Only
+    GPM_OFFICIAL_ONLY_HELP: Only allow direct installs from the official GPM repository only.
+    GPM_RELEASES: GPM Releases
+    GPM_RELEASES_HELP: Choose 'Testing' to install beta or testing versions
+    GPM_SECTION: GPM Section
+    GROUP_NAME: Group Name
+    GROUPS_HELP: List of groups the user is part of
+    GZIP_COMPRESSION: Gzip compression
+    GZIP_COMPRESSION_HELP: Enable GZip compression of the Grav page for increased performance.
+    HIDE_EMPTY_FOLDERS: Hide empty folders
+    HIDE_EMPTY_FOLDERS_HELP: If folder has no .md file, should it be hidden in navigation as well as being unroutable
+    HIDE_HOME_IN_URLS: Hide home route in URLs
+    HIDE_HOME_IN_URLS_HELP: Will ensure the default routes for any pages under home do not reference home's regular route
+    HOME_PAGE: Home page
+    HOME_PAGE_HELP: The page that Grav will use as the default landing page
+    HTTP_ACCEPT_LANGUAGE: Set language from browser
+    HTTP_ACCEPT_LANGUAGE_HELP: You can opt to try to set the language based on `http_accept_language` header tag in the browser
+    HTTP_ACCEPT_LANGUAGE_FALLBACK: Browser Language Fallbacks
+    HTTP_ACCEPT_LANGUAGE_FALLBACK_HELP: Map unsupported browser languages to supported languages when setting the language from the `http_accept_language` header. This does not add supported languages or create language routes.
+    HTTP_ACCEPT_LANGUAGE_FALLBACK_SOURCE_HELP: Specify an unsupported browser language code, e.g. `hr` or `sr-Latn`.
+    HTTP_ACCEPT_LANGUAGE_FALLBACK_TARGETS: Fallback Languages
+    HTTP_ACCEPT_LANGUAGE_FALLBACK_TARGETS_HELP: Please enter a list of supported language codes. The first supported language will be used.
+    HTTP_CONNECTIONS: HTTP Connections
+    HTTP_CONNECTIONS_HELP: The number of concurrent HTTP connections during multiplexed requests
+    HTTP_HEADERS: HTTP Headers
+    HTTP_SECTION: HTTP Section
+    ICON: Icon
+    IGNORE_FILES: Ignore files
+    IGNORE_FILES_HELP: Specific files to ignore when processing pages
+    IGNORE_FOLDERS: Ignore folders
+    IGNORE_FOLDERS_HELP: Specific folders to ignore when processing pages
+    IGNORE_HIDDEN: Ignore hidden
+    IGNORE_HIDDEN_HELP: Ignore all files and folders that begin with a DOT
+    IMAGE_ADAPTER: Image Adapter
+    IMAGE_ADAPTER_HELP: The image adapter to use for image manipulation. 'GD' is the default, 'Imagick' is an alternative
+    IMAGE_OPTIONS: Image options
+    IMAGES_AUTO_FIX_ORIENTATION: Fix orientation automatically
+    IMAGES_AUTO_FIX_ORIENTATION_HELP: Automatically fix the image orientation based on the Exif data
+    IMAGES_CLS_ASPECT_RATIO: Enable Aspect Ratio
+    IMAGES_CLS_ASPECT_RATIO_HELP: Optional CSS variable that gets applied via a 'style' attribute which can be used in CSS for custom styling
+    IMAGES_CLS_AUTO_SIZES: Enable Auto Sizes
+    IMAGES_CLS_AUTO_SIZES_HELP: Automatically add 'width' and 'height' attributes to images to address CLS
+    IMAGES_CLS_RETINA_SCALE: Retina Scale Factor
+    IMAGES_CLS_RETINA_SCALE_HELP: Will take the calculated size and divide by scale factor to display a higher resolution image at a smaller pixel size for better handling of HiDPI resolutions
+    IMAGES_WATERMARK_TITLE: Watermark
+    IMAGES_WATERMARK_ALL: Watermark all images
+    IMAGES_WATERMARK_ALL_HELP: Automatically stamp the watermark on every image the site serves
+    IMAGES_WATERMARK_IMAGE: Watermark image
+    IMAGES_WATERMARK_IMAGE_HELP: Path to the image used as the watermark, such as system://images/watermark.png
+    IMAGES_WATERMARK_POSITION_Y: Vertical position
+    IMAGES_WATERMARK_POSITION_Y_HELP: Where the watermark sits from top to bottom
+    IMAGES_WATERMARK_POSITION_X: Horizontal position
+    IMAGES_WATERMARK_POSITION_X_HELP: Where the watermark sits from left to right
+    IMAGES_WATERMARK_SCALE: Watermark scale
+    IMAGES_WATERMARK_SCALE_HELP: Size of the watermark as a percentage of the image
+    IMAGES_WATERMARK_TOP: Top
+    IMAGES_WATERMARK_CENTER: Center
+    IMAGES_WATERMARK_BOTTOM: Bottom
+    IMAGES_WATERMARK_LEFT: Left
+    IMAGES_WATERMARK_RIGHT: Right
+    IMAGES_CLS_TITLE: Cumulative Layout Shift (CLS)
+    IMAGES_DEBUG: Image debug watermark
+    IMAGES_DEBUG_HELP: Show an overlay over images indicating the pixel depth of the image when working with retina for example
+    IMAGES_DECODING: Image decoding behavior
+    IMAGES_DECODING_HELP: "The decoding attribute allows a browser to defer decoding offscreen images until users scroll near them. decoding supports three values: auto, sync, async"
+    IMAGES_FETCHPRIORITY: Image Fetchpriority Property
+    IMAGES_FETCHPRIORITY_HELP: The fetchpriority property in HTML is an attribute that specifies the priority for loading certain resources, such as images or iframes, to optimize performance. Possible values are high, low, or auto.
+    IMAGES_LOADING: Image loading behavior
+    IMAGES_LOADING_HELP: "The loading attribute allows a browser to defer loading offscreen images and iframes until users scroll near them. loading supports three values: auto, lazy, eager"
+    IMAGES_MAX_PIXELS: Maximum image pixels
+    IMAGES_MAX_PIXELS_HELP: "Total-pixel ceiling (width x height) for URL-based resize actions. Requests above this limit are refused. Set to 0 to disable the check."
+    IMAGES_PROGRESSIVE_JPEG: Progressive JPEGs
+    IMAGES_PROGRESSIVE_JPEG_HELP: "Save resized and cached JPEGs as progressive, so they appear as a whole blurry image that sharpens rather than filling in from the top. Usually smaller too. Does not affect PNG, WebP or AVIF."
+    IMAGES_SEOFRIENDLY: SEO-Friendly Image names
+    IMAGES_SEOFRIENDLY_HELP: When enabled, the image name is displayed first, then a smaller hash to reflect processed operations
+    IMAGES_URL_ACTIONS: Allow URL-based image actions
+    IMAGES_URL_ACTIONS_HELP: "Allow image transforms via URL query parameters (e.g. `image.jpg?resize=600,400`). Disabled by default; normal Twig and Markdown image resizing is unaffected."
+    INCLUDE_DEFAULT_LANG: Include default language
+    INCLUDE_DEFAULT_LANG_FILE_EXTENSION: Include default language in file extension
+    INCLUDE_DEFAULT_LANG_HELP: This will prepend all URLs in the default language with the default language.  e.g. `/en/blog/my-post`
+    INCLUDE_DEFAULT_LANG_HELP_FILE_EXTENSION: If enabled, it will prepend the default language to the file extension (e.g. `.en.md`). Disable it to keep the default language using `.md` file extension.
+    INLINE_TYPES: Inline fallback types
+    INLINE_TYPES_HELP: A list of file types that should be displayed inline rather than downloaded
+    INTL_ENABLED: Intl module integration
+    INTL_ENABLED_HELP: Use Intl PHP module and collate to sort UTF8 based collections
+    ITEMS: Items
+    JAVASCRIPT_MINIFY: JavaScript minify
+    JAVASCRIPT_MINIFY_HELP: Minify the JS during pipelining
+    JAVASCRIPT_MODULE_PIPELINE: JavaScript Module pipeline
+    JAVASCRIPT_MODULE_PIPELINE_BEFORE_EXCLUDES: JS Module pipeline render first
+    JAVASCRIPT_MODULE_PIPELINE_BEFORE_EXCLUDES_HELP: Render the JS pipeline before any other JS references that are not included
+    JAVASCRIPT_MODULE_PIPELINE_HELP: The JS Module pipeline is the unification of multiple JS resources into one file
+    JAVASCRIPT_MODULE_PIPELINE_INCLUDE_EXTERNALS: Include externals in JS Module pipeline
+    JAVASCRIPT_MODULE_PIPELINE_INCLUDE_EXTERNALS_HELP: External URLs sometimes have relative file references and shouldn't be pipelined
+    JAVASCRIPT_PIPELINE: JavaScript pipeline
+    JAVASCRIPT_PIPELINE_BEFORE_EXCLUDES: JS pipeline render first
+    JAVASCRIPT_PIPELINE_BEFORE_EXCLUDES_HELP: Render the JS pipeline before any other JS references that are not included
+    JAVASCRIPT_PIPELINE_HELP: The JS pipeline is the unification of multiple JS resources into one file
+    JAVASCRIPT_PIPELINE_INCLUDE_EXTERNALS: Include externals in JS pipeline
+    JAVASCRIPT_PIPELINE_INCLUDE_EXTERNALS_HELP: External URLs sometimes have relative file references and shouldn't be pipelined
+    JS_ASSETS: JavaScript Assets
+    JS_MODULE_ASSETS: JavaScript Module Assets
+    LANGUAGE: Language
+    LANGUAGE_DEBUG: Debug language
+    LANGUAGE_DEBUG_HELP: Enable the debug of languages which are using the |t twig filter by adding a span around them that can be styled to help diagnose issues
+    LANGUAGE_HELP: Set the favorite language
+    LANGUAGE_TRANSLATIONS: Translations
+    LANGUAGE_TRANSLATIONS_HELP: If false, translation keys are used instead of translated strings. This feature can be used to help to fix bad translations or to find hardcoded English strings.
+    LANGUAGES: Languages
+    LAST_MODIFIED: Last modified
+    LAST_MODIFIED_HELP: Sets the last modified header that can help optimize proxy and browser caching
+    LIFETIME: Lifetime
+    LIFETIME_HELP: Sets the cache lifetime in seconds. 0 = infinite
+    LIST: List
+    LOG_ERRORS: Log errors
+    LOG_ERRORS_HELP: Log errors to /logs folder
+    LOG_HANDLER: Log handler
+    LOG_HANDLER_HELP: Where to output the logs
+    LONG: Long
+    LONG_DATE_FORMAT: Long display date format
+    LONG_DATE_FORMAT_HELP: Set the long date format that can be used by themes
+    MARKDOWN: Markdown
+    MARKDOWN_EXTRA_HELP: Enable default support for Markdown Extra - https://michelf.ca/projects/php-markdown/extra/
+    MEDIA_TYPES: Media Types
+    MEMCACHED_PORT: Memcached port
+    MEMCACHED_PORT_HELP: The Memcached server port
+    MEMCACHED_SERVER: Memcached server
+    MEMCACHED_SERVER_HELP: The Memcached server address
+    MENU: Menu
+    MENU_HELP: The string to be used in a menu.  If not set, Title will be used.
+    METADATA: Metadata
+    METADATA_HELP: Default metadata values that will be displayed on every page unless overridden by the page
+    METADATA_KEY: Key (e.g. 'Keywords')
+    METADATA_VALUE: Value (e.g. 'Blog, Grav')
+    MIME_TYPE: Mime Type
+    MISC_SECTION: Miscellaneous Section
+    MODULE: Module
+    MODULE_SETUP: Module Setup
+    MOVE: Move
+    NAME: Name
+    NEVER_CACHE_TWIG: Never Cache Twig
+    NEVER_CACHE_TWIG_HELP: Only cache content and process Twig every time for pages. Ignores twig_first setting.
+    "NO": "No"
+    OPTIONS: Options
+    ORDER: Order
+    ORDER_BY: Order By
+    ORDER_DIGITS: Order digits
+    ORDER_DIGITS_HELP: Number of digits used to prefix folder names for ordering (e.g. `01.about`, `001.about`).
+    ORDERING: Ordering
+    OVERRIDE_LOCALE: Override locale
+    OVERRIDE_LOCALE_HELP: Override the locale setting in PHP based on the current language
+    OVERRIDES: Overrides
+    PAGE: Page
+    PAGE_ACCESS: Page Access
+    PAGE_ACCESS_HELP: User with following access permissions can access the page.
+    PAGE_AUTHORS: Page Authors
+    PAGE_AUTHORS_HELP: Members of Page Authors have owner level access to this page defined in special 'Authors' page group.
+    PAGE_FILE: Page Template
+    PAGE_FILE_HELP: Page template file name, and by default the display template for this page
+    PAGE_GROUPS: Page Groups
+    PAGE_GROUPS_HELP: Members of Page Groups have special access to this page.
+    PAGE_INHERIT_PERMISSIONS: Inherit Permissions
+    PAGE_INHERIT_PERMISSIONS_HELP: Inherit ACL from parent page.
+    PAGE_MEDIA: Page Media
+    PAGE_SUMMARY: Page Summary
+    MARKDOWN_OUTPUT: Markdown Output
+    MARKDOWN_OUTPUT_ENABLED: Serve Pages as Markdown
+    MARKDOWN_OUTPUT_ENABLED_HELP: Any page can be fetched as Markdown by adding `.md` to its URL, or by sending an `Accept:&nbsp;text/markdown` request header. Built for AI agents and other text clients. The page is rendered through the theme, reduced to its main content region and converted, so listings, shops and modular pages read the way they display.
+    MARKDOWN_OUTPUT_FRONTMATTER: Frontmatter Block
+    MARKDOWN_OUTPUT_FRONTMATTER_HELP: Start the Markdown with a YAML block holding the title, URL, date, description and taxonomy.
+    MARKDOWN_OUTPUT_LINKS: Navigation Links
+    MARKDOWN_OUTPUT_LINKS_HELP: End the Markdown with links to the parent, neighbouring and child pages, so an agent can walk the site without leaving Markdown.
+    MARKDOWN_OUTPUT_MAX_LINKS: Most Child Links
+    MARKDOWN_OUTPUT_MAX_LINKS_HELP: The most child pages listed in the navigation section. Zero lists them all.
+    MARKDOWN_OUTPUT_ABSOLUTE_URLS: Absolute URLs
+    MARKDOWN_OUTPUT_ABSOLUTE_URLS_HELP: Turn root-relative links and images into full URLs, so they still work once the Markdown has left the site.
+    MARKDOWN_OUTPUT_TOKEN_HEADER: Token Count Header
+    MARKDOWN_OUTPUT_TOKEN_HEADER_HELP: Send an `X-Markdown-Tokens` response header with an estimated token count, the same header Cloudflare's Markdown for Agents uses.
+    PAGE_TYPES: Page Types
+    PAGE_TYPES_HELP: Determines the page types that Grav supports and the order determines which type to fall back to if the request is ambiguous
+    PAGE_VISIBILITY_REQUIRES_ACCESS: Menu Visibility Requires Access
+    PAGE_VISIBILITY_REQUIRES_ACCESS_HELP: Set to Yes if page should be shown in menus only if user can access them.
+    PAGES_FALLBACK_ONLY: Pages fallback only
+    PAGES_FALLBACK_ONLY_HELP: Only 'fallback' to find page content through supported languages, default behavior is to display any language found if active language is missing
+    PAGES_TYPE: Frontend Page Type
+    PAGES_TYPE_HELP: This option enables Flex Object pages on the front-end. Admin Flex Pages requires Flex Objects plugin
+    PARAMETER_SEPARATOR: Parameter separator
+    PARAMETER_SEPARATOR_HELP: Separator for passed parameters that can be changed for Apache on Windows
+    PARENT: Parent
+    PASSWORD_VALIDATION_MESSAGE: Password must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters
+    PERMISSIONS: Permissions
+    PIPELINE_REMOTE_TIMEOUT: Remote asset timeout
+    PIPELINE_REMOTE_TIMEOUT_HELP: How long to wait for a remote CSS or JS file (a CDN stylesheet, for example) when building a pipeline. If it doesn't arrive in time, the page renders without bundling that group and tries again on the next request
+    PLUGIN_STATUS: Plugin status
+    PROCESS: Process
+    PROCESS_HELP: Control how pages are processed. Can be set per-page rather than globally
+    PROXY_CERT: Proxy Certificate Path
+    PROXY_CERT_HELP: Local path to folder containing proxy certificate pem file
+    PROXY_URL: Proxy URL
+    PROXY_URL_HELP: Enter the proxy HOST or IP and PORT
+    PUBLISH: Publish
+    PUBLISHED: Published
+    PUBLISHED_DATE: Published Date
+    PUBLISHED_DATE_HELP: Can provide a date to automatically trigger publication.
+    PUBLISHED_HELP: "By default, a page is published unless you explicitly set published: false or via a publish_date being in the future, or unpublish_date in the past"
+    PUBLISHING: Publishing
+    PWD_REGEX: Password Regex
+    PWD_REGEX_HELP: "By default: Password must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters"
+    PWD_RULES: Password rules
+    PWD_RULES_HELP: Custom password validation rules. Each rule has an ID, a human label, and a regex the password must match.
+    PWD_RULES_ID: ID
+    PWD_RULES_LABEL: Label
+    PWD_RULES_PATTERN: Regex pattern
+    READ: Read
+    READ_FILE_ALLOWED_EXTENSIONS: Allowed file extensions
+    READ_FILE_ALLOWED_EXTENSIONS_HELP: File extensions <code>read_file()</code> will read (case-insensitive, no leading dot). Defaults are text/content formats only. Adding executable or config formats (<code>php</code>, <code>yaml</code>, <code>env</code>, <code>htaccess</code>, …) is a foot-gun and not recommended.
+    READ_FILE_ALLOWED_STREAMS: Allowed streams
+    READ_FILE_ALLOWED_STREAMS_HELP: "Stream schemes that <code>read_file()</code> may resolve. Defaults: <code>theme</code>, <code>themes</code>, <code>page</code>, <code>user-data</code>. Adding broad streams like <code>user</code>, <code>system</code>, <code>config</code>, <code>account</code>, <code>log</code> or <code>cache</code> exposes sensitive files and is strongly discouraged."
+    READ_FILE_MAX_SIZE: Max file size (bytes)
+    READ_FILE_MAX_SIZE_HELP: Files larger than this return <code>false</code> rather than being slurped into memory. Default is <code>1048576</code> (1 MB). Set to <code>0</code> to disable the size cap.
+    READ_FILE_SECTION_HELP: Constraints on the Twig <code>read_file()</code> function. Reads are forced through Grav stream URIs and verified by a canonical-realpath containment check against the resolved stream roots, so encoded or symlinked traversal is blocked at the filesystem layer regardless of how the path is written.
+    READ_FILE_SECTION_TITLE: Twig read_file()
+    REDIRECT: Page redirect
+    REDIRECT_DEFAULT_CODE: Default redirect code
+    REDIRECT_DEFAULT_CODE_HELP: The HTTP status code to use for redirects
+    REDIRECT_DEFAULT_ROUTE: Redirect default route
+    REDIRECT_DEFAULT_ROUTE_HELP: Automatically redirect to a page's default route
+    REDIRECT_HELP: Enter a page route or external URL for this page to redirect to. e.g. `/some/route` or `http://somesite.com`
+    REDIRECT_OPTION_301: 301 - Moved permanently
+    REDIRECT_OPTION_302: 302 - Moved temporarily
+    REDIRECT_OPTION_303: 303 - See Other
+    REDIRECT_OPTION_DEFAULT_REDIRECT: Use default redirect code
+    REDIRECT_OPTION_NO_REDIRECT: No redirect
+    REDIRECT_TRAILING_SLASH: Redirect trailing slash
+    REDIRECT_TRAILING_SLASH_HELP: Perform a 301 redirect rather than transparently handling trailing slash URIs.
+    REDIRECTS_AND_ROUTES: Redirects & Routes
+    REDIS_DATABASE: Redis Database ID
+    REDIS_DATABASE_HELP: The Redis instance database ID
+    REDIS_PASSWORD: Redis password/secret
+    REDIS_PORT: Redis port
+    REDIS_PORT_HELP: The Redis server port
+    REDIS_SERVER: Redis server
+    REDIS_SERVER_HELP: The Redis server address
+    REDIS_SOCKET: Redis socket
+    REDIS_SOCKET_HELP: The Redis socket
+    REGULAR: Regular
+    REVERSE_PROXY: Reverse Proxy
+    REVERSE_PROXY_HELP: Enable this if you are behind a reverse proxy and you are having trouble with URLs containing incorrect ports
+    ROOT: Root
+    ROUTABLE: Routable
+    ROUTABLE_HELP: If this page is reachable by a URL
+    ROUTE_ALIASES: Route Aliases
+    ROUTE_CANONICAL: Canonical Route
+    ROUTE_DEFAULT: Default Route
+    ROUTE_OVERRIDES: Route Overrides
+    SANITIZE_SVG: Sanitize SVG
+    SANITIZE_SVG_HELP: Removes any XSS code from SVG
+    SCHEDULER: Scheduler
+    SCHEDULER_EMAIL: Email
+    SCHEDULER_EMAIL_HELP: "Email to send output to. NOTE: requires output file to be set"
+    SCHEDULER_JOBS: Custom Scheduler Jobs
+    SCHEDULER_OUTPUT: Output File
+    SCHEDULER_OUTPUT_HELP: The path/filename of the output file (from the root of the Grav installation)
+    SCHEDULER_OUTPUT_TYPE: Output Type
+    SCHEDULER_OUTPUT_TYPE_HELP: Either append to the same file each run, or overwrite the file with each run
+    SCHEDULER_RUNAT: Run At
+    SCHEDULER_RUNAT_HELP: "Cron formatted 'at' syntax. NOTE: All times are UTC!"
+    SCHEDULER_STATUS: Scheduler Status
+    SECURITY: Security
+    SESSION: Session
+    SESSION_DOMAIN: Session domain
+    SESSION_DOMAIN_HELP: Use only if you you rewrite the site domain for example in a Docker Container.
+    SESSION_ENABLED_HELP: Enable session support within Grav
+    SESSION_HTTPONLY: HTTP Only
+    SESSION_HTTPONLY_HELP: If true, indicates that cookies should be used only over HTTP, and JavaScript modification is not allowed
+    SESSION_INITIALIZE: Initialize Session
+    SESSION_INITIALIZE_HELP: Makes Grav to start a session. This feature is needed to make any user interaction to work, such as login, forms etc. Admin plugin isn't affected by this setting.
+    SESSION_NAME_HELP: An identifier used to form the name of the session cookie
+    SESSION_PATH: Session path
+    SESSION_PATH_HELP: Use only if you you rewrite the site path for example in a Docker Container.
+    SESSION_SAMESITE: The session SameSite attribute
+    SESSION_SAMESITE_HELP: Lax|Strict|None. See https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite for more info
+    SESSION_SECURE: Secure
+    SESSION_SECURE_HELP: "If true, indicates that communication for this cookie must be over an encrypted transmission. WARNING: Enable this only on sites that run exclusively on HTTPS"
+    SESSION_SECURE_HTTPS: Secure (HTTPS)
+    SESSION_SECURE_HTTPS_HELP: Set session secure on HTTPS but not on HTTP. Has no effect if you have above Secure setting set to true. Set to false if your site jumps between HTTP and HTTPS.
+    SESSION_SPLIT: Session Split
+    SESSION_SPLIT_HELP: Independent split sessions between site and other plugins (such as admin)
+    SESSION_UNIQUENESS: Unique string
+    SESSION_UNIQUENESS_HELP: MD5 hash of Grav's root path, ie `GRAV_ROOT` (default) or a based on the random `security.salt` string.
+    SHORT: Short
+    SHORT_DATE_FORMAT: Short display date format
+    SHORT_DATE_FORMAT_HELP: Set the short date format that can be used by themes
+    SHUTDOWN_CLOSE_CONNECTION: Shutdown close connection
+    SHUTDOWN_CLOSE_CONNECTION_HELP: Close the connection before calling onShutdown(). false for debugging
+    SITE: Site
+    SITE_ACCESS: Site Access
+    SITE_DEFAULT_LANG: Default language
+    SITE_DEFAULT_LANG_HELP: Default language to be used by theme's <HTML> tag
+    SITE_DEFAULT_LANG_PLACEHOLDER: Default language to be used by theme's <HTML> tag
+    SITE_TITLE: Site Title
+    SITE_TITLE_HELP: Default title for your site, often used in themes
+    SITE_TITLE_PLACEHOLDER: Site wide title
+    SLUG: Slug
+    SLUG_HELP: The slug variable allows you to specifically set the page's portion of the URL
+    SLUG_VALIDATE_MESSAGE: A slug must contain only lowercase alphanumeric characters and dashes
+    SORTABLE_PAGES: "Sortable Pages:"
+    SSL_ENABLE_PROXY: Enable Proxy Server
+    SSL_VERIFY_HOST: Remote Verify Host
+    SSL_VERIFY_HOST_HELP: Some may fail verifying SSL certificates
+    SSL_VERIFY_PEER: Remote Verify Peer
+    SSL_VERIFY_PEER_HELP: Some may fail verifying SSL certificates
+    STABLE: Stable
+    STRICT_BLUEPRINT_COMPAT: Blueprint Compatibility
+    STRICT_BLUEPRINT_COMPAT_HELP: Enables backward compatible strict support for blueprints. If turned off, the new behavior makes the form validation to fail if there is extra data which is not defined in the blueprint.
+    STRICT_TWIG_COMPAT: Twig Compatibility
+    STRICT_TWIG_COMPAT_HELP: Enables deprecated Twig autoescape setting.  When disabled, |raw filter is required to output HTML as Twig will autoescape output
+    STRICT_YAML_COMPAT: YAML Compatibility
+    STRICT_YAML_COMPAT_HELP: Falls back to Symfony 2.4 YAML parser if Native or 3.4 parser fails
+    SUMMARY_SIZE: Summary Size
+    SUMMARY_SIZE_HELP: The amount of characters of a page to use as a content summary
+    SUPPORTED: Supported
+    SUPPORTED_HELP: Comma separated list of 2 letter language codes (for example 'en,fr,de')
+    SYSLOG_FACILITY: Syslog facility
+    SYSLOG_FACILITY_HELP: Syslog facility for output
+    SYSLOG_TAG: Syslog tag
+    SYSLOG_TAG_HELP: Syslog tag for output
+    TAXONOMIES: Taxonomies
+    TAXONOMY: Taxonomy
+    TAXONOMY_TYPES: Taxonomy Types
+    TAXONOMY_TYPES_HELP: Taxonomy types must be defined here if you wish to use them in pages
+    TESTING: Testing
+    THUMB: Thumb
+    TIMEOUT: Timeout
+    TIMEOUT_HELP: Sets the session timeout in seconds
+    TIMEZONE: Timezone
+    TIMEZONE_HELP: Override the default timezone the server
+    TITLE: Title
+    TRANSLATIONS_FALLBACK: Translations fallback
+    TRANSLATIONS_FALLBACK_HELP: Fallback through supported translations if active language doesn't exist
+    TWIG_CACHING: Twig caching
+    TWIG_CACHING_HELP: Control the Twig caching mechanism. Leave this enabled for best performance.
+    TWIG_DEBUG: Twig debug
+    TWIG_DEBUG_HELP: Allows the option of not loading the Twig Debugger extension
+    TWIG_FIRST: Process Twig First
+    TWIG_FIRST_HELP: If you enabled Twig page processing, then you can configure Twig to process before or after markdown
+    TWIG_SANDBOX: Twig Sandbox
+    TWIG_SANDBOX_ADMIN_HINT: Admin hint comment
+    TWIG_SANDBOX_ALLOWED_FILTERS: Allowed filters
+    TWIG_SANDBOX_ALLOWED_FILTERS_HELP: Twig filters that page content may apply.
+    TWIG_SANDBOX_ALLOWED_FUNCTIONS: Allowed functions
+    TWIG_SANDBOX_ALLOWED_FUNCTIONS_HELP: Twig functions that page content may call.
+    TWIG_SANDBOX_ALLOWED_METHODS: Allowed methods
+    TWIG_SANDBOX_ALLOWED_METHODS_HELP: Per-class lists of object methods that page content may invoke.
+    TWIG_SANDBOX_ALLOWED_PROPERTIES: Allowed properties
+    TWIG_SANDBOX_ALLOWED_PROPERTIES_HELP: Per-class lists of object properties that page content may read.
+    TWIG_SANDBOX_ALLOWED_TAGS: Allowed tags
+    TWIG_SANDBOX_ALLOWED_TAGS_HELP: Twig tags that page content may use. Add only tags whose effects you want exposed to authors.
+    TWIG_SANDBOX_CLASS: Class
+    TWIG_SANDBOX_ENABLED: Enable Twig sandbox
+    TWIG_SANDBOX_HELP: Allowlist of Twig tags, filters, functions, methods, and properties that page-content templates may use. Editor-authored content is rendered through this sandbox so a compromised author or template-injection bug cannot reach into the wider container.
+    TWIG_SANDBOX_LOGGING: Log violations
+    TWIG_SANDBOX_LOGGING_HELP: Write every blocked expression to <code>logs/twig-sandbox.log</code>. Useful while tuning the allowlist; turn off in production to keep logs quiet.
+    TWIG_SANDBOX_METHODS: Methods
+    TWIG_SANDBOX_PROPERTIES: Properties
+    TWIG_TEMPLATING: Twig Templating
+    TYPE: Type
+    UNPUBLISHED_DATE: Unpublished Date
+    UNPUBLISHED_DATE_HELP: Can provide a date to automatically trigger un-publication.
+    UPDATE: Update
+    UPLOADS_DANGEROUS_EXTENSIONS: Dangerous Extensions
+    UPLOADS_DANGEROUS_EXTENSIONS_HELP: Block these extensions from being uploaded no matter the accepted MIME types
+    UPLOADS_SECURITY: Uploads Security
+    USE_GLOBAL: Use Global
+    USERNAME_HELP: Username should be between 3 and 16 characters, including lowercase letters, numbers, underscores, and hyphens. Uppercase letters, spaces, and special characters are not allowed
+    USERNAME_REGEX: Username Regex
+    USERNAME_REGEX_HELP: "By default: Only lowercase chars, digits, dashes, and underscores. 3 - 16 chars"
+    VALID_LINK_ATTRIBUTES: Valid Link Attributes
+    VALID_LINK_ATTRIBUTES_HELP: Attributes that will be automatically added to the media HTML element
+    VARY_ACCEPT_ENCODING: Vary accept encoding
+    VARY_ACCEPT_ENCODING_HELP: "Sets the `Vary: Accept Encoding` header to help with proxy and CDN caching"
+    VISIBLE: Visible
+    VISIBLE_HELP: Determines if a page is visible in the navigation.
+    WRAPPED_SITE: Wrapped site
+    WRAPPED_SITE_HELP: For themes/plugins to know if Grav is wrapped by another platform
+    XSS_DANGEROUS_TAGS: Filter Dangerous HTML tags
+    XSS_DANGEROUS_TAGS_LIST: Dangerous HTML tags list
+    XSS_HTML_INLINE_STYLES: Filter HTML inline styles
+    XSS_INVALID_PROTOCOLS: Filter Invalid protocols
+    XSS_INVALID_PROTOCOLS_LIST: Invalid protocols list
+    XSS_MOZ_BINDINGS: Filter Moz bindings
+    XSS_ON_EVENTS: Filter On-events
+    XSS_SECURITY: XSS Security for Content
+    XSS_WHITELIST_PERMISSIONS: Whitelist Permissions
+    XSS_WHITELIST_PERMISSIONS_HELP: Users with these permissions will skip the XSS rules when saving content
+    "YES": "Yes"
+    YUBIKEY_HELP: Insert your YubiKey into your computer and click the button to generate an OTP. The first 12 chars are your client ID and will be saved.
+    YUBIKEY_ID: YubiKey ID
+    CACHE_CHECK_INTERVAL: Cache Check Interval
+    CACHE_CHECK_INTERVAL_HELP: Seconds to reuse the previously computed filesystem hash before checking again. Zero keeps existing per-request checks.
+    HTTP_X_FORWARDED_HOST_ENABLED: HTTP_X_FORWARDED_HOST Enabled
+    HTTP_X_FORWARDED_HOST_HELP: "Trust the <code>X-Forwarded-Host</code> request header. Only enable when the site is genuinely behind a reverse proxy that sets and overwrites this header; otherwise clients can spoof the host Grav sees."
+    HTTP_X_FORWARDED_IP_ENABLED: HTTP_X_FORWARDED IP Enabled
+    HTTP_X_FORWARDED_IP_HELP: "Trust <code>X-Forwarded-For</code> / <code>X-Forwarded</code> / <code>Forwarded</code> headers when resolving the client IP. Only enable when the site is genuinely behind a reverse proxy that sets and overwrites these headers; otherwise clients can spoof their IP and bypass rate limiting, IP bans, and audit logging."
+    HTTP_X_FORWARDED_PORT_ENABLED: HTTP_X_FORWARDED_PORT Enabled
+    HTTP_X_FORWARDED_PORT_HELP: "Trust the <code>X-Forwarded-Port</code> request header. Only enable when the site is genuinely behind a reverse proxy that sets and overwrites this header."
+    HTTP_X_FORWARDED_PROTO_ENABLED: HTTP_X_FORWARDED_PROTO Enabled
+    HTTP_X_FORWARDED_PROTO_HELP: "Trust the <code>X-Forwarded-Proto</code> request header (typically used to detect HTTPS behind a TLS-terminating proxy). Only enable when the site is genuinely behind a reverse proxy that sets and overwrites this header."
+    HTTP_CLIENT_IP_ENABLED: HTTP_CLIENT_IP Enabled
+    HTTP_CLIENT_IP_HELP: "Trust the <code>Client-IP</code> request header when resolving the client IP. Rare; usually only set by specific load balancers. Leave off unless you know your proxy sets and overwrites this header."
+    HTTP_CF_CONNECTING_IP_ENABLED: HTTP_CF_CONNECTING_IP Enabled
+    HTTP_CF_CONNECTING_IP_HELP: "Trust the <code>CF-Connecting-IP</code> request header when resolving the client IP. Enable when the site is genuinely behind Cloudflare; otherwise clients can spoof their IP. For full safety, also restrict origin access to Cloudflare IP ranges at the web server."
+    MARKDOWN_EXTRA: Markdown extra
+    ORDER_DIR_HELP: '"desc" or "asc" are valid values'
+    TWIG_3_COMPATIBILITY: Twig 3 Compatibility
+    TWIG_3_COMPATIBILITY_HELP: "Enable automatic rewrites for legacy Twig 1/2 syntax that breaks on Twig 3 (e.g. <code>for ... if ...</code> guards)."
+    TWIG_SANDBOX_ADMIN_HINT_HELP: "When the sandbox blocks an expression, append a one-line HTML comment to the rendered page so super-admins viewing the source see that something was filtered. Visitors and non-admins see nothing."
+    TWIG_SANDBOX_ENABLED_HELP: "Renders editor-authored page content inside an allowlist-based Twig SecurityPolicy. <strong>Disabling removes the only protection against template-injection attacks via page content</strong>: any account with editor-level access (or anyone who compromises the file system) can execute arbitrary PHP via Twig. Only turn off if a site genuinely needs container access from page content and you fully trust every author."
+    ACCOUNTS_CONFIGURATION: Accounts Configuration
+    FLEX_ADMIN_EVENT_COMPAT: Admin event compatibility
+    FLEX_ADMIN_EVENT_COMPAT_HELP: Enables onAdminSave and onAdminAfterSave events for plugins.
+    ID: ID
+    PAGE_PERMISSIONS: Page Permissions
+    PAGES_CONFIGURATION: Pages Configuration
+    ROUTE: Route
+    SCHEDULER_ACTIVE_TRIGGERS: Active Triggers
+    SCHEDULER_ADVANCED_FEATURES: Advanced Features
+    SCHEDULER_CONCURRENT_WORKERS: Concurrent Workers
+    SCHEDULER_CONCURRENT_WORKERS_HELP: Number of jobs that can run simultaneously (1 = sequential).
+    SCHEDULER_HEALTH_CHECK_CONFIG: Health Check Configuration
+    SCHEDULER_HEALTH_CHECK_ENABLED: Enable Health Check
+    SCHEDULER_HEALTH_CHECK_ENABLED_HELP: Provide a health-status endpoint for monitoring.
+    SCHEDULER_HEALTH_CHECK_PATH: Health Check Path
+    SCHEDULER_HEALTH_CHECK_PATH_HELP: URL path for the health-check endpoint.
+    SCHEDULER_HEALTH_STATUS: Health Status
+    SCHEDULER_HISTORY: Job History
+    SCHEDULER_HISTORY_ENABLED: Enable Job History
+    SCHEDULER_HISTORY_ENABLED_HELP: Track execution history for all jobs.
+    SCHEDULER_HISTORY_RETENTION: History Retention (days)
+    SCHEDULER_HISTORY_RETENTION_HELP: How long to keep job history.
+    SCHEDULER_QUEUE_CONFIG: Queue Configuration
+    SCHEDULER_QUEUE_MAX_SIZE: Maximum Queue Size
+    SCHEDULER_QUEUE_MAX_SIZE_HELP: Maximum number of jobs that can be queued.
+    SCHEDULER_QUEUE_PATH: Queue Storage Path
+    SCHEDULER_QUEUE_PATH_HELP: Where to store queued jobs.
+    SCHEDULER_RETRY_BACKOFF: Retry Backoff Strategy
+    SCHEDULER_RETRY_BACKOFF_HELP: How to calculate the delay between retries.
+    SCHEDULER_RETRY_CONFIG: Retry Configuration
+    SCHEDULER_RETRY_ENABLED: Enable Job Retry
+    SCHEDULER_RETRY_ENABLED_HELP: Automatically retry failed jobs.
+    SCHEDULER_RETRY_MAX_ATTEMPTS: Maximum Retry Attempts
+    SCHEDULER_RETRY_MAX_ATTEMPTS_HELP: Maximum number of times to retry a failed job.
+    SCHEDULER_USAGE_EXAMPLES: Usage Examples
+    SCHEDULER_WEBHOOK_CONFIG: Webhook Configuration
+    SCHEDULER_WEBHOOK_ENABLED: Enable Webhook Triggers
+    SCHEDULER_WEBHOOK_ENABLED_HELP: Allow triggering the scheduler via HTTP webhook.
+    SCHEDULER_WEBHOOK_PATH: Webhook Path
+    SCHEDULER_WEBHOOK_PATH_HELP: URL path for the webhook endpoint.
+    SCHEDULER_WEBHOOK_TOKEN: Webhook Security Token
+    SCHEDULER_WEBHOOK_TOKEN_HELP: Secret token for authenticating webhook requests. Keep this secret!
+    SCHEDULER_WORKER_CONFIG: Worker Configuration
+    USER_ACCOUNTS: User Accounts
+    TWIG_CONTENT: Twig in Content
+    TWIG_CONTENT_HELP: Controls for editor-authored Twig embedded in page content. Theme templates on disk are not affected by these settings; they only apply to Twig that authors put into page bodies or frontmatter.
+    TWIG_CONTENT_PROCESS_ENABLED: Enable Twig in Content
+    TWIG_CONTENT_PROCESS_ENABLED_HELP: "Allow pages with <code>process: twig: true</code> in their frontmatter (and the site-wide <code>system.pages.frontmatter.process_twig</code> opt-in) to actually run Twig. <strong>Off by default in Grav 2.0.</strong> Leaving this disabled reduces template-injection attack surface, but breaks any page that needs Twig in its body."
+    TWIG_CONTENT_EDITOR_ENABLED: Allow editors to toggle Twig in Content
+    TWIG_CONTENT_EDITOR_ENABLED_HELP: "When off (default), the Twig checkbox in the page editor's Advanced tab is only visible to users granted the <code>admin.pages_twig</code> permission, and pages that already have Twig enabled can only be edited by those users. When on, anyone with page-edit access can toggle Twig on individual pages."
+    TWIG_CONTENT_CONFIG_ACCESS: Allow config variable access in Twig
+    TWIG_CONTENT_CONFIG_ACCESS_HELP: "Whether the <code>config</code> Twig variable is readable from page content. When off (default), reading <code>config.system.title</code> from a page returns nothing. When on, <code>config</code> is exposed but still filtered by <code>config_denied_paths</code> (see Twig Sandbox below) so credentials and other sensitive subtrees stay hidden."
+    GRAV_UPGRADE:
+      CONFIRM_TITLE: "Upgrade Grav core?"
+      CONFIRM_MESSAGE: "This will upgrade Grav from v{current} to v{target}. The site may be briefly unavailable during the upgrade."
+      UPGRADING: "Upgrading Grav to v{version}…"
+      FAILED: "Grav upgrade failed: {detail}"
+      NO_DETAIL: "the server gave no reason"
+      PREFLIGHT_TITLE: "Grav can't upgrade to v{version} yet"
+      PREFLIGHT_MESSAGE: "The checks that run before an upgrade stopped it for these reasons. Fix them and try again, or upgrade anyway if you know these plugins and themes work with the new version."
+      INCOMPATIBLE_PACKAGE: "{name} {version} is marked compatible with Grav {compatible}"
+      UPGRADE_ANYWAY: "Upgrade anyway"
+      STILL_BLOCKED: "Grav upgrade is still blocked: {detail}"
+    TOASTS:
+      CONFIG_SAVED: "{name} configuration saved"
+      CONFIG_MODIFIED_ELSEWHERE: Configuration was modified elsewhere — reload to see latest
+      SAVE_FAILED: Failed to save
+      DEMO_MODE_BLOCKED: This is a read-only demo — changes are disabled.
+      DEPENDENCY_INSTALLED: "Plugin {slug} installed (dependency)"
+      PACKAGE_UPDATED: "{name} updated"
+      PACKAGE_UPDATE_FAILED: "Failed to update {name}: {detail}"
+      PACKAGE_REMOVED: "{name} removed"
+      PACKAGE_REMOVE_FAILED: "Failed to remove {name}"
+      PACKAGES_UPDATED: "{n, plural, one{Updated # package} other{Updated # packages}}"
+      UPDATE_FAILED: "Update failed: {detail}"
+      PLUGIN_ENABLED: "{name} enabled"
+      PLUGIN_DISABLED: "{name} disabled"
+      PLUGIN_ENABLE_FAILED: "Failed to enable {name}: {detail}"
+      PLUGIN_DISABLE_FAILED: "Failed to disable {name}: {detail}"
+      PLUGIN_LOCKOUT_BLOCK: "{name} cannot be disabled from admin-next — it would lock you out."
+      PLUGIN_REQUIRED_BLOCK: "{name} cannot be removed — it is required by admin-next."
+      PLUGIN_REMOVED: "{name} removed"
+      PLUGIN_REMOVE_FAILED: "Failed to remove {name}: {detail}"
+      THEME_ACTIVATED: "{name} is now the active theme"
+      THEME_ACTIVATE_FAILED: "Failed to activate {name}: {detail}"
+      THEME_REMOVED: "{name} removed"
+      THEME_REMOVE_FAILED: "Failed to remove {name}: {detail}"
+      THEME_REMOVE_BLOCK: "{name} cannot be removed."
+      ACTIVE_THEME_REMOVE_BLOCK: "Cannot remove the active theme. Switch to another theme first."
+      PAGE_PUBLISHED: '"{name}" published'
+      PAGE_UNPUBLISHED: '"{name}" unpublished'
+      PAGE_PUBLISH_FAILED: "Failed to change publish state: {detail}"
+      USER_ENABLED: "User {username} enabled"
+      USER_DISABLED: "User {username} disabled"
+      USER_STATE_FAILED: "Failed to change state for {username}: {detail}"
+      GPM_REFRESHED: "{n, plural, =0{GPM refreshed — no updates available} one{GPM refreshed — # update available} other{GPM refreshed — # updates available}}"
+      GRAV_UPGRADED: "Grav upgraded to v{version}"
+      BACKUP_CREATED: "Backup created ({size})"
+      CACHE_CLEARED: "Cache cleared ({scope})"
+      FILES_UPLOADED: "{n, plural, one{Uploaded # file} other{Uploaded # files}}"
+      FOLDER_CREATED: 'Folder "{name}" created'
+      FILE_DELETED: "Deleted {name}"
+      FILE_DELETE_FAILED: "Failed to delete {name}"
+      FILES_DELETE_FAILED: "{n, plural, one{Failed to delete # file} other{Failed to delete # files}}"
+      COPIED: "{label} copied"
+      COPY_FAILED: "Copy failed: {detail}"
+      SAVED_AS_LANGUAGE: "Saved as {language}"
+      TRANSLATION_CREATED: "{language} translation created"
+      TRANSLATION_RESET: "{target} reset from {source}"
+      SAVED: Saved
+      ITEM_SAVED: "{name} saved"
+      ITEM_DELETED: 'Deleted "{name}"'
+      ITEM_DELETE_FAILED: 'Failed to delete "{name}"'
+      ITEM_COPIED: 'Copied "{name}" to "{target}"'
+      ITEM_MOVED: 'Moved "{name}"'
+      ITEM_REORDERED: 'Reordered "{name}"'
+      USER_CREATED: "User {username} created"
+      USER_SAVED: "User {username} saved"
+      USER_DELETED: "User {username} deleted"
+      USER_DELETE_FAILED: "Failed to delete user {username}"
+      USER_ROW_ACTION_FAILED: "Could not complete action: {label}"
+      API_KEY_REVOKED: 'API key "{name}" revoked'
+      PLUGIN_INSTALLED: "Plugin {name} installed"
+      THEME_INSTALLED: "Theme {name} installed"
+      INSTALL_FAILED: "Failed to install {slug}: {detail}"
+      TOTP_CODE_REQUIRED: Enter the 6-digit code from your authenticator
+      SAVE_FORM_FAILED: "Failed to save {form}"
+      FORM_LABEL:
+        FORM: Form
+        CONFIGURATION: Configuration
+        PLUGIN: Plugin
+        PLUGIN_PAGE: Plugin Page
+        FLEX_OBJECT: Flex Object
+        USER: User
+        THEME: Theme
+        PAGE: Page

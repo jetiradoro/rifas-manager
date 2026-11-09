@@ -1,0 +1,2067 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Grav\Plugin\Api\Controllers;
+
+use Grav\Common\Cache;
+use Grav\Common\GPM\GPM;
+use Grav\Common\GPM\Installer;
+use Grav\Common\GPM\Licenses;
+use Grav\Plugin\Api\Exceptions\ApiException;
+use Grav\Plugin\Api\Exceptions\NotFoundException;
+use Grav\Plugin\Api\Exceptions\ValidationException;
+use Grav\Plugin\Api\Response\ApiResponse;
+use Grav\Plugin\Api\Serializers\PackageSerializer;
+use Grav\Plugin\Api\Services\AdminModules;
+use Grav\Plugin\Api\Services\GpmService;
+use Grav\Plugin\Api\Services\ThumbnailService;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use RocketTheme\Toolbox\Event\Event;
+
+class GpmController extends AbstractApiController
+{
+    use TranslatesAdminLabels;
+
+    /**
+     * Package management: browsing the repository, listing installed packages,
+     * checking updates. NOT the routes that serve an installed plugin's own
+     * admin UI (page definitions, section/field/widget scripts) — those gate
+     * on plain `api.access`, because an admin whose account can reach a
+     * plugin's screens must be able to render them without also being handed
+     * the package manager; the data behind each screen still answers to that
+     * plugin's own permissions.
+     */
+    private const PERMISSION_READ = 'api.gpm.read';
+    private const PERMISSION_WRITE = 'api.gpm.write';
+
+    private readonly PackageSerializer $serializer;
+    private readonly ThumbnailService $thumbSmall;
+    private readonly ThumbnailService $thumbLarge;
+
+    public function __construct(\Grav\Common\Grav $grav, \Grav\Common\Config\Config $config)
+    {
+        parent::__construct($grav, $config);
+        // A package's own blueprints.yaml may write its name/description as a
+        // translation key, the way every other label in that file is written.
+        // Resolve those server-side; anything that isn't a key we can translate
+        // is served exactly as the author wrote it (#39).
+        $this->serializer = new PackageSerializer(
+            fn (string $value): ?string => $this->resolveTranslationKey($value),
+        );
+        $this->thumbSmall = ThumbnailService::forGrav($grav, 500);
+        $this->thumbLarge = ThumbnailService::forGrav($grav, 2000);
+    }
+
+    /**
+     * GET /gpm/plugins - List all installed plugins with update status.
+     */
+    public function plugins(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        // Package name/description may be translation keys; resolve them against
+        // the caller's admin language (#39).
+        $this->primeAdminLanguages($request);
+
+        $gpm = $this->getGpm();
+        $installed = $gpm->getInstalledPlugins();
+        $updatable = $gpm->getUpdatablePlugins();
+
+        $plugins = [];
+        foreach ($installed as $slug => $plugin) {
+            $data = $this->serializer->serialize($plugin, ['type' => 'plugin', 'installed' => true]);
+            if (isset($updatable[$slug])) {
+                $data['available_version'] = $updatable[$slug]->available;
+                $data['updatable'] = true;
+            } else {
+                $data['updatable'] = false;
+            }
+
+            // Where this plugin keeps its settings, if it says they are drawn
+            // on an admin page — its own, or the page of a plugin it extends.
+            // The Plugins list uses it to send Configure straight there
+            // instead of to a second copy of the same form.
+            $data += $this->pluginSettingsTarget($slug, $request);
+
+            $plugins[] = $data;
+        }
+
+        return ApiResponse::create($plugins);
+    }
+
+    /**
+     * GET /gpm/plugins/{slug} - Get details for a specific installed plugin.
+     */
+    public function plugin(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        // Package name/description may be translation keys; resolve them against
+        // the caller's admin language (#39).
+        $this->primeAdminLanguages($request);
+
+        $slug = $this->getRouteParam($request, 'slug');
+        $gpm = $this->getGpm();
+
+        $plugin = $gpm->getInstalledPlugin($slug);
+        if (!$plugin) {
+            throw new NotFoundException("Plugin '{$slug}' is not installed.");
+        }
+
+        $data = $this->serializer->serialize($plugin, ['type' => 'plugin', 'installed' => true]);
+
+        if ($gpm->isPluginUpdatable($slug)) {
+            $updatable = $gpm->getUpdatablePlugins();
+            $data['available_version'] = $updatable[$slug]->available ?? null;
+            $data['updatable'] = true;
+        } else {
+            $data['updatable'] = false;
+        }
+
+        // Discover custom admin-next field components
+        $customFields = $this->discoverCustomFields($slug, 'plugins');
+        if ($customFields) {
+            $data['custom_fields'] = $customFields;
+        }
+
+        // Where this plugin keeps its settings — see plugins() above.
+        $data += $this->pluginSettingsTarget($slug, $request);
+
+        return $this->respondWithConditionalEtag($request, $data);
+    }
+
+    /**
+     * GET /gpm/themes - List all installed themes with update status.
+     */
+    public function themes(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        // Package name/description may be translation keys; resolve them against
+        // the caller's admin language (#39).
+        $this->primeAdminLanguages($request);
+
+        $gpm = $this->getGpm();
+        $installed = $gpm->getInstalledThemes();
+        $updatable = $gpm->getUpdatableThemes();
+
+        $themes = [];
+        foreach ($installed as $slug => $theme) {
+            $data = $this->serializer->serialize($theme, ['type' => 'theme', 'installed' => true]);
+            if (isset($updatable[$slug])) {
+                $data['available_version'] = $updatable[$slug]->available;
+                $data['updatable'] = true;
+            } else {
+                $data['updatable'] = false;
+            }
+            $images = $this->getThemeImages($slug);
+            $data['thumbnail'] = $images['thumbnail'];
+            $data['screenshot'] = $images['screenshot'];
+            $themes[] = $data;
+        }
+
+        return ApiResponse::create($themes);
+    }
+
+    /**
+     * GET /gpm/themes/{slug} - Get details for a specific installed theme.
+     */
+    public function theme(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        // Package name/description may be translation keys; resolve them against
+        // the caller's admin language (#39).
+        $this->primeAdminLanguages($request);
+
+        $slug = $this->getRouteParam($request, 'slug');
+        $gpm = $this->getGpm();
+
+        $theme = $gpm->getInstalledTheme($slug);
+        if (!$theme) {
+            throw new NotFoundException("Theme '{$slug}' is not installed.");
+        }
+
+        $data = $this->serializer->serialize($theme, ['type' => 'theme', 'installed' => true]);
+
+        if ($gpm->isThemeUpdatable($slug)) {
+            $updatable = $gpm->getUpdatableThemes();
+            $data['available_version'] = $updatable[$slug]->available ?? null;
+            $data['updatable'] = true;
+        } else {
+            $data['updatable'] = false;
+        }
+
+        $images = $this->getThemeImages($slug);
+        $data['thumbnail'] = $images['thumbnail'];
+        $data['screenshot'] = $images['screenshot'];
+
+        // Discover custom admin-next field components (same as plugins)
+        $customFields = $this->discoverCustomFields($slug, 'themes');
+        if ($customFields) {
+            $data['custom_fields'] = $customFields;
+        }
+
+        return $this->respondWithConditionalEtag($request, $data);
+    }
+
+    /**
+     * GET /gpm/updates - Check for available updates (plugins, themes, grav).
+     */
+    public function updates(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        // Package name/description may be translation keys; resolve them against
+        // the caller's admin language (#39).
+        $this->primeAdminLanguages($request);
+
+        $query = $request->getQueryParams();
+        $flush = filter_var($query['flush'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        $gpm = $this->getGpm($flush);
+        $updatable = $gpm->getUpdatable();
+        $gravInfo = $gpm->getGrav();
+
+        $gravUpdatable = $gravInfo ? $gravInfo->isUpdatable() : false;
+        $total = ($updatable['total'] ?? 0) + ($gravUpdatable ? 1 : 0);
+
+        $data = [
+            'grav' => [
+                'current' => GRAV_VERSION,
+                'available' => $gravInfo ? $gravInfo->getVersion() : null,
+                'updatable' => $gravUpdatable,
+                'date' => $gravInfo ? $gravInfo->getDate() : null,
+                'is_symlink' => $gravInfo ? $gravInfo->isSymlink() : false,
+            ],
+            'plugins' => $this->serializer->serializeCollection(
+                $updatable['plugins'] ?? [],
+                ['type' => 'plugin', 'installed' => true]
+            ),
+            'themes' => $this->serializer->serializeCollection(
+                $updatable['themes'] ?? [],
+                ['type' => 'theme', 'installed' => true]
+            ),
+            'total' => $total,
+            'installed' => $gpm->countInstalled(),
+        ];
+
+        return ApiResponse::create($data);
+    }
+
+    /**
+     * POST /gpm/install - Install a plugin or theme by slug.
+     */
+    public function install(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_WRITE);
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['package']);
+
+        $package = $body['package'];
+        $type = $body['type'] ?? 'plugin';
+
+        if (!in_array($type, ['plugin', 'theme'], true)) {
+            throw new ValidationException("Invalid package type '{$type}'. Must be 'plugin' or 'theme'.");
+        }
+
+        // Check if already installed
+        $gpm = $this->getGpm();
+        $alreadyInstalled = $type === 'plugin'
+            ? $gpm->isPluginInstalled($package)
+            : $gpm->isThemeInstalled($package);
+
+        if ($alreadyInstalled) {
+            throw new ValidationException(ucfirst($type) . " '{$package}' is already installed. Use the update endpoint to update it.");
+        }
+
+        $license = $body['license'] ?? null;
+        if ($license && !Licenses::validate($license)) {
+            throw new ValidationException(
+                "That does not look like a licence key. Paste the key exactly as the store sent it."
+            );
+        }
+
+        $repoPackage = $gpm->findPackage($package, true);
+
+        // A licence is only filed once the slug names a real package, and it
+        // is taken back out if the install then fails: otherwise a typo or a
+        // refused download leaves a key in licenses.yaml under a slug nothing
+        // uses. It has to be on file before the download, though — the
+        // installer reads it from there (Licenses::forPackage) to fetch a
+        // premium zip.
+        $licenseSlug = null;
+        $previousLicense = '';
+        if ($license && $repoPackage) {
+            $licenseSlug = (string) ($repoPackage->slug ?? $package);
+            $previousLicense = $this->readLicense($licenseSlug);
+            $this->storeLicense($licenseSlug, $license);
+        }
+
+        $installed = false;
+        try {
+            $response = $this->runInstall($gpm, $repoPackage, $package, $type);
+            $installed = true;
+
+            return $response;
+        } finally {
+            if (!$installed && $licenseSlug !== null) {
+                $this->storeLicense($licenseSlug, $previousLicense !== '' ? $previousLicense : null);
+            }
+        }
+    }
+
+    /**
+     * The install itself, once the request is validated and any licence the
+     * caller sent is on file. Split out of install() so a failure anywhere in
+     * here can put licenses.yaml back the way it was.
+     */
+    private function runInstall(GPM $gpm, ?object $repoPackage, mixed $package, string $type): ResponseInterface
+    {
+        // Check if premium package has a license available. A package sold
+        // inside a wider licence is covered by the key filed under that
+        // licence's product, so the gate asks the same question the download
+        // proxy does rather than insisting on a key filed under this slug.
+        if ($repoPackage && !empty($repoPackage->premium) && !Licenses::forPackage($repoPackage)) {
+            throw new ValidationException(
+                "'{$package}' is a premium package and requires a license. Pass a 'license' field in the request body, or upload a license via the license-manager plugin/API."
+            );
+        }
+
+        $this->fireEvent('onApiBeforePackageInstall', [
+            'package' => $package,
+            'type' => $type,
+        ]);
+
+        try {
+            $gpm->checkPackagesCanBeInstalled([$package]);
+            $dependencies = $gpm->getDependencies([$package]);
+        } catch (\Throwable $e) {
+            throw new ValidationException($this->stripGpmColorTags($e->getMessage()));
+        }
+
+        $depsToInstall = [];
+        foreach ($dependencies as $slug => $action) {
+            if ($action === 'install' || $action === 'update') {
+                $depsToInstall[] = (string) $slug;
+            }
+        }
+
+        // Install each dependency individually so we can report exactly which
+        // ones succeeded if a later one fails partway through.
+        $installedDeps = [];
+        foreach ($depsToInstall as $depSlug) {
+            try {
+                $depResult = $this->installPackage($depSlug, ['theme' => false]);
+            } catch (\Throwable $e) {
+                throw new ApiException(
+                    500,
+                    'Installation Failed',
+                    $this->partialFailureMessage(
+                        sprintf(
+                            "Failed to install dependency '%s' for %s '%s': %s",
+                            $depSlug,
+                            $type,
+                            $package,
+                            $this->stripGpmColorTags($e->getMessage())
+                        ),
+                        $installedDeps
+                    )
+                );
+            }
+            if ($depResult !== true && !is_string($depResult)) {
+                throw new ApiException(
+                    500,
+                    'Installation Failed',
+                    $this->partialFailureMessage(
+                        "Failed to install dependency '{$depSlug}' for {$type} '{$package}'.",
+                        $installedDeps
+                    )
+                );
+            }
+            $installedDeps[] = $depSlug;
+        }
+
+        try {
+            $result = $this->installPackage($package, [
+                'theme' => $type === 'theme',
+                'install_deps' => false,
+            ]);
+        } catch (\Throwable $e) {
+            throw new ApiException(
+                500,
+                'Installation Failed',
+                $this->partialFailureMessage(
+                    $this->stripGpmColorTags($e->getMessage()),
+                    $installedDeps
+                )
+            );
+        }
+
+        if ($result !== true && !is_string($result)) {
+            throw new ApiException(500, 'Installation Failed', "Failed to install {$type} '{$package}'.");
+        }
+
+        $this->fireEvent('onApiPackageInstalled', [
+            'package' => $package,
+            'type' => $type,
+            'dependencies' => $installedDeps,
+        ]);
+
+        $tags = $type === 'plugin'
+            ? ['plugins:create:' . $package, 'plugins:list', 'gpm:update']
+            : ['themes:create:' . $package, 'themes:list', 'gpm:update'];
+        foreach ($installedDeps as $depSlug) {
+            $tags[] = 'plugins:create:' . $depSlug;
+        }
+        if (!empty($installedDeps)) {
+            $tags[] = 'plugins:list';
+        }
+
+        $message = ucfirst($type) . " '{$package}' installed successfully.";
+        if (!empty($installedDeps)) {
+            $message .= ' Dependencies installed: ' . implode(', ', $installedDeps) . '.';
+        }
+
+        return ApiResponse::create(
+            [
+                'message' => $message,
+                'package' => $package,
+                'type' => $type,
+                'dependencies' => $installedDeps,
+            ],
+            201,
+            $this->invalidationHeaders(array_values(array_unique($tags))),
+        );
+    }
+
+    /**
+     * POST /gpm/remove - Remove a plugin or theme.
+     */
+    public function remove(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_WRITE);
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['package']);
+
+        $package = $body['package'];
+
+        // Check if the package is installed
+        $gpm = $this->getGpm();
+        $isPlugin = $gpm->isPluginInstalled($package);
+        $isTheme = $gpm->isThemeInstalled($package);
+
+        if (!$isPlugin && !$isTheme) {
+            throw new NotFoundException("Package '{$package}' is not installed.");
+        }
+
+        $type = $isPlugin ? 'plugin' : 'theme';
+
+        $this->fireEvent('onApiBeforePackageRemove', [
+            'package' => $package,
+            'type' => $type,
+        ]);
+
+        try {
+            $result = $this->uninstallPackage($package, []);
+        } catch (\Throwable $e) {
+            throw new ApiException(500, 'Removal Failed', $this->stripGpmColorTags($e->getMessage()));
+        }
+
+        if ($result !== true) {
+            $message = is_string($result) ? $result : "Failed to remove {$type} '{$package}'.";
+            throw new ApiException(500, 'Removal Failed', $message);
+        }
+
+        $this->fireEvent('onApiPackageRemoved', [
+            'package' => $package,
+            'type' => $type,
+        ]);
+
+        $tags = $type === 'plugin'
+            ? ['plugins:delete:' . $package, 'plugins:list', 'gpm:update']
+            : ['themes:delete:' . $package, 'themes:list', 'gpm:update'];
+
+        return ApiResponse::noContent($this->invalidationHeaders($tags));
+    }
+
+    /**
+     * POST /gpm/update - Update a specific plugin or theme.
+     */
+    public function update(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_WRITE);
+
+        $body = $this->getRequestBody($request);
+        $this->requireFields($body, ['package']);
+
+        $package = $body['package'];
+
+        $gpm = $this->getGpm();
+
+        // Not installed at all is a missing resource (404); installed but
+        // already current is a request we can't act on (422). Deciding the
+        // type only after that check means `type` always names what is
+        // actually on disk.
+        $isTheme = $gpm->isThemeInstalled($package);
+        if (!$isTheme && !$gpm->isPluginInstalled($package)) {
+            throw new NotFoundException("Package '{$package}' is not installed.");
+        }
+        $type = $isTheme ? 'theme' : 'plugin';
+
+        if (!$gpm->isUpdatable($package)) {
+            throw new ValidationException(ucfirst($type) . " '{$package}' is already up to date.");
+        }
+
+        $this->fireEvent('onApiBeforePackageUpdate', [
+            'package' => $package,
+            'type' => $type,
+        ]);
+
+        try {
+            $gpm->checkPackagesCanBeInstalled([$package]);
+            $dependencies = $gpm->getDependencies([$package]);
+        } catch (\Throwable $e) {
+            throw new ValidationException($this->stripGpmColorTags($e->getMessage()));
+        }
+
+        $depsToInstall = [];
+        foreach ($dependencies as $slug => $action) {
+            if ($action === 'install' || $action === 'update') {
+                $depsToInstall[] = (string) $slug;
+            }
+        }
+
+        // Install each dependency individually so partial success is reportable.
+        $installedDeps = [];
+        foreach ($depsToInstall as $depSlug) {
+            try {
+                $depResult = $this->installPackage($depSlug, ['theme' => false]);
+            } catch (\Throwable $e) {
+                throw new ApiException(
+                    500,
+                    'Update Failed',
+                    $this->partialFailureMessage(
+                        sprintf(
+                            "Failed to install dependency '%s' for '%s': %s",
+                            $depSlug,
+                            $package,
+                            $this->stripGpmColorTags($e->getMessage())
+                        ),
+                        $installedDeps
+                    )
+                );
+            }
+            if ($depResult !== true && !is_string($depResult)) {
+                throw new ApiException(
+                    500,
+                    'Update Failed',
+                    $this->partialFailureMessage(
+                        "Failed to install dependency '{$depSlug}' for '{$package}'.",
+                        $installedDeps
+                    )
+                );
+            }
+            $installedDeps[] = $depSlug;
+        }
+
+        try {
+            $result = $this->updatePackage($package, [
+                'theme' => $isTheme,
+                'install_deps' => false,
+            ]);
+        } catch (\Throwable $e) {
+            throw new ApiException(
+                500,
+                'Update Failed',
+                $this->partialFailureMessage(
+                    $this->stripGpmColorTags($e->getMessage()),
+                    $installedDeps
+                )
+            );
+        }
+
+        if ($result !== true && !is_string($result)) {
+            throw new ApiException(
+                500,
+                'Update Failed',
+                $this->partialFailureMessage("Failed to update '{$package}'.", $installedDeps)
+            );
+        }
+
+        $this->fireEvent('onApiPackageUpdated', [
+            'package' => $package,
+            'type' => $type,
+            'dependencies' => $installedDeps,
+        ]);
+
+        $tags = [
+            $type === 'theme' ? 'themes:update:' . $package : 'plugins:update:' . $package,
+            $type === 'theme' ? 'themes:list' : 'plugins:list',
+            'gpm:update',
+        ];
+        foreach ($installedDeps as $depSlug) {
+            $tags[] = 'plugins:create:' . $depSlug;
+        }
+        if (!empty($installedDeps)) {
+            $tags[] = 'plugins:list';
+        }
+
+        $message = "Package '{$package}' updated successfully.";
+        if (!empty($installedDeps)) {
+            $message .= ' Dependencies installed: ' . implode(', ', $installedDeps) . '.';
+        }
+
+        return ApiResponse::create(
+            [
+                'message' => $message,
+                'package' => $package,
+                'type' => $type,
+                'dependencies' => $installedDeps,
+            ],
+            200,
+            $this->invalidationHeaders(array_values(array_unique($tags))),
+        );
+    }
+
+    /**
+     * POST /gpm/update-all - Update all updatable packages.
+     *
+     * Each package goes through the same dependency validation as the per-package
+     * `update` endpoint: GPM-registered Grav/PHP requirements must be satisfied,
+     * and any plugin-deps that themselves need an update are processed first.
+     * Packages whose requirements aren't met land in `failed[]` with a
+     * toast-friendly message; packages already brought current as a cascade dep
+     * of a prior iteration land in `skipped[]`.
+     */
+    public function updateAll(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_WRITE);
+
+        $gpm = $this->getGpm(true);
+        $updatable = $gpm->getUpdatable();
+
+        $results = ['updated' => [], 'failed' => [], 'skipped' => []];
+        $cascadedDeps = [];
+
+        $packages = [];
+        foreach (array_keys($updatable['plugins'] ?? []) as $slug) {
+            $packages[] = ['slug' => (string) $slug, 'isTheme' => false];
+        }
+        foreach (array_keys($updatable['themes'] ?? []) as $slug) {
+            $packages[] = ['slug' => (string) $slug, 'isTheme' => true];
+        }
+
+        foreach ($packages as ['slug' => $slug, 'isTheme' => $isTheme]) {
+            // A prior iteration may have already cascaded this package as a dep.
+            // We can't reuse $gpm->isUpdatable() to detect this: the initial
+            // $gpm->getUpdatable() call above mutates the shared Remote\Package
+            // ::$version (Grav core's CachedCollection holds Remote\Packages
+            // statically, and getUpdatablePlugins() rewrites $version to the
+            // local version on hit). Subsequent isUpdatable() reads then see
+            // remote==local and report "not updatable" for everything.
+            if (isset($cascadedDeps[$slug])) {
+                $results['skipped'][] = ['package' => $slug, 'reason' => 'already up to date (installed as a dependency)'];
+                continue;
+            }
+
+            try {
+                $gpm->checkPackagesCanBeInstalled([$slug]);
+                $dependencies = $gpm->getDependencies([$slug]);
+            } catch (\Throwable $e) {
+                $results['failed'][] = [
+                    'package' => $slug,
+                    'error' => $this->stripGpmColorTags($e->getMessage()),
+                ];
+                continue;
+            }
+
+            $depsToInstall = [];
+            foreach ($dependencies as $depSlug => $action) {
+                if ($action === 'install' || $action === 'update') {
+                    $depsToInstall[] = (string) $depSlug;
+                }
+            }
+
+            $installedDeps = [];
+            $depFailed = false;
+            foreach ($depsToInstall as $depSlug) {
+                try {
+                    $depResult = $this->installPackage($depSlug, ['theme' => false]);
+                } catch (\Throwable $e) {
+                    $results['failed'][] = [
+                        'package' => $slug,
+                        'error' => $this->partialFailureMessage(
+                            sprintf(
+                                "Failed to install dependency '%s': %s",
+                                $depSlug,
+                                $this->stripGpmColorTags($e->getMessage())
+                            ),
+                            $installedDeps
+                        ),
+                    ];
+                    $depFailed = true;
+                    break;
+                }
+                if ($depResult !== true && !is_string($depResult)) {
+                    $results['failed'][] = [
+                        'package' => $slug,
+                        'error' => $this->partialFailureMessage("Failed to install dependency '{$depSlug}'.", $installedDeps),
+                    ];
+                    $depFailed = true;
+                    break;
+                }
+                $installedDeps[] = $depSlug;
+                $cascadedDeps[$depSlug] = true;
+            }
+
+            if ($depFailed) {
+                continue;
+            }
+
+            try {
+                $result = $this->updatePackage($slug, [
+                    'theme' => $isTheme,
+                    'install_deps' => false,
+                ]);
+            } catch (\Throwable $e) {
+                $results['failed'][] = [
+                    'package' => $slug,
+                    'error' => $this->partialFailureMessage(
+                        $this->stripGpmColorTags($e->getMessage()),
+                        $installedDeps
+                    ),
+                ];
+                continue;
+            }
+
+            if ($result !== true && !is_string($result)) {
+                $results['failed'][] = [
+                    'package' => $slug,
+                    'error' => $this->partialFailureMessage("Failed to update '{$slug}'.", $installedDeps),
+                ];
+                continue;
+            }
+
+            $results['updated'][] = $slug;
+        }
+
+        // Surface cascaded deps as a separate field so callers can show "also updated as deps: x, y".
+        $results['cascaded_dependencies'] = array_values(array_keys($cascadedDeps));
+
+        return ApiResponse::create(
+            $results,
+            200,
+            $this->invalidationHeaders(['plugins:list', 'themes:list', 'gpm:update']),
+        );
+    }
+
+    /**
+     * POST /gpm/upgrade - Self-upgrade Grav core.
+     */
+    public function upgrade(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_WRITE);
+
+        $gpm = $this->getGpm(true);
+        $gravInfo = $gpm->getGrav();
+
+        if (!$gravInfo || !$gravInfo->isUpdatable()) {
+            throw new ValidationException('Grav is already at the latest version.');
+        }
+
+        if ($gravInfo->isSymlink()) {
+            throw new ValidationException('Cannot upgrade Grav when installed via symlink.');
+        }
+
+        $body = $this->getRequestBody($request);
+        $override = !empty($body['override']);
+
+        $this->fireEvent('onApiBeforeGravUpgrade', [
+            'current_version' => GRAV_VERSION,
+            'available_version' => $gravInfo->getVersion(),
+        ]);
+
+        try {
+            $result = GpmService::selfupgrade(['override' => $override]);
+        } catch (\Throwable $e) {
+            $this->grav['log']->error('[api] Grav self-upgrade failed: ' . $e->getMessage());
+            throw new ApiException(500, 'Upgrade Failed', $e->getMessage(), [], $e);
+        }
+
+        if (!$result) {
+            $report = GpmService::getLastPreflightReport();
+            $blocking = $report['blocking'] ?? [];
+
+            // Recoverable: preflight blocked the upgrade and the caller can act on it
+            // (disable the offending packages, or retry with {"override": true}).
+            if (!$override && !empty($blocking)) {
+                return ApiResponse::create([
+                    'status' => 'preflight_failed',
+                    'message' => 'Upgrade blocked by preflight checks.',
+                    'blocking' => $blocking,
+                    'warnings' => $report['warnings'] ?? [],
+                    'incompatible_packages' => $report['incompatible_packages'] ?? [],
+                    'can_override' => true,
+                ], 409);
+            }
+
+            $detail = GpmService::getLastError() ?: 'Failed to upgrade Grav core.';
+            $this->grav['log']->error('[api] Grav self-upgrade failed: ' . $detail);
+            throw new ApiException(500, 'Upgrade Failed', $detail);
+        }
+
+        $this->fireEvent('onApiGravUpgraded', [
+            'previous_version' => GRAV_VERSION,
+            'new_version' => $gravInfo->getVersion(),
+        ]);
+
+        return ApiResponse::create(
+            [
+                'message' => 'Grav upgraded successfully.',
+                'previous_version' => GRAV_VERSION,
+                'new_version' => $gravInfo->getVersion(),
+            ],
+            200,
+            $this->invalidationHeaders(['grav:update', 'gpm:update']),
+        );
+    }
+
+    /**
+     * POST /gpm/direct-install - Install from URL or uploaded zip.
+     */
+    public function directInstall(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_WRITE);
+
+        $body = $this->getRequestBody($request);
+
+        // Support URL-based install
+        if (isset($body['url'])) {
+            // Only a web address. GpmService::directInstall() treats anything
+            // that isn't a remote URL as a path on this server and copies it,
+            // so without this check any ZIP the web server can read (a backup
+            // under backup://, another site's upload) could be installed as a
+            // package. A ZIP from the caller's own machine comes in as `file`.
+            $packageFile = $body['url'];
+            if (!is_string($packageFile) || !$this->isWebUrl($packageFile)) {
+                throw new ValidationException('The "url" field must be an http:// or https:// address. Upload a ZIP from your computer as "file" instead.');
+            }
+        } else {
+            // Check for uploaded file
+            $uploadedFiles = $request->getUploadedFiles();
+            $file = $uploadedFiles['file'] ?? null;
+
+            if (!$file || $file->getError() !== UPLOAD_ERR_OK) {
+                throw new ValidationException('Either a "url" field or an uploaded "file" is required.');
+            }
+
+            // Move uploaded file to tmp
+            $tmpDir = $this->grav['locator']->findResource('tmp://', true, true);
+            $tmpFile = $tmpDir . '/api-upload-' . uniqid() . '.zip';
+            $file->moveTo($tmpFile);
+            $packageFile = $tmpFile;
+        }
+
+        try {
+            $result = GpmService::directInstall($packageFile);
+        } catch (\Throwable $e) {
+            // Clean up tmp file on error
+            if (isset($tmpFile) && file_exists($tmpFile)) {
+                @unlink($tmpFile);
+            }
+            throw new ApiException(500, 'Installation Failed', $e->getMessage());
+        }
+
+        // Clean up tmp file if we created one
+        if (isset($tmpFile) && file_exists($tmpFile)) {
+            @unlink($tmpFile);
+        }
+
+        if ($result !== true) {
+            $message = is_string($result) ? $result : 'Direct install failed.';
+            throw new ApiException(500, 'Installation Failed', $message);
+        }
+
+        return ApiResponse::create(
+            ['message' => 'Package installed successfully via direct install.'],
+            201,
+            $this->invalidationHeaders(['plugins:list', 'themes:list', 'gpm:update']),
+        );
+    }
+
+    /**
+     * GET /gpm/repository/plugins - List available plugins from GPM repository.
+     */
+    public function repositoryPlugins(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        // Package name/description may be translation keys; resolve them against
+        // the caller's admin language (#39).
+        $this->primeAdminLanguages($request);
+
+        $pagination = $this->getPagination($request);
+        // Allow fetching all repository packages (the install modal needs the full list)
+        $query = $request->getQueryParams();
+        if (isset($query['per_page']) && (int) $query['per_page'] > $pagination['per_page']) {
+            $requested = min(2000, (int) $query['per_page']);
+            $pagination['per_page'] = $requested;
+            $pagination['limit'] = $requested;
+            // getPagination() worked the offset out from the smaller, capped
+            // page size; page 2 must start after this page size, not that one.
+            $pagination['offset'] = ($pagination['page'] - 1) * $requested;
+        }
+        $gpm = $this->getGpm();
+
+        $repoPlugins = $gpm->getRepositoryPlugins();
+        if ($repoPlugins === null) {
+            throw new ApiException(502, 'Bad Gateway', 'Unable to reach GPM repository.');
+        }
+
+        $query = $request->getQueryParams();
+        $search = $query['q'] ?? null;
+
+        $allPlugins = [];
+        foreach ($repoPlugins as $slug => $plugin) {
+            if ($search && !$this->matchesSearch($plugin, $slug, $search)) {
+                continue;
+            }
+            $data = $this->serializer->serialize($plugin, ['type' => 'plugin']);
+            $data['installed'] = $gpm->isPluginInstalled($slug);
+            $allPlugins[] = $data;
+        }
+
+        $total = count($allPlugins);
+        $slice = array_slice($allPlugins, $pagination['offset'], $pagination['limit']);
+        $baseUrl = $this->getApiBaseUrl() . '/gpm/repository/plugins';
+
+        return ApiResponse::paginated(
+            data: $slice,
+            total: $total,
+            page: $pagination['page'],
+            perPage: $pagination['per_page'],
+            baseUrl: $baseUrl,
+            query: $request->getQueryParams(),
+        );
+    }
+
+    /**
+     * GET /gpm/repository/themes - List available themes from GPM repository.
+     */
+    public function repositoryThemes(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        // Package name/description may be translation keys; resolve them against
+        // the caller's admin language (#39).
+        $this->primeAdminLanguages($request);
+
+        $pagination = $this->getPagination($request);
+        $query = $request->getQueryParams();
+        if (isset($query['per_page']) && (int) $query['per_page'] > $pagination['per_page']) {
+            $requested = min(2000, (int) $query['per_page']);
+            $pagination['per_page'] = $requested;
+            $pagination['limit'] = $requested;
+            // getPagination() worked the offset out from the smaller, capped
+            // page size; page 2 must start after this page size, not that one.
+            $pagination['offset'] = ($pagination['page'] - 1) * $requested;
+        }
+        $gpm = $this->getGpm();
+
+        $repoThemes = $gpm->getRepositoryThemes();
+        if ($repoThemes === null) {
+            throw new ApiException(502, 'Bad Gateway', 'Unable to reach GPM repository.');
+        }
+
+        $query = $request->getQueryParams();
+        $search = $query['q'] ?? null;
+
+        $allThemes = [];
+        foreach ($repoThemes as $slug => $theme) {
+            if ($search && !$this->matchesSearch($theme, $slug, $search)) {
+                continue;
+            }
+            $data = $this->serializer->serialize($theme, ['type' => 'theme']);
+            $data['installed'] = $gpm->isThemeInstalled($slug);
+            $allThemes[] = $data;
+        }
+
+        $total = count($allThemes);
+        $slice = array_slice($allThemes, $pagination['offset'], $pagination['limit']);
+        $baseUrl = $this->getApiBaseUrl() . '/gpm/repository/themes';
+
+        return ApiResponse::paginated(
+            data: $slice,
+            total: $total,
+            page: $pagination['page'],
+            perPage: $pagination['per_page'],
+            baseUrl: $baseUrl,
+            query: $request->getQueryParams(),
+        );
+    }
+
+    /**
+     * GET /gpm/repository/{slug} - Get repository details for a package.
+     */
+    public function repositoryPackage(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        // Package name/description may be translation keys; resolve them against
+        // the caller's admin language (#39).
+        $this->primeAdminLanguages($request);
+
+        $slug = $this->getRouteParam($request, 'slug');
+        $gpm = $this->getGpm();
+
+        $package = $gpm->findPackage($slug, true);
+        if (!$package) {
+            throw new NotFoundException("Package '{$slug}' not found in GPM repository.");
+        }
+
+        $isPlugin = $gpm->getRepositoryPlugin($slug) !== null;
+        $type = $isPlugin ? 'plugin' : 'theme';
+
+        $data = $this->serializer->serialize($package, ['type' => $type]);
+        $data['installed'] = $isPlugin
+            ? $gpm->isPluginInstalled($slug)
+            : $gpm->isThemeInstalled($slug);
+
+        return ApiResponse::create($data);
+    }
+
+    /**
+     * GET /gpm/search - Search across all repository packages (plugins + themes).
+     */
+    public function search(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        // Package name/description may be translation keys; resolve them against
+        // the caller's admin language (#39).
+        $this->primeAdminLanguages($request);
+
+        $query = $request->getQueryParams();
+        $search = $query['q'] ?? null;
+
+        if (!$search || trim($search) === '') {
+            throw new ValidationException("The 'q' query parameter is required for search.");
+        }
+
+        $pagination = $this->getPagination($request);
+        $gpm = $this->getGpm();
+
+        $results = [];
+
+        $repoPlugins = $gpm->getRepositoryPlugins();
+        if ($repoPlugins) {
+            foreach ($repoPlugins as $slug => $plugin) {
+                if ($this->matchesSearch($plugin, $slug, $search)) {
+                    $data = $this->serializer->serialize($plugin, ['type' => 'plugin']);
+                    $data['installed'] = $gpm->isPluginInstalled($slug);
+                    $results[] = $data;
+                }
+            }
+        }
+
+        $repoThemes = $gpm->getRepositoryThemes();
+        if ($repoThemes) {
+            foreach ($repoThemes as $slug => $theme) {
+                if ($this->matchesSearch($theme, $slug, $search)) {
+                    $data = $this->serializer->serialize($theme, ['type' => 'theme']);
+                    $data['installed'] = $gpm->isThemeInstalled($slug);
+                    $results[] = $data;
+                }
+            }
+        }
+
+        $total = count($results);
+        $slice = array_slice($results, $pagination['offset'], $pagination['limit']);
+        $baseUrl = $this->getApiBaseUrl() . '/gpm/search';
+
+        return ApiResponse::paginated(
+            data: $slice,
+            total: $total,
+            page: $pagination['page'],
+            perPage: $pagination['per_page'],
+            baseUrl: $baseUrl,
+            query: $request->getQueryParams(),
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Get a GPM instance.
+     *
+     * Protected (not private) so test subclasses can return a mock GPM
+     * without instantiating the real one (which touches the filesystem
+     * and remote GPM repository on construction).
+     */
+    protected function getGpm(bool $refresh = false): GPM
+    {
+        return new GPM($refresh);
+    }
+
+    /**
+     * Install a package via GpmService. Wrapper exists so test subclasses
+     * can stub the install side-effect without calling the static service
+     * (which performs network downloads and filesystem writes).
+     *
+     * @param array<string, mixed> $options
+     * @return string|bool
+     */
+    protected function installPackage(string $slug, array $options)
+    {
+        return GpmService::install($slug, $options);
+    }
+
+    /**
+     * Update a package via GpmService. See installPackage() for rationale.
+     *
+     * @param array<string, mixed> $options
+     * @return string|bool
+     */
+    protected function updatePackage(string $slug, array $options)
+    {
+        return GpmService::update($slug, $options);
+    }
+
+    /**
+     * Remove a package via GpmService. See installPackage() for rationale.
+     *
+     * @param array<string, mixed> $options
+     * @return string|bool
+     */
+    protected function uninstallPackage(string $slug, array $options)
+    {
+        return GpmService::uninstall($slug, $options);
+    }
+
+    /**
+     * Strip Grav CLI color markup (e.g. <red>..</red>, <cyan>..</cyan>) from
+     * exception messages so they read cleanly in API responses.
+     */
+    private function stripGpmColorTags(string $message): string
+    {
+        return preg_replace(
+            '#</?(?:red|green|yellow|blue|magenta|cyan|white|black|light-red|light-green|light-yellow|light-blue|light-magenta|light-cyan|light-gray|dark-gray)>#i',
+            '',
+            $message
+        ) ?? $message;
+    }
+
+    /**
+     * Is this an absolute http(s) URL with a host?
+     */
+    private function isWebUrl(string $url): bool
+    {
+        if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return false;
+        }
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+
+        return in_array($scheme, ['http', 'https'], true)
+            && (string) parse_url($url, PHP_URL_HOST) !== '';
+    }
+
+    /**
+     * The licence key filed under a slug, or '' when there is none. Wrapped,
+     * like installPackage(), so a test can stand in for licenses.yaml.
+     */
+    protected function readLicense(string $slug): string
+    {
+        $license = Licenses::get($slug);
+
+        return is_string($license) ? $license : '';
+    }
+
+    /**
+     * File a licence key under a slug, or remove the slug's key when $license
+     * is null.
+     */
+    protected function storeLicense(string $slug, ?string $license): void
+    {
+        Licenses::set($slug, $license);
+    }
+
+    /**
+     * Refuse (404) a request for an admin-next script of a plugin that is not
+     * enabled. A disabled plugin's code is not meant to run anywhere,
+     * admin included, and nothing in Admin Next asks for a disabled plugin's
+     * page, widget, panel, modal or report: those are only offered through
+     * events a disabled plugin never answers.
+     */
+    private function requireEnabledPlugin(string $slug): void
+    {
+        if (!$this->config->get("plugins.{$slug}.enabled", false)) {
+            throw new NotFoundException("Plugin '{$slug}' is not enabled.");
+        }
+    }
+
+    /**
+     * Answer a GET with its ETag, or with an empty 304 when the caller already
+     * holds that version (If-None-Match).
+     */
+    private function respondWithConditionalEtag(ServerRequestInterface $request, mixed $data): ResponseInterface
+    {
+        $etag = $this->generateEtag($data);
+        if ($this->etagMatches($request->getHeaderLine('If-None-Match'), '"' . $etag . '"')) {
+            return new \Grav\Framework\Psr7\Response(304, ['ETag' => '"' . $etag . '"'], '');
+        }
+
+        return $this->respondWithEtag($data, etag: $etag);
+    }
+
+    /**
+     * Append a note about dependencies that were already installed before the
+     * failure, so callers can see the partial state without a separate probe.
+     *
+     * @param string[] $installedDeps
+     */
+    private function partialFailureMessage(string $message, array $installedDeps): string
+    {
+        if (empty($installedDeps)) {
+            return $message;
+        }
+
+        return $message . ' Dependencies already installed before failure: ' . implode(', ', $installedDeps) . '.';
+    }
+
+    /**
+     * Resolve thumbnail and screenshot URLs for an installed theme.
+     * Returns ['thumbnail' => url|null, 'screenshot' => url|null].
+     */
+    private function getThemeImages(string $slug): array
+    {
+        $result = ['thumbnail' => null, 'screenshot' => null];
+
+        try {
+            $path = $this->resolvePackagePath($slug, 'themes');
+        } catch (NotFoundException) {
+            return $result;
+        }
+
+        // Thumbnail (small, capped at 500px for list views)
+        foreach (['thumbnail.jpg', 'thumbnail.png'] as $file) {
+            $filename = $this->thumbSmall->thumbnailFilename($path . '/' . $file);
+            if ($filename) {
+                $result['thumbnail'] = $this->getApiBaseUrl() . '/thumbnails/' . $filename;
+                break;
+            }
+        }
+
+        // Screenshot (large, capped at 2000px for detail/preview)
+        foreach (['screenshot.jpg', 'screenshot.png'] as $file) {
+            $filename = $this->thumbLarge->thumbnailFilename($path . '/' . $file);
+            if ($filename) {
+                $result['screenshot'] = $this->getApiBaseUrl() . '/thumbnails/' . $filename;
+                break;
+            }
+        }
+
+        // Fall back: if no thumbnail but screenshot exists, use screenshot for both
+        if (!$result['thumbnail'] && $result['screenshot']) {
+            $result['thumbnail'] = $result['screenshot'];
+        }
+        // Vice versa
+        if (!$result['screenshot'] && $result['thumbnail']) {
+            $result['screenshot'] = $result['thumbnail'];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Check if a package matches a search query (slug, name, description, author, keywords).
+     */
+    private function matchesSearch(object $package, string $slug, string $search): bool
+    {
+        $search = strtolower($search);
+
+        // Match against slug
+        if (str_contains(strtolower($slug), $search)) {
+            return true;
+        }
+
+        // Match against name
+        $name = $package->name ?? '';
+        if ($name && str_contains(strtolower($name), $search)) {
+            return true;
+        }
+
+        // Match against description
+        $description = $package->description ?? '';
+        if ($description && str_contains(strtolower($description), $search)) {
+            return true;
+        }
+
+        // Match against author name
+        $author = $package->author ?? null;
+        if ($author) {
+            $authorName = is_object($author) ? ($author->name ?? '') : ($author['name'] ?? '');
+            if ($authorName && str_contains(strtolower($authorName), $search)) {
+                return true;
+            }
+        }
+
+        // Match against keywords
+        $keywords = $package->keywords ?? [];
+        if (is_array($keywords)) {
+            foreach ($keywords as $keyword) {
+                if (str_contains(strtolower($keyword), $search)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * GET /gpm/plugins/{slug}/readme - Get plugin README.md content.
+     * GET /gpm/themes/{slug}/readme
+     */
+    public function readme(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        $slug = $this->getRouteParam($request, 'slug');
+        $type = str_contains($request->getUri()->getPath(), '/themes/') ? 'themes' : 'plugins';
+
+        $path = $this->resolvePackagePath($slug, $type);
+        $file = $path . '/README.md';
+
+        if (!file_exists($file)) {
+            throw new NotFoundException("No README found for '{$slug}'.");
+        }
+
+        return ApiResponse::create([
+            'content' => file_get_contents($file),
+        ]);
+    }
+
+    /**
+     * GET /gpm/plugins/{slug}/changelog - Get plugin CHANGELOG.md content.
+     * GET /gpm/themes/{slug}/changelog
+     *
+     * With `?available=true` this returns what an update would bring instead:
+     * the GPM feed's entries newer than the installed version, as one markdown
+     * document (see gravChangelog() for the core equivalent).
+     */
+    public function changelog(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        $slug = $this->getRouteParam($request, 'slug');
+        $type = str_contains($request->getUri()->getPath(), '/themes/') ? 'themes' : 'plugins';
+
+        $path = $this->resolvePackagePath($slug, $type);
+
+        $query = $request->getQueryParams();
+        if (filter_var($query['available'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return $this->availableChangelog($slug, $type);
+        }
+
+        $file = $path . '/CHANGELOG.md';
+
+        if (!file_exists($file)) {
+            throw new NotFoundException("No changelog found for '{$slug}'.");
+        }
+
+        return ApiResponse::create([
+            'content' => file_get_contents($file),
+        ]);
+    }
+
+    /**
+     * GET /gpm/grav/changelog - Get the Grav core changelog for versions newer
+     * than the one currently installed, assembled into a single markdown doc.
+     */
+    public function gravChangelog(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, self::PERMISSION_READ);
+
+        $query = $request->getQueryParams();
+        $flush = filter_var($query['flush'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        $gravInfo = $this->getGpm($flush)->getGrav();
+
+        // Only show entries newer than the installed version.
+        $changelog = $gravInfo ? (array) $gravInfo->getChangelog(GRAV_VERSION) : [];
+
+        return ApiResponse::create([
+            'content' => $this->assembleChangelog($changelog),
+        ]);
+    }
+
+    /**
+     * What an update to an installed plugin/theme would change: the feed's
+     * changelog entries newer than the installed version, as one markdown doc.
+     */
+    private function availableChangelog(string $slug, string $type): ResponseInterface
+    {
+        $gpm = $this->getGpm();
+
+        $installed = $type === 'themes' ? $gpm->getInstalledTheme($slug) : $gpm->getInstalledPlugin($slug);
+        if (!$installed) {
+            throw new NotFoundException("Package '{$slug}' is not installed.");
+        }
+
+        $remote = $type === 'themes' ? $gpm->getRepositoryTheme($slug) : $gpm->getRepositoryPlugin($slug);
+        $installedVersion = (string) ($installed->version ?? '');
+
+        $changelog = [];
+        if ($remote && $installedVersion !== '' && !empty($remote->changelog)) {
+            $changelog = (array) $remote->getChangelog($installedVersion);
+        }
+
+        $content = $this->assembleChangelog($changelog);
+        if ($content === '') {
+            throw new NotFoundException("No newer changelog entries found for '{$slug}'.");
+        }
+
+        return ApiResponse::create([
+            'content' => $content,
+        ]);
+    }
+
+    /**
+     * Assemble feed changelog entries (version => entry) into one markdown doc,
+     * one `# v{version} ({date})` section per version.
+     *
+     * Each entry is either a markdown string or ['date' => ..., 'content' => markdown].
+     *
+     * @param array<string, mixed> $changelog
+     */
+    private function assembleChangelog(array $changelog): string
+    {
+        $parts = [];
+        foreach ($changelog as $version => $entry) {
+            $date = is_array($entry) ? ($entry['date'] ?? '') : '';
+            $body = is_array($entry) ? ($entry['content'] ?? '') : $entry;
+            $body = is_string($body) ? trim($body) : '';
+
+            $heading = "# v{$version}";
+            if ($date !== '') {
+                $heading .= " ({$date})";
+            }
+            $parts[] = "{$heading}\n\n{$body}";
+        }
+
+        return implode("\n\n", $parts);
+    }
+
+    /**
+     * Resolve the filesystem path for an installed package.
+     */
+    private function resolvePackagePath(string $slug, string $type): string
+    {
+        if (
+            $slug === ''
+            || $slug === '.'
+            || $slug === '..'
+            || str_contains($slug, '/')
+            || str_contains($slug, '\\')
+            || str_contains($slug, "\0")
+        ) {
+            throw new ValidationException("Invalid package slug '{$slug}'.");
+        }
+
+        $base = $type === 'themes' ? 'themes' : 'plugins';
+        $locator = $this->grav['locator'];
+        $path = $locator->findResource("{$base}://{$slug}", true);
+
+        // Honor configured package stream precedence (including multisite
+        // overlays). Retain the legacy user path when no package resolves.
+        if (!$path || !is_dir($path)) {
+            $path = $locator->findResource("user://{$base}/{$slug}", true);
+        }
+
+        if (!$path || !is_dir($path)) {
+            throw new NotFoundException("Package '{$slug}' not found.");
+        }
+
+        return $path;
+    }
+
+    /**
+     * Discover custom admin-next field web components shipped by a package.
+     *
+     * Convention: plugins place field components at admin-next/fields/{type}.js
+     * Each JS file should define a Custom Element that admin-next will load
+     * on demand when encountering an unknown field type.
+     *
+     * @return array<string, string>|null Map of field type → field type (admin-next only reads the
+     *                                    keys; the script comes from /gpm/{kind}/{slug}/field/{type}),
+     *                                    or null if none
+     */
+    private function discoverCustomFields(string $slug, string $type): ?array
+    {
+        try {
+            $path = $this->resolvePackagePath($slug, $type);
+        } catch (NotFoundException) {
+            return null;
+        }
+
+        $fieldsDir = $path . '/admin-next/fields';
+        if (!is_dir($fieldsDir)) {
+            return null;
+        }
+
+        $fields = [];
+        foreach (new \DirectoryIterator($fieldsDir) as $file) {
+            if ($file->isDot() || !$file->isFile()) {
+                continue;
+            }
+            if ($file->getExtension() === 'js') {
+                $fieldType = $file->getBasename('.js');
+                $fields[$fieldType] = $fieldType;
+            }
+        }
+
+        return $fields ?: null;
+    }
+
+    /**
+     * GET /custom-fields — Return all custom field registrations from all enabled plugins and themes.
+     *
+     * Returns a map of field type → { slug, kind } so admin-next can
+     * pre-populate the custom field registry at startup.
+     *
+     * Gated on `api.access`, like the field scripts it points to: admin-next
+     * loads it at boot for every account, and an editor whose page blueprint
+     * uses a plugin's field type needs this map to know the field exists,
+     * whether or not they can manage packages.
+     */
+    public function allCustomFields(ServerRequestInterface $request): ResponseInterface
+    {
+        return ApiResponse::create($this->allCustomFieldsData($request));
+    }
+
+    /**
+     * The payload of GET /custom-fields, shared with GET /admin-next/boot.
+     *
+     * @return array<string, array{slug: string, kind: string, v: string|null}>
+     */
+    public function allCustomFieldsData(ServerRequestInterface $request): array
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $gpm = $this->getGpm();
+        $allFields = [];
+
+        // Scan enabled plugins
+        foreach ($gpm->getInstalledPlugins() as $slug => $plugin) {
+            if (!$this->config->get("plugins.{$slug}.enabled", false)) {
+                continue;
+            }
+            $fields = $this->discoverCustomFields($slug, 'plugins');
+            if ($fields) {
+                foreach ($fields as $fieldType => $label) {
+                    // Provider kind lets admin-next fetch the script from the
+                    // correct /gpm/{kind}/{slug}/field/{type} route.
+                    // `v` versions the module URL (/admin-next/modules/...).
+                    $allFields[$fieldType] = ['slug' => $slug, 'kind' => 'plugins', 'v' => AdminModules::versionFor($this->grav, 'field', $slug, $fieldType)];
+                }
+            }
+        }
+
+        // Scan installed themes
+        foreach ($gpm->getInstalledThemes() as $slug => $theme) {
+            $fields = $this->discoverCustomFields($slug, 'themes');
+            if ($fields) {
+                foreach ($fields as $fieldType => $label) {
+                    $allFields[$fieldType] = ['slug' => $slug, 'kind' => 'themes', 'v' => AdminModules::versionFor($this->grav, 'field', $slug, $fieldType, 'themes')];
+                }
+            }
+        }
+
+        return $allFields;
+    }
+
+    /**
+     * GET /gpm/{plugins|themes}/{slug}/field/{type} - Serve a custom field web component JS.
+     *
+     * Returns the JavaScript file for a custom admin-next field component.
+     * The response is cached aggressively (1 year) since the content only
+     * changes when the plugin is updated.
+     */
+    public function customFieldScript(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $slug = $this->getRouteParam($request, 'slug');
+        $fieldType = $this->getRouteParam($request, 'type');
+        $pkgType = str_contains($request->getUri()->getPath(), '/themes/') ? 'themes' : 'plugins';
+
+        // Unlike the page/widget/panel/modal/report scripts, field scripts are
+        // served for a disabled plugin too: its settings form is edited before
+        // it is enabled, and that form can use the plugin's own field types.
+        $path = $this->resolvePackagePath($slug, $pkgType);
+        $file = $path . '/admin-next/fields/' . basename($fieldType) . '.js';
+
+        return $this->serveComponentScript($request, $file, "Custom field '{$fieldType}' not found for '{$slug}'.");
+    }
+
+    /**
+     * GET /gpm/{plugins|themes}/{slug}/fields - Serve ALL of a package's custom
+     * field web component scripts in one response, as a JSON map
+     * { fieldType: code }.
+     *
+     * The admin-next SPA fetches this once per plugin instead of one request per
+     * field type (seo-magic alone ships seven), then evaluates each field's code
+     * locally with the right element tag. Conditional-GET cached like the
+     * individual scripts, with a cheap stat-based ETag so a revalidation never
+     * reads the (collectively large) bundle.
+     */
+    public function customFieldBundle(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $slug = $this->getRouteParam($request, 'slug');
+        $pkgType = str_contains($request->getUri()->getPath(), '/themes/') ? 'themes' : 'plugins';
+
+        // Served for disabled plugins too; see customFieldScript().
+        $path = $this->resolvePackagePath($slug, $pkgType);
+        $dir = $path . '/admin-next/fields';
+
+        $files = is_dir($dir) ? (glob($dir . '/*.js') ?: []) : [];
+        sort($files);
+
+        // Stat-only validator: name + mtime + size per file. No content read, so
+        // a 304 stays cheap even though the bundle itself can be hundreds of KB.
+        $sigParts = [];
+        foreach ($files as $file) {
+            $sigParts[] = basename($file) . ':' . (@filemtime($file) ?: 0) . ':' . (@filesize($file) ?: 0);
+        }
+        $etag = '"' . md5(implode('|', $sigParts)) . '"';
+
+        $headers = [
+            'Content-Type' => 'application/json; charset=utf-8',
+            'Cache-Control' => 'private, no-cache',
+            'ETag' => $etag,
+        ];
+
+        if ($this->etagMatches($request->getHeaderLine('If-None-Match'), $etag)) {
+            return new \Grav\Framework\Psr7\Response(304, $headers, '');
+        }
+
+        $scripts = [];
+        foreach ($files as $file) {
+            $scripts[basename($file, '.js')] = file_get_contents($file);
+        }
+
+        return new \Grav\Framework\Psr7\Response(
+            200,
+            $headers,
+            json_encode($scripts, JSON_UNESCAPED_SLASHES),
+        );
+    }
+
+    /**
+     * GET /gpm/plugins/{slug}/page — Get plugin page definition.
+     *
+     * Resolution order:
+     * 1. Fire onApiPluginPageInfo event (plugin provides definition)
+     * 2. Filesystem: admin-next/pages/{slug}.yaml definition file
+     * 3. Filesystem: admin-next/pages/{slug}.js → infer component mode
+     * 4. 404
+     */
+    public function pluginPage(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $slug = $this->getRouteParam($request, 'slug');
+
+        $definition = $this->resolvePluginPageDefinition($slug, $this->getUser($request));
+        if ($definition) {
+            return ApiResponse::create($definition);
+        }
+
+        throw new NotFoundException("No admin page found for plugin '{$slug}'.");
+    }
+
+    /**
+     * A plugin's admin page definition, from the plugin itself or from disk.
+     *
+     * Resolution order:
+     * 1. onApiPluginPageInfo (the plugin hands one over)
+     * 2. admin-next/pages/{slug}.yaml
+     * 3. admin-next/pages/{slug}.js, which means component mode
+     *
+     * @param  mixed  $user  the account asking, passed to the event
+     * @return array<string, mixed>|null
+     */
+    private function resolvePluginPageDefinition(string $slug, mixed $user = null): ?array
+    {
+        $event = new Event([
+            'plugin' => $slug,
+            'definition' => null,
+            'user' => $user,
+        ]);
+        $this->grav->fireEvent('onApiPluginPageInfo', $event);
+
+        $definition = $event['definition'] ?: $this->discoverPluginPage($slug);
+        if (!$definition) {
+            return null;
+        }
+
+        // Does the plugin ship a page-level web component?
+        $definition['has_custom_component'] = $this->hasPluginPageScript($slug);
+        // Versions its module URL (/admin-next/modules/plugins/{slug}/page).
+        $definition['v'] = $definition['has_custom_component']
+            ? AdminModules::versionFor($this->grav, 'page', $slug)
+            : null;
+
+        // A page can say its settings live on itself, at a hash route inside
+        // its own screen — admin-next then sends /plugins/{slug} there rather
+        // than drawing a second copy of the same blueprint form. Only a hash
+        // route is accepted: this names a place inside a plugin's page, not
+        // somewhere else in the admin.
+        $route = $definition['settings_route'] ?? null;
+        $route = is_string($route) && str_starts_with(trim($route), '#') ? trim($route) : null;
+
+        // The page drawing those settings is the plugin's own unless the
+        // definition names another one. That is how an add-on with no admin
+        // page of its own gets its settings drawn inside the page of the
+        // plugin it extends: the host answers onApiPluginPageInfo for the
+        // add-on's slug and points at itself. The named plugin has to be
+        // installed and have an admin-next page, and there has to be a hash
+        // route to send people to — otherwise both keys go, because half of
+        // this pair is no use on its own.
+        $page = $definition['settings_page'] ?? null;
+        if ($page !== null) {
+            $page = is_string($page) ? trim($page) : '';
+            if ($page === '' || $route === null || !$this->hasPluginAdminPage($page)) {
+                $route = null;
+                $page = null;
+            }
+        }
+
+        if ($route !== null) {
+            $definition['settings_route'] = $route;
+        } else {
+            unset($definition['settings_route']);
+        }
+
+        if ($page !== null) {
+            $definition['settings_page'] = $page;
+        } else {
+            unset($definition['settings_page']);
+        }
+
+        return $definition;
+    }
+
+    /**
+     * Where a plugin keeps its settings: the hash route, and the slug of the
+     * plugin whose admin page draws them when that is not the plugin itself.
+     *
+     * Empty when the plugin has not said. Resolving the definition fires
+     * onApiPluginPageInfo, which is what lets a plugin answer for an add-on
+     * that has no admin page of its own.
+     *
+     * @return array<string, string>
+     */
+    private function pluginSettingsTarget(string $slug, ServerRequestInterface $request): array
+    {
+        $definition = $this->resolvePluginPageDefinition($slug, $this->getUser($request));
+        $route = $definition['settings_route'] ?? null;
+        if (!is_string($route)) {
+            return [];
+        }
+
+        $target = ['settings_route' => $route];
+
+        $page = $definition['settings_page'] ?? null;
+        if (is_string($page)) {
+            $target['settings_page'] = $page;
+        }
+
+        return $target;
+    }
+
+    /**
+     * Is this an installed plugin with an admin-next page of its own?
+     */
+    private function hasPluginAdminPage(string $slug): bool
+    {
+        try {
+            $path = $this->resolvePackagePath($slug, 'plugins');
+        } catch (NotFoundException | ValidationException) {
+            return false;
+        }
+
+        $pagesDir = $path . '/admin-next/pages/' . basename($slug);
+
+        return file_exists($pagesDir . '.js') || file_exists($pagesDir . '.yaml');
+    }
+
+    /**
+     * GET /gpm/plugins/{slug}/page-script — Serve a plugin page web component JS.
+     */
+    public function customPageScript(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $slug = $this->getRouteParam($request, 'slug');
+        $path = $this->resolvePackagePath($slug, 'plugins');
+        $this->requireEnabledPlugin($slug);
+        $file = $path . '/admin-next/pages/' . basename($slug) . '.js';
+
+        return $this->serveComponentScript($request, $file, "Page component not found for plugin '{$slug}'.");
+    }
+
+    /**
+     * GET /gpm/plugins/{slug}/widget-script — Serve a floating widget web component JS.
+     *
+     * Convention: admin-next/widgets/{slug}.js
+     */
+    public function widgetScript(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $slug = $this->getRouteParam($request, 'slug');
+        $path = $this->resolvePackagePath($slug, 'plugins');
+        $this->requireEnabledPlugin($slug);
+        $file = $path . '/admin-next/widgets/' . basename($slug) . '.js';
+
+        return $this->serveComponentScript($request, $file, "Widget component not found for plugin '{$slug}'.");
+    }
+
+    /**
+     * GET /gpm/plugins/{slug}/panel-script — Serve a context panel web component JS.
+     *
+     * Convention: admin-next/panels/{slug}.js
+     */
+    public function panelScript(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $slug = $this->getRouteParam($request, 'slug');
+        $path = $this->resolvePackagePath($slug, 'plugins');
+        $this->requireEnabledPlugin($slug);
+        $file = $path . '/admin-next/panels/' . basename($slug) . '.js';
+
+        return $this->serveComponentScript($request, $file, "Panel component not found for plugin '{$slug}'.");
+    }
+
+    /**
+     * GET /gpm/plugins/{slug}/modal-script/{modalId} — Serve a modal web component JS.
+     *
+     * Convention: admin-next/modals/{modalId}.js. A plugin can ship several
+     * distinct modals; each is mounted as `grav-{slug}--modal-{modalId}`.
+     */
+    public function modalScript(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $slug = $this->getRouteParam($request, 'slug');
+        $modalId = $this->getRouteParam($request, 'modalId');
+        $path = $this->resolvePackagePath($slug, 'plugins');
+        $this->requireEnabledPlugin($slug);
+        $file = $path . '/admin-next/modals/' . basename($modalId) . '.js';
+
+        return $this->serveComponentScript($request, $file, "Modal component '{$modalId}' not found for plugin '{$slug}'.");
+    }
+
+    /**
+     * GET /gpm/plugins/{slug}/report-script/{reportId} - Serve a report web component JS.
+     *
+     * Convention: admin-next/reports/{reportId}.js
+     */
+    public function reportScript(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.access');
+
+        $slug = $this->getRouteParam($request, 'slug');
+        $reportId = $this->getRouteParam($request, 'reportId');
+        $path = $this->resolvePackagePath($slug, 'plugins');
+        $this->requireEnabledPlugin($slug);
+        $file = $path . '/admin-next/reports/' . basename($reportId) . '.js';
+
+        return $this->serveComponentScript($request, $file, "Report component '{$reportId}' not found for plugin '{$slug}'.");
+    }
+
+    /**
+     * GET /admin-next/modules/{plugins|themes}/{slug}/{type}[/{name}]?tag=&v=
+     *
+     * Serve an admin-next web component as a same-origin ES module that Admin2
+     * imports directly, so its Content-Security-Policy never has to allow
+     * `blob:` scripts. The line that tells the module its element tag
+     * (`window.__GRAV_PAGE_TAG = "grav-foo--page";` and so on) is put in front
+     * here instead of in the browser. The tag comes from the `tag` query value
+     * and must be a custom element name; it is written with json_encode.
+     *
+     * Public: these files are served by the webserver from
+     * `user/plugins/<slug>/admin-next/` anyway, so a token protects nothing.
+     * Page, widget, panel, modal and report modules still need the plugin to be
+     * enabled, as on the authenticated routes; field modules are served for a
+     * disabled plugin and for themes, as there.
+     *
+     * A `v` that matches the file's current mtime-size gets a year of caching;
+     * any other request is revalidated with the ETag.
+     */
+    public function moduleScript(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = $this->getRouteParam($request, 'type');
+        $slug = $this->getRouteParam($request, 'slug');
+        $kind = str_contains($request->getUri()->getPath(), '/modules/themes/') ? 'themes' : 'plugins';
+
+        if (!isset(AdminModules::TYPES[$type]) || ($kind === 'themes' && $type !== 'field')) {
+            throw new NotFoundException("Unknown admin-next module type '{$type}'.");
+        }
+
+        $named = AdminModules::TYPES[$type]['named'];
+        $name = $named ? $this->getRouteParam($request, 'name') : null;
+        if ($named && ($name === null || !AdminModules::isValidName($name))) {
+            throw new ValidationException("Invalid module name.");
+        }
+
+        $query = $request->getQueryParams();
+        $tag = is_string($query['tag'] ?? null) ? $query['tag'] : '';
+        if (!AdminModules::isValidTag($tag)) {
+            throw new ValidationException("The 'tag' parameter must be a custom element name, such as grav-my-plugin--page.");
+        }
+
+        $path = $this->resolvePackagePath($slug, $kind);
+        if ($type !== 'field') {
+            $this->requireEnabledPlugin($slug);
+        }
+
+        $file = AdminModules::file($path, $type, $slug, $name);
+        $version = AdminModules::version($file);
+        if ($version === null) {
+            throw new NotFoundException("No admin-next {$type} module found for '{$slug}'.");
+        }
+
+        $etag = '"' . $version . '"';
+        $immutable = ($query['v'] ?? null) === $version;
+        $headers = [
+            'Content-Type' => 'text/javascript; charset=utf-8',
+            'X-Content-Type-Options' => 'nosniff',
+            // The URL changes whenever the file does (v), so a matching v is
+            // safe to keep for a year. Without one, store but revalidate.
+            'Cache-Control' => $immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
+            'ETag' => $etag,
+        ];
+        if ($immutable) {
+            // Replaces the long-past Expires that PHP's session start sends.
+            $headers['Expires'] = gmdate('D, d M Y H:i:s', time() + 31536000) . ' GMT';
+        }
+
+        if ($this->etagMatches($request->getHeaderLine('If-None-Match'), $etag)) {
+            return new \Grav\Framework\Psr7\Response(304, $headers, '');
+        }
+
+        return new \Grav\Framework\Psr7\Response(
+            200,
+            $headers,
+            AdminModules::prelude($type, $tag) . file_get_contents($file),
+        );
+    }
+
+    /**
+     * Serve an admin-next component script (custom field, widget, panel, page,
+     * modal or report) with conditional-GET caching.
+     *
+     * These files are immutable per plugin version, so we attach a content-hash
+     * ETag and answer If-None-Match with a 304. That lets the admin-next SPA —
+     * which fetches a whole fleet of these on every editor load — revalidate
+     * cheaply instead of re-downloading tens to hundreds of KB each time. A
+     * content hash (rather than mtime) means a rebuilt script is picked up
+     * immediately, which matters during plugin development.
+     */
+    protected function serveComponentScript(
+        ServerRequestInterface $request,
+        string $file,
+        string $notFoundMessage,
+    ): ResponseInterface {
+        if (!file_exists($file)) {
+            throw new NotFoundException($notFoundMessage);
+        }
+
+        // Cheap filesystem validator (mtime + size). Deliberately NOT a content
+        // hash: a conditional request must not read and hash the whole file —
+        // these scripts run to multiple MB and the editor revalidates a fleet of
+        // them on every load, so a 304 has to cost only a stat() or the burst
+        // exhausts PHP-FPM workers (503s). mtime changes on rebuild, so a script
+        // rebuilt during development still invalidates correctly.
+        $etag = sprintf('"%x-%x"', @filemtime($file) ?: 0, @filesize($file) ?: 0);
+
+        $headers = [
+            'Content-Type' => 'application/javascript; charset=utf-8',
+            // Store but always revalidate: an unchanged script costs only a 304,
+            // a changed one is served fresh.
+            'Cache-Control' => 'private, no-cache',
+            'ETag' => $etag,
+        ];
+
+        if ($this->etagMatches($request->getHeaderLine('If-None-Match'), $etag)) {
+            return new \Grav\Framework\Psr7\Response(304, $headers, '');
+        }
+
+        return new \Grav\Framework\Psr7\Response(200, $headers, file_get_contents($file));
+    }
+
+    /**
+     * Discover a plugin page definition from filesystem conventions.
+     *
+     * Checks for admin-next/pages/{slug}.yaml and admin-next/pages/{slug}.js
+     */
+    private function discoverPluginPage(string $slug): ?array
+    {
+        try {
+            $path = $this->resolvePackagePath($slug, 'plugins');
+        } catch (NotFoundException) {
+            return null;
+        }
+
+        $pagesDir = $path . '/admin-next/pages';
+        $yamlFile = $pagesDir . '/' . $slug . '.yaml';
+        $jsFile = $pagesDir . '/' . $slug . '.js';
+
+        // Try YAML definition
+        if (file_exists($yamlFile)) {
+            $data = \Grav\Common\Yaml::parse(file_get_contents($yamlFile));
+            if (is_array($data)) {
+                $data['has_custom_component'] = file_exists($jsFile);
+                return $data;
+            }
+        }
+
+        // Try JS component only (infer component mode)
+        if (file_exists($jsFile)) {
+            return [
+                'id' => $slug,
+                'plugin' => $slug,
+                'title' => ucwords(str_replace('-', ' ', $slug)),
+                'page_type' => 'component',
+                'has_custom_component' => true,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if a plugin ships a page-level web component.
+     */
+    private function hasPluginPageScript(string $slug): bool
+    {
+        try {
+            $path = $this->resolvePackagePath($slug, 'plugins');
+            return file_exists($path . '/admin-next/pages/' . basename($slug) . '.js');
+        } catch (NotFoundException) {
+            return false;
+        }
+    }
+}

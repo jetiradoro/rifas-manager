@@ -1,0 +1,1730 @@
+# Grav API Plugin
+
+A RESTful API for [Grav CMS](https://getgrav.org) that provides full headless access to your site's content, media, configuration, users, and system management.
+
+Built for the AI-native era — designed to work seamlessly with AI agents, MCP servers, CLI tools, mobile apps, and custom frontends.
+
+## Requirements
+
+- Grav CMS 2.0+
+- PHP 8.3+
+- Login Plugin 3.8+
+
+## Installation
+
+### GPM (preferred)
+
+```bash
+bin/gpm install api
+```
+
+### Manual
+
+1. Download or clone this repository into `user/plugins/api`
+2. Run `composer install` in the plugin directory
+3. Enable the plugin in Admin or via `user/config/plugins/api.yaml`
+
+## Quick Start
+
+### 1. Enable the Plugin
+
+```yaml
+# user/config/plugins/api.yaml
+enabled: true
+```
+
+### 2. Generate an API Key
+
+**Via CLI** (recommended for initial setup):
+
+```bash
+bin/plugin api keys:generate --user=admin --name="My First Key"
+```
+
+**Via Admin Panel**: Go to a user's profile — the **API Keys** section lets you generate, view, and revoke keys with optional expiry dates.
+
+The generated key is shown **once** — save it immediately.
+
+### 3. Make Your First Request
+
+```bash
+curl https://yoursite.com/api/v1/pages \
+  -H "X-API-Key: grav_abc123..."
+```
+
+## Environments
+
+Grav supports multiple environments (e.g., `localhost`, `staging.mysite.com`, `mysite.com`) with per-environment config overrides. The default location is `user/env/{environment}/config/`, but Grav can replace it with `GRAV_ENVIRONMENTS_PATH`, `GRAV_ENVIRONMENT_PATH`, or a custom `environment://` stream. The API follows Grav's resolved stream instead of reconstructing the default path. The optional `X-Grav-Environment` header selects the environment Grav loads for the request.
+
+```bash
+# Explicitly target an environment
+curl -H "X-Grav-Environment: mysite.com" -H "X-API-Key: ..." https://yoursite.com/api/v1/pages
+```
+
+If the header is omitted, the API defaults to Grav's auto-detected environment (derived from the hostname). When the header specifies a different environment, Grav reinitializes its config and cache context for that environment before processing the request.
+
+**Discover available environments:**
+
+```bash
+curl -H "X-API-Key: ..." https://yoursite.com/api/v1/system/environments
+```
+
+Returns the current environment and all existing environment-specific overrides discovered through Grav's configured environment paths:
+
+```json
+{
+  "data": {
+    "current": "localhost",
+    "environments": [
+      {"name": "default", "active": true},
+      {"name": "mysite.com", "active": false}
+    ]
+  }
+}
+```
+
+## Authentication
+
+The API supports three authentication methods. All three provide the same level of access — the authenticated user's permissions apply regardless of which method is used. When a request is received, the API tries each method in order until one succeeds.
+
+### API Key (recommended for servers, CLI, automation)
+
+Long-lived credentials ideal for server-to-server integrations, CLI tools, MCP servers, and CI/CD pipelines. Keys don't expire by default (optional expiry can be set), and persist until explicitly revoked.
+
+```bash
+# Via header (recommended)
+curl -H "X-API-Key: grav_abc123..." https://yoursite.com/api/v1/pages
+
+# Via query parameter (useful for quick debugging — less secure, visible in logs)
+curl https://yoursite.com/api/v1/pages?api_key=grav_abc123...
+```
+
+Keys are stored as bcrypt hashes in `user/data/api-keys.yaml`. Each key is associated with a user, can be named, given an optional expiry, and independently revoked. Generate keys via CLI (`bin/plugin api keys:generate`) or the admin panel.
+
+### JWT Token (recommended for browser apps, mobile apps)
+
+Short-lived credentials ideal for SPAs, mobile apps, and any client-side application where long-lived secrets shouldn't be stored. Access tokens expire after 1 hour (configurable), and refresh tokens allow obtaining new access tokens without re-entering credentials.
+
+**Step 1 — Login** (exchange credentials for tokens):
+
+```bash
+curl -X POST https://yoursite.com/api/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "your-password"}'
+```
+
+Response:
+```json
+{
+  "data": {
+    "access_token": "eyJ...",
+    "refresh_token": "eyJ...",
+    "token_type": "Bearer",
+    "expires_in": 3600
+  }
+}
+```
+
+**Step 2 — Use the access token** for API calls:
+
+```bash
+# Recommended: X-API-Token custom header (survives FPM/FastCGI header stripping)
+curl -H "X-API-Token: eyJ..." https://yoursite.com/api/v1/pages
+
+# Also accepted: standard Authorization: Bearer
+# (works on most hosts; may be stripped by Apache mod_fastcgi / CGI on MAMP
+#  and similar setups — if that happens, use X-API-Token instead)
+curl -H "Authorization: Bearer eyJ..." https://yoursite.com/api/v1/pages
+```
+
+> **Why `X-API-Token`?** PHP running under FastCGI / CGI / PHP-FPM can silently strip the `Authorization` header before it reaches the application. A custom `X-*` header bypasses this entirely. The server accepts either; pick the one that works for your host.
+
+**Step 3 — Refresh** before the access token expires (the old refresh token is automatically revoked — token rotation):
+
+```bash
+curl -X POST https://yoursite.com/api/v1/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token": "eyJ..."}'
+```
+
+**Step 4 — Revoke** when the user logs out (returns 204 No Content):
+
+```bash
+curl -X POST https://yoursite.com/api/v1/auth/revoke \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token": "eyJ..."}'
+```
+
+### Session Passthrough (for admin panel integration)
+
+If a user has an active Grav admin session, the API recognizes it automatically. This enables the current admin UI (or a future SPA admin) to call the API from the browser without separate authentication — no API key or JWT needed.
+
+**Writes on a session must come from your own site.** A `POST`, `PUT`, `PATCH` or `DELETE` signed in by the session cookie alone is refused with a `403` unless its `Origin` (or `Referer`) names this host or an origin listed in `cors.origins`. A request with neither header has to carry a JSON content type or a custom header such as `X-Requested-With`, which a form on another site cannot send. Same-origin `fetch` calls pass as they are. API keys and JWTs are never asked, and on a public route a forged write is simply treated as a guest.
+
+### Which method should I use?
+
+| Use Case | Method | Why |
+|----------|--------|-----|
+| CLI tools, scripts | API Key | Simple, long-lived, no token management |
+| MCP servers, AI agents | API Key | Persistent, no expiry concerns |
+| Server-to-server | API Key | Static credential, easy to rotate |
+| Mobile app | JWT | Short-lived, secure for client-side storage |
+| SPA / browser frontend | JWT | Tokens in memory, refresh flow handles expiry |
+| Admin panel extensions | Session | Seamless — already logged in |
+
+## API Endpoints
+
+All endpoints are prefixed with `/api/v1`. All responses use a standard JSON envelope.
+
+### Pages
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/pages` | List pages (filterable, sortable, paginated) |
+| `GET` | `/pages/{route}` | Get a single page |
+| `POST` | `/pages` | Create a new page |
+| `PATCH` | `/pages/{route}` | Update a page (partial) |
+| `DELETE` | `/pages/{route}` | Delete a page |
+| `POST` | `/pages/{route}/move` | Move a page |
+| `POST` | `/pages/{route}/copy` | Copy a page |
+| `POST` | `/pages/{route}/reorder` | Reorder child pages |
+| `POST` | `/pages/batch` | Batch operations on multiple pages |
+| `GET` | `/taxonomy` | List all taxonomy types and values |
+
+**Filtering pages:**
+```
+GET /api/v1/pages?published=true&template=post&parent=blog
+```
+
+**Lazy-loading children** (for tree/miller column views):
+```bash
+# Direct children only (one level deep) — ideal for lazy-loading
+GET /api/v1/pages?children_of=/blog
+
+# Top-level pages only
+GET /api/v1/pages?children_of=/
+
+# Alternative: root-level pages
+GET /api/v1/pages?root=true
+```
+
+Unlike `parent` (which returns all descendants), `children_of` returns only **direct children** — pages exactly one level below the given route. Combined with the `has_children` field in page responses, this enables efficient lazy-loading page trees and miller column interfaces.
+
+**Sorting:**
+```
+GET /api/v1/pages?sort=date&order=desc
+```
+
+Allowed sort fields: `date`, `title`, `slug`, `modified`, `order`
+
+**Pagination:**
+```
+GET /api/v1/pages?page=2&per_page=10
+```
+
+**Getting rendered HTML:**
+```
+GET /api/v1/pages/blog/my-post?render=true
+```
+
+**Including children:**
+```
+GET /api/v1/pages/blog?children=true&children_depth=2
+```
+
+**Reordering children:**
+```bash
+curl -X POST https://yoursite.com/api/v1/pages/blog/reorder \
+  -H "X-API-Key: ..." -H "Content-Type: application/json" \
+  -d '{"order": ["third-post", "first-post", "second-post"]}'
+```
+
+**Batch operations** (publish, unpublish, delete, copy — up to 50 items):
+```bash
+curl -X POST https://yoursite.com/api/v1/pages/batch \
+  -H "X-API-Key: ..." -H "Content-Type: application/json" \
+  -d '{"operation": "publish", "routes": ["/blog/draft-1", "/blog/draft-2"]}'
+```
+
+### Multi-Language
+
+All page endpoints support the `?lang=xx` query parameter to target a specific language. Grav stores translations as separate files (e.g., `default.en.md`, `default.fr.md`).
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/languages` | List configured site languages |
+| `GET` | `/pages/{route}/languages` | List available/missing translations for a page |
+| `POST` | `/pages/{route}/translate` | Create a new translation |
+
+```bash
+# Get a page in French
+GET /api/v1/pages/about?lang=fr
+
+# List pages in German
+GET /api/v1/pages?lang=de
+
+# Create a French translation
+curl -X POST https://yoursite.com/api/v1/pages/about/translate \
+  -H "X-API-Key: ..." -H "Content-Type: application/json" \
+  -d '{"lang": "fr", "title": "À propos", "content": "# Bienvenue"}'
+
+# Delete only the French translation (keeps other languages)
+DELETE /api/v1/pages/about?lang=fr
+
+# Include translation info in page response
+GET /api/v1/pages/about?translations=true
+```
+
+### Media
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/pages/{route}/media` | List media for a page |
+| `POST` | `/pages/{route}/media` | Upload media to a page |
+| `DELETE` | `/pages/{route}/media/{filename}` | Delete page media |
+| `GET` | `/media` | List site-level media |
+| `POST` | `/media` | Upload site-level media |
+| `DELETE` | `/media/{filename}` | Delete site-level media |
+
+**Uploading:**
+```bash
+curl -X POST https://yoursite.com/api/v1/pages/blog/my-post/media \
+  -H "X-API-Key: grav_abc123..." \
+  -F "file=@photo.jpg"
+```
+
+### Configuration
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/config/{scope}` | Read configuration |
+| `PATCH` | `/config/{scope}` | Update configuration |
+| `POST` | `/config/{scope}/revert` | Revert overridden keys, or reset the whole scope |
+
+Scopes: `system`, `site`, `plugins/{name}`, `themes/{name}`, plus any site-authored **custom scope** (see [Custom config scopes](#custom-config-scopes)).
+
+```bash
+# Read site config
+curl -H "X-API-Key: ..." https://yoursite.com/api/v1/config/site
+
+# Update a plugin config
+curl -X PATCH https://yoursite.com/api/v1/config/plugins/markdown \
+  -H "X-API-Key: ..." \
+  -H "Content-Type: application/json" \
+  -d '{"extra": true}'
+```
+
+**Differential saves.** Config writes persist only the delta against the relevant parent yaml — `system / site / media / security / scheduler / backups` diff against `system/config/<scope>.yaml` (Grav core defaults), `plugins/<name>` diffs against `user/plugins/<name>/<name>.yaml`, and `themes/<name>` diffs against `user/themes/<name>/<name>.yaml`. Defaults come from the raw yaml on disk (not from blueprints, which describe the form and routinely diverge from runtime). Sequential arrays like `languages.supported` are treated atomically — any difference retains the whole new list, avoiding the classic admin-classic bug where shortening a list silently re-merged removed entries.
+
+**Targeting an environment for writes.** The optional `X-Config-Environment` header points writes at an existing environment resolved by Grav. For the environment currently loaded by Grav, this is the official `environment://config` stream and therefore also honors `GRAV_ENVIRONMENT_PATH` and `setup.php` stream overrides. For another named environment, Grav's configured common `GRAV_ENVIRONMENTS_PATH` is used when present; the standard `user/env/<name>/config/` and legacy `user/<name>/config/` layouts remain supported. An empty/missing value writes to base `user/config/`. Environment folders are **never** created implicitly — clients must opt in via `POST /system/environments`. A non-empty header that doesn't match an existing configured folder returns a clear `400`.
+
+```bash
+# Write only to the existing staging environment overrides
+curl -X PATCH https://yoursite.com/api/v1/config/system \
+  -H "X-API-Key: ..." \
+  -H "X-Config-Environment: staging.example.com" \
+  -H "Content-Type: application/json" \
+  -d '{"languages": {"default_lang": "fr"}}'
+```
+
+> `X-Config-Environment` is a **write-target** header (which existing environment receives the change). It is distinct from `X-Grav-Environment` (which environment Grav loads for the request). Grav's `environment://` stream is authoritative for the loaded environment; the API never derives an unrelated target from the request host and never creates a target during `PATCH` or `revert`.
+
+**Override metadata.** Every `GET`/`PATCH` config response carries a `meta` block describing which leaf keys the active layer's file actually overrides, and the value each would revert to:
+
+```json
+{
+  "data": { "debugger": { "enabled": true } },
+  "meta": {
+    "overrides": ["debugger.enabled"],
+    "fallback": { "debugger.enabled": false }
+  }
+}
+```
+
+`overrides` is the set of dotted leaf paths the active file sets on top of the layer beneath it (the base `user/config` for an env overlay, or the raw on-disk defaults for the base layer). `fallback` maps each of those paths to the value it would return to. Admin2 uses this to draw the per-field revert indicators.
+
+**Reverting.** `POST /config/{scope}/revert` removes overrides so the value beneath takes over, honoring the same `If-Match` ETag and `X-Config-Environment` write-target as `PATCH`:
+
+```bash
+# Drop specific overridden keys from the staging overlay
+curl -X POST https://yoursite.com/api/v1/config/system/revert \
+  -H "X-API-Key: ..." \
+  -H "X-Config-Environment: staging.example.com" \
+  -H "Content-Type: application/json" \
+  -d '{"keys": ["debugger.enabled"]}'
+
+# Reset the whole scope — unlink the active layer's file entirely
+curl -X POST https://yoursite.com/api/v1/config/system/revert \
+  -H "X-API-Key: ..." \
+  -H "X-Config-Environment: staging.example.com" \
+  -H "Content-Type: application/json" \
+  -d '{"reset": true}'
+```
+
+A `{"keys": [...]}` payload drops just those paths; `{"reset": true}` removes the active layer's file outright. The response has the same structure as a read, reflecting the post-revert state, plus `meta.reverted` saying whether anything changed.
+
+#### Custom config scopes
+
+Beyond the built-in scopes, a site can expose its own top-level config — the Grav cookbook ["add a custom yaml file"](https://learn.getgrav.org/cookbook/general-recipes#add-a-custom-yaml-file) recipe. Drop a blueprint at `user/blueprints/config/<scope>.yaml` (or under `environment://blueprints/config/`) paired with `user/config/<scope>.yaml`, and the generic config endpoints accept `<scope>` automatically — no plugin code required. Admin2 lists it as a config tab alongside System and Site.
+
+A scope qualifies as custom when it is a flat slug (`^[a-z0-9][a-z0-9_-]*$` — no slashes or dots, which also blocks path traversal), is not one of the built-in scopes, and has its blueprint under the `user://` or `environment://` stream. The user/environment requirement is deliberate: core ships its own blueprints under `blueprints://config` (e.g. `streams.yaml`) that must never become writable through the generic config permission.
+
+> **Gotcha — use bare field keys.** A custom config blueprint must name its fields with bare keys (`company_name`), exactly like the core blueprints (`site.yaml`, `system.yaml`). Do **not** prefix them with the scope name (`custom.company_name`): the form fields would render blank and saves would nest the data under a spurious `custom:` block instead of writing it flat. The scope is already the file; the field key is the path within it.
+
+### Users
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/users` | List users (paginated) |
+| `POST` | `/users` | Create a user |
+| `GET` | `/users/{username}` | Get user details |
+| `PATCH` | `/users/{username}` | Update a user |
+| `DELETE` | `/users/{username}` | Delete a user |
+| `POST` | `/users/{username}/avatar` | Upload user avatar |
+| `DELETE` | `/users/{username}/avatar` | Remove user avatar |
+| `POST` | `/users/{username}/2fa` | Generate 2FA secret + QR code |
+| `DELETE` | `/users/{username}/email-change` | Cancel your own waiting email change |
+| `POST` | `/users/{username}/email-change/resend` | Mail the email change link again |
+| `GET` | `/users/{username}/api-keys` | List API keys |
+| `POST` | `/users/{username}/api-keys` | Generate an API key |
+| `DELETE` | `/users/{username}/api-keys/{keyId}` | Revoke an API key |
+
+**Changing your own password.** `PATCH /users/{username}` on your own account needs your current password next to the new one: `{"current_password": "…", "password": "…"}`. Without it, or with a wrong one, the request is refused with 422 and a field error on `current_password`, and each try counts against the Login plugin's sign-in limits (429 once they are used up). An account with no password yet (`has_password: false` on `GET /users/{username}`, such as one created by a sign-in service) sets its first password without one. An admin with `api.users.write` setting someone else's password sends only `password`, as before. Any password change ends every API token issued before it, and with the Login plugin 3.11.0 or later the account's other browser sessions too; when you change your own with a JWT, the response's `meta.tokens` holds a fresh token pair to carry on with.
+
+### System
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/ping` | Keep-alive / health check |
+| `GET` | `/system/environments` | List available environments (current Grav environment stream + configured common path + legacy 1.6 layouts) |
+| `POST` | `/system/environments` | Create a new environment config folder at Grav's configured environment path |
+| `GET` | `/system/info` | System information |
+| `DELETE` | `/cache` | Clear cache |
+| `GET` | `/system/logs` | Read logs |
+| `DELETE` | `/system/logs` | Clear a log file (super-admin only) |
+| `POST` | `/system/backup` | Create a backup |
+| `GET` | `/system/backups` | List backups |
+
+### GPM (Package Manager)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/gpm/plugins` | List installed plugins (with update status) |
+| `GET` | `/gpm/plugins/{slug}` | Get installed plugin details |
+| `GET` | `/gpm/plugins/{slug}/readme` | Get plugin README |
+| `GET` | `/gpm/plugins/{slug}/changelog` | Get plugin changelog |
+| `GET` | `/gpm/themes` | List installed themes (with thumbnails/screenshots) |
+| `GET` | `/gpm/themes/{slug}` | Get installed theme details |
+| `GET` | `/gpm/themes/{slug}/readme` | Get theme README |
+| `GET` | `/gpm/themes/{slug}/changelog` | Get theme changelog |
+| `GET` | `/gpm/updates` | Check for available updates |
+| `POST` | `/gpm/install` | Install a plugin or theme |
+| `POST` | `/gpm/remove` | Remove a plugin or theme |
+| `POST` | `/gpm/update` | Update a specific package |
+| `POST` | `/gpm/update-all` | Update all packages |
+| `POST` | `/gpm/upgrade` | Self-upgrade Grav core |
+| `POST` | `/gpm/direct-install` | Install from URL or zip upload |
+| `GET` | `/gpm/search` | Search repository (plugins + themes) |
+| `GET` | `/gpm/repository/plugins` | Browse available plugins |
+| `GET` | `/gpm/repository/themes` | Browse available themes |
+| `GET` | `/gpm/repository/{slug}` | Get repository package details |
+
+**Installing a package:**
+```bash
+curl -X POST https://yoursite.com/api/v1/gpm/install \
+  -H "X-API-Key: ..." -H "Content-Type: application/json" \
+  -d '{"package": "shortcode-core", "type": "plugin"}'
+```
+
+**Installing a premium package** (pass the license inline, or pre-register it via the license-manager plugin):
+```bash
+curl -X POST https://yoursite.com/api/v1/gpm/install \
+  -H "X-API-Key: ..." -H "Content-Type: application/json" \
+  -d '{"package": "typhoon", "type": "theme", "license": "A1B2C3D4-E5F6A7B8-C9D0E1F2-A3B4C5D6"}'
+```
+
+**Searching the repository:**
+```bash
+# Search across all plugins and themes
+GET /api/v1/gpm/search?q=email
+
+# Search plugins only
+GET /api/v1/gpm/repository/plugins?q=form
+
+# Search themes only
+GET /api/v1/gpm/repository/themes?q=blog
+```
+
+Searches match against slug, name, description, author, and keywords. All repository endpoints support pagination (`?page=2&per_page=50`).
+
+### Scheduler
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/scheduler/jobs` | List all scheduler jobs with status |
+| `GET` | `/scheduler/status` | Get cron installation status |
+| `GET` | `/scheduler/history` | Job execution history (paginated) |
+| `POST` | `/scheduler/run` | Trigger scheduler run manually |
+
+### System Info & Reports
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/systeminfo` | System info overview (PHP, disk, cache, plugins) |
+| `GET` | `/reports` | Plugin-extensible diagnostic reports |
+
+### Dashboard
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/dashboard/notifications` | Get system notifications (v2 schema — see below) |
+| `POST` | `/dashboard/notifications/{id}/hide` | Dismiss a notification |
+| `GET` | `/dashboard/feed` | Get getgrav.org news feed |
+| `GET` | `/dashboard/stats` | Dashboard statistics snapshot |
+| `GET` | `/dashboard/popularity` | Page-view popularity series for chart widgets |
+| `GET` | `/dashboard/widgets` | Resolved widget list + layouts for the current user |
+| `PATCH` | `/dashboard/layout` | Save the current user's dashboard layout |
+| `PATCH` | `/dashboard/site-layout` | Save the site-wide default layout (super-admin) |
+
+**Customizable dashboard.** `GET /dashboard/widgets` returns a merged widget list combining (1) a built-in core registry, (2) plugin contributions via the `onApiDashboardWidgets` event, (3) the site-default layout, and (4) the current user's overrides. Site-hidden widgets are dropped entirely from a user's view (cannot be re-enabled per-user); the user's overrides win for size/order on the rest. Each resolved widget carries its allowed `sizes[]`, `defaultSize`, icon, and authorize permission so the client can render the customize-mode picker without a second round-trip.
+
+**Notifications schema (v2).** Each notification has structured fields — `type` (`info` | `notice` | `warning` | `promo`), `icon`, `title`, `message` (markdown), `link`, `image` + `image_height` (20 to 48 px, default 28) + `accent` + `layout` (for `promo` cards; `layout` is `full`, `half` or `joined`, and consecutive `half` or `joined` promos share a row that stacks when the widget is narrow; a promo under the `dashboard-row` location is read after `dashboard` by Admin 2.1.17+ and ignored by older admins, so a second half can be added without stacking two banners on old sites), `action: {label, url}`, and `dependencies` — so clients can render natively rather than receive embedded HTML. The endpoint fetches from `https://getgrav.org/notifications2.json` and caches per-user under `user/data/notifications/{md5}_v2.yaml`.
+
+**Plugin-contributed widgets** — listen for `onApiDashboardWidgets` and append to `$event['widgets']`. Each entry can declare an `authorize` permission so the resolver hides widgets the user lacks access to.
+
+### Webhooks
+
+Webhooks send HTTP POST notifications to external URLs when content changes via the API.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/webhooks` | List configured webhooks |
+| `POST` | `/webhooks` | Create a webhook |
+| `GET` | `/webhooks/{id}` | Get webhook details |
+| `PATCH` | `/webhooks/{id}` | Update a webhook |
+| `DELETE` | `/webhooks/{id}` | Delete a webhook |
+| `GET` | `/webhooks/{id}/deliveries` | View delivery log (paginated) |
+| `POST` | `/webhooks/{id}/test` | Send a test payload |
+
+**Creating a webhook:**
+```bash
+curl -X POST https://yoursite.com/api/v1/webhooks \
+  -H "X-API-Key: ..." -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://yourapp.com/webhook-receiver",
+    "events": ["page.created", "page.updated", "page.deleted"],
+    "enabled": true
+  }'
+```
+
+The response includes a `secret` for verifying payload signatures. Use `"events": ["*"]` to subscribe to all events.
+
+**Available events:**
+
+| Event | Trigger |
+|-------|---------|
+| `page.created` | Page created |
+| `page.updated` | Page updated |
+| `page.deleted` | Page deleted |
+| `page.moved` | Page moved |
+| `page.translated` | Translation created |
+| `pages.reordered` | Children reordered |
+| `media.uploaded` | Media uploaded |
+| `media.deleted` | Media deleted |
+| `user.created` | User created |
+| `user.updated` | User updated |
+| `user.deleted` | User deleted |
+| `config.updated` | Config changed |
+| `gpm.installed` | Package installed |
+| `gpm.removed` | Package removed |
+| `grav.upgraded` | Grav core upgraded |
+
+**Payload format:**
+```json
+{
+  "event": "page.created",
+  "timestamp": "2026-03-26T20:00:00+00:00",
+  "webhook_id": "wh_abc123...",
+  "data": {
+    "page": {"route": "/blog/new-post", "title": "New Post", "slug": "new-post"},
+    "route": "/blog/new-post"
+  }
+}
+```
+
+**Security:** Each delivery includes an `X-Grav-Signature` header containing an HMAC-SHA256 hash of the payload body, signed with the webhook's `secret`. Verify it in your receiver:
+
+```php
+$signature = hash_hmac('sha256', $rawBody, $webhookSecret);
+$valid = hash_equals($signature, $_SERVER['HTTP_X_GRAV_SIGNATURE']);
+```
+
+**Reliability:** Failed deliveries (5xx responses or timeouts) are retried up to 3 times with exponential backoff. After 5 consecutive failures, the webhook is automatically disabled. The failure count resets on any successful delivery.
+
+**Note:** Webhooks fire only for changes made through the API. Changes via the admin panel or direct filesystem edits use different code paths and won't trigger webhooks.
+
+### Authentication
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/auth/token` | Login (get JWT tokens) |
+| `POST` | `/auth/refresh` | Refresh access token |
+| `POST` | `/auth/revoke` | Revoke refresh token |
+| `GET`  | `/auth/setup` | First-run check (returns `needs_setup` plus the password policy) |
+| `POST` | `/auth/setup` | Create the very first super-admin user (only when no users exist) |
+| `GET`  | `/auth/password-policy` | Structured representation of `system.pwd_regex` for client-side strength meters |
+
+These endpoints do **not** require authentication.
+
+**Password policy.** `GET /auth/password-policy` parses `system.pwd_regex` into `{ regex, min_length, rules[] }` by recognizing the common lookahead form (`(?=.*\d)`, `(?=.*[a-z])`, `(?=.*[A-Z])`, `(?=.*\W)`, `.{N,}`) and mapping each to a human-readable rule label. Admins can override the auto-detected rules with an optional `system.pwd_rules: [{id, label, pattern}, …]` list for custom or localized messaging without touching `pwd_regex`. The same policy is piggybacked on `GET /auth/setup` so the first-run setup screen renders its strength meter without a second round-trip; `POST /auth/setup` enforces it server-side regardless of what the UI shows.
+
+### Translations
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/translations/{lang}` | Get all translation strings for a language |
+| `GET` | `/thumbnails/{file}` | Serve a cached thumbnail image (public) |
+
+Translation and thumbnail endpoints do **not** require authentication.
+
+**Get all English translations:**
+
+```bash
+curl -s "https://yoursite.com/api/v1/translations/en"
+```
+
+**Filter by prefix** (for faster partial loads):
+
+```bash
+curl -s "https://yoursite.com/api/v1/translations/en?prefix=PLUGIN_ADMIN"
+```
+
+```json
+{
+  "data": {
+    "lang": "en",
+    "count": 1248,
+    "checksum": "6101ee5fcfeabc085cea537e4583038f",
+    "strings": {
+      "PLUGIN_ADMIN.TITLE": "Title",
+      "PLUGIN_ADMIN.CONTENT": "Content",
+      "PLUGIN_ADMIN.OPTIONS": "Options",
+      "PLUGIN_ADMIN.PUBLISHING": "Publishing",
+      "..."
+    }
+  }
+}
+```
+
+The `checksum` can be used for cache invalidation — only re-fetch when the checksum changes. The `prefix` parameter enables a two-phase loading strategy: fetch a small subset for immediate use, then load the full set in the background.
+
+### Blueprints
+
+Blueprints provide form schema definitions used to render configuration and content editing interfaces. The API resolves blueprint inheritance (`extends@`, `import@`) and returns a normalized JSON structure suitable for client-side form rendering.
+
+| Method | Endpoint | Description | Permission |
+|--------|----------|-------------|------------|
+| `GET` | `/blueprints/pages` | List available page templates | `api.pages.read` |
+| `GET` | `/blueprints/pages/{template}` | Get resolved blueprint for a page template | `api.pages.read` |
+| `GET` | `/blueprints/plugins/{plugin}` | Get blueprint for a plugin's configuration | `api.config.read` |
+| `GET` | `/blueprints/themes/{theme}` | Get blueprint for a theme's configuration | `api.config.read` |
+| `GET` | `/blueprints/users` | Get user account blueprint | `api.users.read` |
+| `GET` | `/blueprints/users/permissions` | Get all registered permission actions | `api.users.read` |
+| `GET` | `/blueprints/config/{scope}` | Get blueprint for system config (`system`, `site`, `media`) | `api.config.read` |
+| `GET` | `/data/resolve` | Resolve blueprint data-options@ directives | `api.pages.read` |
+| `POST` | `/blueprint-upload` | Upload a file targeted by a blueprint `destination` | (scope-derived) |
+| `DELETE` | `/blueprint-upload` | Remove a previously-uploaded blueprint file (idempotent) | (scope-derived) |
+
+**List page templates:**
+
+```bash
+curl -s "https://yoursite.com/api/v1/blueprints/pages" \
+  -H "X-API-Key: YOUR_KEY"
+```
+
+```json
+{
+  "data": [
+    { "type": "default", "label": "Default" },
+    { "type": "blog", "label": "Blog" },
+    { "type": "item", "label": "Item" }
+  ]
+}
+```
+
+**Get a page blueprint (resolved with inheritance):**
+
+```bash
+curl -s "https://yoursite.com/api/v1/blueprints/pages/blog" \
+  -H "X-API-Key: YOUR_KEY"
+```
+
+```json
+{
+  "data": {
+    "name": "blog",
+    "title": "blog",
+    "child_type": "item",
+    "validation": "loose",
+    "fields": [
+      {
+        "name": "tabs",
+        "type": "tabs",
+        "fields": [
+          {
+            "name": "content",
+            "type": "tab",
+            "title": "Content",
+            "fields": [
+              { "name": "header.title", "type": "text", "label": "Title" },
+              { "name": "content", "type": "markdown" },
+              { "name": "header.media_order", "type": "pagemedia", "label": "Page Media" }
+            ]
+          },
+          {
+            "name": "blog",
+            "type": "tab",
+            "title": "Blog Config",
+            "fields": [
+              { "name": "header.content.limit", "type": "text", "label": "Max Item Count", "validate": { "required": true, "type": "int" } },
+              { "name": "header.content.order.by", "type": "select", "label": "Order By", "options": { "folder": "Folder", "title": "Title", "date": "Date" } },
+              { "name": "header.content.pagination", "type": "toggle", "label": "Pagination" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The resolved blueprint includes all inherited fields from parent blueprints (e.g., a theme's `blog.yaml` extending the system `default.yaml`), with `extends@` and `import@` directives fully resolved.
+
+**Supported field types** in the serialized output include: `text`, `textarea`, `select`, `toggle`, `checkbox`, `radio`, `markdown`, `editor`, `filepicker`, `pagemedia`, `taxonomy`, `list`, `array`, `tabs`, `tab`, `section`, `fieldset`, `columns`, `column`, `spacer`, `display`, `hidden`, and more. Unknown field types are passed through with their properties intact for client-side fallback rendering.
+
+A modular template's `label` (with `?modular=true`) is the `title` of its own blueprint, `blueprints/modular/<name>.yaml`, translated when it is a language key. A type with no blueprint of its own, or one whose blueprint has no `title`, keeps its file name made readable (`featured_product` → "Featured product"); a title inherited through `extends@` doesn't count, so such types aren't all called "Default".
+
+**Icon sets for the `iconpicker` field.** On its own the field lists Font Awesome. A theme or plugin that draws its own icons can hand the field a set of them instead: the field names the set, and the set's owner registers it on `onApiIconSets`.
+
+```yaml
+header.hero.icon:
+  type: iconpicker
+  label: Icon
+  icons: encore       # the set to list instead of Font Awesome
+```
+
+```php
+public static function getSubscribedEvents(): array
+{
+    return ['onApiIconSets' => ['onApiIconSets', 0]];
+}
+
+public function onApiIconSets(Event $event): void
+{
+    $sets = $event['sets'];
+    $sets['encore'] = [
+        'label' => 'Encore',
+        'icons' => [
+            'search' => '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+            'bag'    => '<svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7z"/></svg>',
+            'clock'  => 'fa:clock',
+        ],
+    ];
+    $event['sets'] = $sets;
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `label` | The set's name in the picker. Optional; a language key is translated. |
+| `icons` | Icon name → icon, in the order the picker lists them. An icon is SVG markup (a whole `<svg>`, or only what goes inside one on a 24px grid) or any [IconSpec](https://github.com/getgrav/grav-admin-next/blob/main/docs/IconSpec.md) value. |
+| `file` | Instead of `icons`: a YAML file of `name: markup` lines, so a theme can keep one list for its templates and the admin. It must be a Grav stream URL (`theme://icons.yaml`; `theme://`, `plugin://`, `user://`, `plugins://` and `themes://` are accepted) naming a `.yaml` or `.yml` file that sits inside that stream's own folders. A plain or absolute path, a `..` segment, or a symlink that leads out of the folder is refused and the set is left out. |
+
+The picker saves the icon's name (`search`), which is what the theme's own icon macro takes. Markup never reaches the browser as markup: the API reads it into IconSpec's structured SVG form, keeping only `path`, `circle`, `rect`, `line`, `polyline`, `polygon` and `ellipse` and their geometry and stroke attributes, and drops scripts, styles, event handlers and anything else. Icons are drawn as line icons (no fill, stroked in the text color). The set is sent with each field that names it, as `icon_set`; a field naming a set nobody registered gets only `icons`, and the picker says the set isn't there.
+
+**Get a plugin blueprint:**
+
+```bash
+curl -s "https://yoursite.com/api/v1/blueprints/plugins/email" \
+  -H "X-API-Key: YOUR_KEY"
+```
+
+**Blueprint file uploads.** `POST /blueprint-upload` mirrors admin-classic's `taskFilesUpload` for theme/plugin config forms. It accepts a blueprint `destination` (a Grav stream like `theme://images/logo`, `user://assets`, `account://avatars`; the `self@:subpath` form relative to a blueprint owner; or a plain user-rooted relative path) plus a `scope` (`plugins/<slug>`, `themes/<slug>`, `pages/<route>`, `users/<username>`) and writes the file to the right place.
+
+Streams resolve through Grav's locator so symlinked theme/plugin folders (common in dev setups) work cleanly — the response returns a *logical* user-rooted path (`user/themes/quark2/images/logo/foo.png`) independent of realpath, so a subsequent `DELETE /blueprint-upload` round-trips through the symlink to remove the actual file. `..` traversal and absolute paths are rejected, filenames are sanitized, and the dangerous-extension allowlist is checked. `DELETE` is idempotent — a missing file returns `204 No Content`.
+
+Page content (`md`, `markdown`) and stylesheets (`css`, `scss`, `sass`, `less`) are refused by default, on upload and delete. A developer can allow them for one field by listing them in that field's blueprint:
+
+```yaml
+custom_css:
+  type: file
+  label: Custom stylesheet
+  destination: 'self@:css'
+  accept: ['.css']
+  allow_extensions: [css]
+```
+
+The client sends the field's name as `field` alongside `scope`, and the server looks the field up in the blueprint that owns the scope (the plugin or theme config blueprint, the page template's blueprint, or the account blueprint). The request can't grant the permission itself: the field must exist, be `type: file`, declare `allow_extensions`, and the upload must go to that field's own `destination`. `allow_extensions` only lifts those six extensions; dangerous and config-type extensions (`php`, `yaml`, `json`, `twig` and the rest), the image-only rule for `user/accounts/` and the config directory block always apply.
+
+## Response Format
+
+### Success
+
+```json
+{
+  "data": { ... },
+  "meta": {
+    "pagination": {
+      "page": 1,
+      "per_page": 20,
+      "total": 47,
+      "total_pages": 3
+    }
+  },
+  "links": {
+    "self": "/api/v1/pages?page=1&per_page=20",
+    "next": "/api/v1/pages?page=2&per_page=20",
+    "last": "/api/v1/pages?page=3&per_page=20"
+  }
+}
+```
+
+Non-paginated responses omit `meta` and `links`.
+
+Page objects include a `has_children` boolean field indicating whether the page has child pages, enabling tree/column UIs to show expand indicators without loading children upfront.
+
+### Errors (RFC 7807)
+
+```json
+{
+  "status": 404,
+  "title": "Not Found",
+  "detail": "Page not found at route: /blog/missing-post"
+}
+```
+
+Validation errors include field-level details:
+
+```json
+{
+  "status": 422,
+  "title": "Unprocessable Entity",
+  "detail": "Missing required fields: title, route",
+  "errors": [
+    {"field": "title", "message": "The 'title' field is required."},
+    {"field": "route", "message": "The 'route' field is required."}
+  ]
+}
+```
+
+## Concurrency Control
+
+Write endpoints support optimistic concurrency via ETags:
+
+1. `GET` responses include an `ETag` header
+2. Send `If-Match: "<etag>"` with your `PATCH`/`DELETE` request
+3. If the resource changed since your last read, you get a `409 Conflict`
+
+This prevents accidental overwrites when multiple clients edit the same content.
+
+## Rate Limiting
+
+Enabled by default: 120 requests per 60-second window, per authenticated user (or per IP for unauthenticated requests).
+
+Response headers on every request:
+```
+X-RateLimit-Limit: 120
+X-RateLimit-Remaining: 117
+X-RateLimit-Reset: 1711382460
+```
+
+Exceeding the limit returns `429 Too Many Requests`.
+
+Configure in `api.yaml`:
+```yaml
+rate_limit:
+  enabled: true
+  requests: 120
+  window: 60
+  excluded_paths:
+    - /sync/         # default — exempt collab endpoints from the per-user bucket
+    - /thumbnails/   # default — exempt media thumbnail images
+```
+
+`excluded_paths` exempts matching path prefixes (matched from the start of the route path) from the bucket entirely. There are two defaults. `/sync/`: an editor in a shared editing session polls it about 90 times a minute, which would use up the limit on its own. `/thumbnails/`: every tile in a media folder is its own image request, so scrolling a large folder would run the budget dry and leave blank tiles; that route only serves thumbnails an authenticated listing already generated, and it is cached for a year. Nothing else is exempt, including the plugin scripts Admin2 loads. Auth and per-route permissions still apply, so the bypass is gated by normal authentication rather than being a free pass.
+
+## CORS
+
+Enabled by default for all origins. Configure allowed origins, methods, and headers in the admin panel or `api.yaml`:
+
+```yaml
+cors:
+  enabled: true
+  origins:
+    - https://myapp.example.com
+    - https://admin.example.com
+  methods: [GET, POST, PATCH, DELETE, OPTIONS]
+  headers: [Content-Type, X-API-Token, X-API-Key, Authorization, If-Match]
+  credentials: false
+```
+
+## HTTP Method Override
+
+Some shared-hosting nginx configs reject `DELETE`, `PATCH`, and `PUT` at the edge with a `405 Method Not Allowed` before the request ever reaches PHP. To work around this, the API accepts an `X-HTTP-Method-Override` header on `POST` requests that rewrites the verb before dispatch:
+
+```bash
+# Equivalent to DELETE /pages/blog/old-post
+curl -X POST https://yoursite.com/api/v1/pages/blog/old-post \
+  -H "X-API-Key: ..." \
+  -H "X-HTTP-Method-Override: DELETE"
+```
+
+Only `DELETE`, `PATCH`, and `PUT` are honored (never `GET`), and the override is opt-in per request — clients that don't need it pay zero cost. Admin-next auto-detects the need on a failed mutation and caches the fallback decision in `sessionStorage`, so subsequent requests in the same session skip straight to the compatible path.
+
+## Permissions
+
+The API uses Grav's built-in ACL system. Available permissions:
+
+| Permission | Description |
+|------------|-------------|
+| `api.access` | Basic API access (required for all authenticated requests) |
+| `api.pages.read` | Read pages and taxonomy |
+| `api.pages.write` | Create, update, delete, move, copy, reorder, batch pages |
+| `api.media.read` | Read/list media files |
+| `api.media.write` | Upload and delete media files |
+| `api.config.read` | Read configuration |
+| `api.config.write` | Update configuration |
+| `api.users.read` | Read user accounts |
+| `api.users.write` | Create, update, delete users |
+| `api.system.read` | Read system info, logs, dashboard, notifications, feed |
+| `api.system.write` | Clear cache, dismiss notifications |
+| `api.system.backup` | Create, list, download, and delete site backups (the archive includes account hashes and config secrets) |
+| `api.gpm.read` | List packages, check updates, browse/search repository |
+| `api.gpm.write` | Install, remove, update packages |
+| `api.scheduler.read` | View scheduler jobs, status, history |
+| `api.scheduler.write` | Trigger scheduler runs |
+| `api.webhooks.read` | View webhooks and delivery logs |
+| `api.webhooks.write` | Create, update, delete, test webhooks |
+
+Users with `admin.super` bypass all permission checks.
+
+### Page-level permissions
+
+A page can carry its own rules in frontmatter, and they override the account-wide `api.pages.*` permissions for that page and everything below it:
+
+```yaml
+---
+title: Company Handbook
+permissions:
+    inherit: true            # default — fall back to the parent page's rules
+    authors: [jane]          # who counts as an author of this page
+    groups:
+        editors: 'ud'        # or { update: true, delete: false }
+        authors: 'crud'
+        defaults: '-d'       # applies to every signed-in user
+---
+```
+
+Letters map to `create`, `read`, `update`, `delete`, `publish`, `list`, and `media` (`m`) for the page's own files; a `-` denies every letter after it until the next `+`, so `'-ud'` denies both update and delete and `'crm-d'` allows create, read and media but denies delete. Letters before any sign are allowed.
+
+`media` is evaluated by the API only. Where a group's block says nothing about media, that block's `update` rule decides, so every rule written before the letter existed keeps its meaning; `media: false` beside `update: true` withholds media from a group that may still edit the page. Core's Flex pages do not ask for the action, so `m` is inert there. Because each group falls back on its own `update` rule and a deny wins, `defaults: '-u'` also denies media to everyone, including a group granted `m`. To let curators manage media on a page others may not edit, leave `update` out of `defaults` and grant it only to the groups that may edit. A page's Markdown files, `frontmatter.yaml` and `media.json` are the page rather than its media, so uploading or deleting them always needs the page's `update` rule.
+
+The rules work in both directions:
+
+* a **grant** lets a group act on that page without holding the site-wide permission — `api.pages.read` plus a page granting `ud` is enough to save and delete that page (and its children, unless they set `inherit: false`)
+* a **deny** stops someone who does hold `api.pages.write`, including on page media, batch operations and reorganize
+
+Resolution follows Grav's Flex pages: a matching group that denies wins outright, otherwise a matching group that allows wins, otherwise the page has no opinion and the account permission decides — walking up to the parent unless `inherit: false`. Super admins are not affected by page rules, and a page grant never widens an API key beyond its own scopes or lifts the demo write-lock.
+
+Every page record returned by the API carries a `permissions` object with the caller's effective `create` / `read` / `update` / `delete` / `publish` / `list` for that page, plus `media` for its files, which is what Admin-Next uses to show or hide the Save, Copy, Delete and media controls.
+
+Page lists follow the same rules. `GET /pages` leaves out every page the caller may not `read` or `list`, and its totals count only the rest. A folder listing (`children_of` or `root=true`) still returns a folder the caller can't open when a page they can read is somewhere below it, with `ancestor_only: true` on that row so a tree can be expanded down to the page; such a row carries only the title, route, order and `permissions`. `GET /pages?editable=true` keeps only the pages the caller may update (and, in a folder listing, the folders that lead to them), which gives an editor a short list of their own pages. Changing a page's media needs the page's `media` rule (or its `update` rule where the block says nothing about media) as well as `api.media.write` (a page without rules needs only `api.media.write`); a single page's `permissions.media` says whether the caller may. Reorder and reorganize number against every child of the folder, including ones the caller can't see, so a partial order never gives two pages the same number.
+
+## CLI Commands
+
+Manage API keys from the command line:
+
+```bash
+# Generate a new key (interactive prompts if flags omitted)
+bin/plugin api keys:generate --user=admin --name="My Key"
+
+# Generate with expiry (30 days)
+bin/plugin api keys:generate --user=admin --name="Temp Key" --expiry=30
+
+# List all keys for a user
+bin/plugin api keys:list --user=admin
+
+# Revoke a key (interactive selection if key-id omitted)
+bin/plugin api keys:revoke --user=admin [key-id]
+```
+
+Demo mode has `demo:baseline`, `demo:status` and `demo:reset`; see [Demo Mode](#demo-mode).
+
+## Demo Mode
+
+Demo mode lets you put a Grav site online for anyone to try: visitors sign in to the admin with a shared account, look at everything, and change only what you allow. The site then resets itself to a saved starting state on a timer.
+
+It is turned on per account. Give the account the **Demo Mode** permission (`access.api.demo: true`), usually alongside `api.super` so it can see every screen. Your own accounts are not affected.
+
+### What a demo account may change
+
+`demo.writable` in the API settings lists what demo accounts may change. Empty, the default, is a read-only demo.
+
+| Grant | Lets a demo account |
+|---|---|
+| `api.pages.create` | create, copy and translate pages |
+| `api.pages.update` | edit, move, reorder, publish and unpublish pages |
+| `api.pages.delete` | delete pages |
+| `api.media.upload` | upload media and create media folders |
+| `api.media.update` | rename media, reorder it and edit its details |
+| `api.media.delete` | delete media |
+| `api.config.site` | change the site settings |
+| `api.config.plugins` | change plugin settings |
+| `api.config.themes` | change theme settings |
+
+`api.pages.write`, `api.media.write` and `api.config.write` are shorthand for the three grants under each. So a demo where visitors can write and edit pages and add images, but never delete anything, is:
+
+```yaml
+demo:
+  writable: [api.pages.create, api.pages.update, api.media.upload]
+```
+
+Admin2 follows the grants: the editor offers Save but not Delete when only `api.pages.update` is granted, and shows a banner with the time until the next reset.
+
+Some things are always refused, whatever is granted: users and groups, packages, system tools, backups, webhooks, the demo controls themselves, the system, security, media, scheduler and backups settings, and the settings of the API, Admin, Login and Email plugins. Server paths, logs and backups are also hidden from demo accounts.
+
+A plugin's own API routes are refused too unless you list them in `demo.allow_routes`, as `METHOD /path` or `/path` below the API prefix, with `*` matching anything:
+
+```yaml
+demo:
+  allow_routes: ['POST /courses/*/progress']
+```
+
+### Pages visitors edit
+
+With `demo.escape_html` on (the default), pages a demo account saves show their raw HTML as text, so a visitor cannot put scripts or hidden links on the public site. Markdown, code blocks and images work as normal. A demo account can never save a page that runs Twig.
+
+### Saving and resetting
+
+```bash
+bin/plugin api demo:baseline   # save the current state as the one to reset to
+bin/plugin api demo:status     # what is allowed, when the next reset is, what has changed
+bin/plugin api demo:reset      # reset now
+```
+
+The same actions are in Admin2 under **Set Baseline / Reset Now**. Resets run every `demo.reset_interval` minutes (30 by default), both from the Grav scheduler (`bin/grav scheduler` in cron) and, for sites without one, on the first request after the interval has passed. Before each reset a safety copy of the current state is kept in `user/data/api/demo`, the last `demo.keep_safety_snapshots` of them (5 by default).
+
+A reset restores the folders a demo account can change: `user/pages` for pages, `user/pages` and `user/media` for media, and `user/config` plus each environment's settings folder for settings. In a settings folder only the settings a demo account can change are restored, so your own later changes to anything else, these demo settings included, are kept. Two more options add folders:
+
+- `demo.include_code: true` also restores `user/plugins` and `user/themes`.
+- `demo.extra_roots` lists more `user://` folders, such as `user://data` for what visitors do on the site itself, or `user://accounts` for sign-ups.
+
+`user/data/api` (API keys, the audit log and the demo's own files) and anything symlinked are never saved or restored. An extra folder that overlaps the settings folders, or sits in `user/data/api`, is ignored with a warning in the log. Change what a demo account may do, then run `demo:baseline` again so the saved state matches.
+
+## Extending the API
+
+Other Grav plugins can register their own API routes by listening to the `onApiRegisterRoutes` event:
+
+```php
+// In your plugin class
+public static function getSubscribedEvents(): array
+{
+    return [
+        'onApiRegisterRoutes' => ['onApiRegisterRoutes', 0],
+    ];
+}
+
+public function onApiRegisterRoutes(Event $event): void
+{
+    $routes = $event['routes'];
+
+    $routes->get('/comments/{pageRoute:.+}', [CommentsApiController::class, 'index']);
+    $routes->post('/comments/{pageRoute:.+}', [CommentsApiController::class, 'create']);
+
+    // Group related routes
+    $routes->group('/webhooks', function ($group) {
+        $group->get('', [WebhookController::class, 'index']);
+        $group->post('', [WebhookController::class, 'create']);
+        $group->delete('/{id}', [WebhookController::class, 'delete']);
+    });
+}
+```
+
+Your controller should extend `AbstractApiController` to get access to all the standard helpers (auth, pagination, response building, etc).
+
+### Saving plugin settings
+
+A plugin with its own settings endpoint should not write to `config://plugins/<slug>.yaml`: that stream resolves to the environment overlay of the host the request came in on, not the environment picked in Admin2's selector. `Grav\Plugin\Api\Services\ConfigStore` (API 1.0.50+) does what `/config/{scope}` does: it reads the `X-Config-Environment` header, resolves the effective config for that layer, and saves only the values that differ from the layer beneath it.
+
+```php
+use Grav\Plugin\Api\Services\ConfigStore;
+
+$store  = new ConfigStore($this->grav);
+$target = $store->targetFor($request);            // env name, or null for base user/config
+$store->writeDir($target);                        // 422 when the named environment doesn't exist
+$data   = $store->effective('plugins/my-plugin', $target);
+$data   = array_replace_recursive($data, $this->getRequestBody($request));
+$store->save('plugins/my-plugin', $data, $target); // writes the delta, clears the cache
+```
+
+`filePath($scope, $target)` gives the yaml path a save would write. If your plugin also has to run with an older API plugin, wrap it in `class_exists(ConfigStore::class)` and keep your previous save code as the fallback; only reference `ConfigStore` from your API controller, never from code that loads without the API plugin.
+
+### Admin-Next Integration
+
+Plugins can integrate with the admin-next UI by registering sidebar navigation items and providing page definitions. The API plugin provides dedicated events and endpoints that the admin-next frontend consumes to dynamically build plugin pages.
+
+**Endpoints:**
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/sidebar/items` | Collect sidebar navigation items from all plugins |
+| `GET` | `/gpm/plugins/{slug}/page` | Get a plugin's page definition for admin-next |
+| `GET` | `/gpm/plugins/{slug}/page-script` | Serve a plugin's page web component JS |
+| `GET` | `/gpm/plugins/{slug}/report-script/{reportId}` | Serve a plugin's report web component JS |
+| `GET` | `/admin-next/modules/plugins/{slug}/{page\|widget\|panel}` | Public: a plugin's page, widget or panel web component as a same-origin ES module, with `window.__GRAV_*_TAG = "{tag}";` in front (`?tag=` the element tag, `&v=` its version for year-long caching) |
+| `GET` | `/admin-next/modules/{plugins\|themes}/{slug}/{modal\|report\|field}/{name}` | Public: the same for a modal, report or field module (themes: fields only) |
+| `GET` | `/blueprints/plugins/{plugin}/pages/{pageId}` | Get a custom page blueprint for a plugin |
+
+**Register a sidebar item** via `onApiSidebarItems`:
+
+```php
+public static function getSubscribedEvents(): array
+{
+    return [
+        'onApiSidebarItems'  => ['onApiSidebarItems', 0],
+        'onApiPluginPageInfo' => ['onApiPluginPageInfo', 0],
+    ];
+}
+
+public function onApiSidebarItems(Event $event): void
+{
+    $items = $event['items'];
+
+    $items[] = [
+        'id'       => 'license-manager',
+        'plugin'   => 'license-manager',
+        'label'    => 'Licenses',
+        'icon'     => 'fa-key',
+        'route'    => '/plugin/license-manager',
+        'priority' => 10,
+        'badge'    => null,
+    ];
+
+    $event['items'] = $items;
+}
+```
+
+The sidebar item structure:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier for the sidebar item |
+| `plugin` | string | Plugin slug that owns this item |
+| `label` | string | Display text in the sidebar |
+| `icon` | string | FontAwesome icon class (e.g., `fa-key`) |
+| `route` | string | Frontend route the item navigates to |
+| `priority` | int | Sort order (higher values appear first) |
+| `badge` | string\|null | Optional badge text (e.g., count or status) |
+| `badgeEndpoint` | string | Optional API path returning `{ count: N }`, fetched for a live badge that overrides `badge` |
+| `authorize` | string\|array | Optional permission (or any-of list) a user needs to see the item |
+| `placement` | string | Optional `footer` to show the item in the sidebar's bottom group, above Settings, for site-wide tools such as a trash (Admin2 2.2.3 and later). Footer items aren't part of the arrangeable list. Default `main` |
+| `children` | array | Optional shortcuts a user can show under the item: each has an `id`, a `label`, a `route` (which may carry a `#` part) and optionally `default` (`true` to show it until the user picks their own), an `icon` and `authorize` |
+
+Each user arranges their own sidebar in Admin2 (the pencil at the bottom of the sidebar): they reorder and hide items, and star the `children` they want under an item. Until they pick, the children marked `default` show. A plugin's own page can star them too, through `window.__GRAV_SIDEBAR` in Admin2 2.2.0 and later (`children(itemId)` lists the ones it offers this user, `shortcuts(itemId)` the ones showing, `setShortcut(itemId, childId, on)` saves a change, and a `grav:sidebar:shortcuts` event on `window` says when they change). A super admin can save an arrangement as the site's default for everyone who hasn't arranged their own. The arrangement is the `sidebarLayout` preference, which names items by id (`plugin:<id>`) and keeps the picked children under `shortcuts`, keyed by item, so keep your item's `id` and its children's ids stable across releases.
+
+**Provide a page definition** via `onApiPluginPageInfo`:
+
+```php
+public function onApiPluginPageInfo(Event $event): void
+{
+    if ($event['plugin'] !== 'license-manager') {
+        return;
+    }
+
+    $event['definition'] = [
+        'id'            => 'license-manager',
+        'plugin'        => 'license-manager',
+        'title'         => 'License Manager',
+        'icon'          => 'fa-key',
+        'page_type'     => 'blueprint',  // or 'component'
+        'blueprint'     => 'licenses',
+        'data_endpoint' => '/licenses/form-data',
+        'save_endpoint' => '/licenses',
+        'actions'       => [
+            ['id' => 'import', 'label' => 'Import', 'icon' => 'fa-upload', 'upload' => true, 'endpoint' => '/licenses/import'],
+            ['id' => 'export', 'label' => 'Export', 'icon' => 'fa-download', 'download' => true, 'endpoint' => '/licenses/export'],
+            ['id' => 'save', 'label' => 'Save', 'icon' => 'fa-check', 'primary' => true],
+        ],
+    ];
+}
+```
+
+The page definition structure:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique page identifier |
+| `plugin` | string | Plugin slug that owns this page |
+| `title` | string | Page title displayed in the header |
+| `icon` | string | FontAwesome icon class |
+| `page_type` | string | Rendering mode: `blueprint` (form from YAML) or `component` (custom web component) |
+| `blueprint` | string | Blueprint name to load (when `page_type` is `blueprint`) |
+| `data_endpoint` | string | API path to fetch form data |
+| `save_endpoint` | string | API path to save form data |
+| `actions` | array | Toolbar action buttons (see below) |
+| `settings_route` | string | A hash route inside this page where the plugin keeps its own settings, such as `#/settings`. With it set, Admin Next redirects `/plugins/{slug}` to `/plugin/{slug}#/settings` and sends the Configure button on the Plugins list to the same place, so a plugin that renders its settings on its own page does not end up with two copies of them. Only a hash route is accepted — anything else is ignored. |
+| `settings_page` | string | The slug of the plugin whose page draws those settings, when it is not this plugin's own. Answer `onApiPluginPageInfo` for an add-on that has no admin page of its own, name your page here, and Admin Next redirects `/plugins/{add-on}` to `/plugin/{settings_page}{settings_route}` — that is how an add-on's settings end up inside the page of the plugin it extends. Kept only when it names an installed plugin that has an admin page and `settings_route` is a hash route; otherwise both keys are dropped. |
+
+Each action in the `actions` array:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Action identifier |
+| `label` | string | Button text |
+| `icon` | string | FontAwesome icon class |
+| `primary` | bool | Whether this is the primary action (styled prominently) |
+| `upload` | bool | Whether this action opens a file upload dialog |
+| `download` | bool | Whether this action triggers a file download |
+| `endpoint` | string | API path for the action (required for upload/download actions) |
+
+### MCP tool manifests
+
+An MCP server such as [grav-mcp](https://github.com/getgrav/grav-mcp) gives a model a set of tools it can call against a Grav site. The tools for everything this plugin does itself are built into that server, but the routes your plugin registers through `onApiRegisterRoutes` are invisible to it. A tool manifest fixes that: you describe your routes in a `mcp.yaml` file next to them, the API serves the union of every plugin's manifest at `GET /mcp/tools`, and the MCP server turns each entry into a tool at startup with no code written per plugin.
+
+Drop `mcp.yaml` in your plugin root, beside `blueprints.yaml` and `permissions.yaml`:
+
+```yaml
+version: 1
+prefix: kahunacart          # optional; defaults to the plugin slug. Tool name = "{prefix}_{name}"
+tools:
+  - name: list_products
+    title: List products
+    description: >
+      List catalog products with paging, search and status filters. Returns product rows with their
+      variants and attributes. Use get_product for one product with everything on it.
+    method: GET
+    path: /kahunacart/products
+    permission: kahunacart.products.manage
+    annotations:
+      readOnly: true
+    input:
+      type: object
+      properties:
+        q: { type: string, description: "Search title, slug or SKU" }
+        status: { type: string, enum: [draft, published, archived] }
+        page: { type: integer, minimum: 1, default: 1 }
+        per_page: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  - name: update_product
+    title: Update a product
+    description: Change one or more fields of a product. Only the fields sent are changed.
+    method: PATCH
+    path: /kahunacart/products/{id}
+    permission: kahunacart.products.manage
+    annotations:
+      idempotent: true
+    input:
+      type: object
+      required: [id]
+      properties:
+        id: { type: integer, description: "Product id" }
+        title: { type: string }
+        status: { type: string, enum: [draft, published, archived] }
+        attributes:
+          type: object
+          description: "Attribute slug to value; null removes"
+          additionalProperties: true
+```
+
+The fields:
+
+| Key | Required | Meaning |
+|---|---|---|
+| `version` | yes | Manifest format version. `1` or `2`. Version 2 adds `body`. A manifest without it, or with any other value, is skipped whole. |
+| `prefix` | no | Tool-name prefix. Defaults to the plugin slug with `-` replaced by `_`. |
+| `tools[].name` | yes | Must match `^[a-z][a-z0-9_]*$`. The final tool name is `{prefix}_{name}` and must be 64 characters or fewer. |
+| `tools[].title` | no | Human title an MCP client may show. |
+| `tools[].description` | yes | What the tool does and returns, when to use it, and anything the model must know to call it well. One to four sentences. Do not repeat the permission; the MCP server appends `[Requires: <permission>]` itself. |
+| `tools[].method` | yes | `GET`, `POST`, `PATCH`, `PUT` or `DELETE`. |
+| `tools[].path` | yes | Route path relative to the API base, starting with `/`. `{name}` placeholders name path parameters; each must exist in `input.properties` and is treated as required. A FastRoute regex constraint such as `{id:\d+}` is not accepted here, since the client has to be able to substitute the placeholder literally. |
+| `tools[].permission` | no | The permission your route enforces. A caller who lacks it never sees the tool. |
+| `tools[].annotations` | no | `readOnly`, `destructive` and `idempotent` booleans. Defaults follow the method: `GET` is `readOnly: true, idempotent: true`; `DELETE` is `destructive: true, idempotent: true`; `PUT` and `PATCH` are `idempotent: true`; `POST` is all false. Setting a key overrides the default for that key only. |
+| `tools[].input` | no | A JSON Schema object (`type: object`) in the subset below. Omit it for a tool that takes no arguments. |
+| `tools[].query` | no | For `POST`, `PATCH`, `PUT` and `DELETE`, the property names to send as query-string parameters rather than in the JSON body. Ignored for `GET`, which sends every non-path property as a query parameter. |
+| `tools[].body` | no | Version 2 only. Names the single declared property whose value *is* the request body, instead of the body being assembled from whatever properties are left over. For a route whose body fields the site decides — a Flex directory's, say — or whose fields would collide with a path placeholder. The property must be declared, must be `type: object`, and must be neither a path placeholder nor listed in `query`; the method cannot be `GET`; the root `input` must not be open (`additionalProperties: true`); and every other declared property must be a path placeholder or in `query`, since nothing is left over to fall into the body. Whether it is `required` is yours to decide. |
+
+Only JSON bodies are supported. Multipart routes (file, image and release uploads) are out of scope, so leave them out of the manifest.
+
+An `additionalProperties: true` at the root of `input` is honored: arguments the schema does not declare are passed through, as query parameters for a `GET` and into the body for everything else. Use it for a route that forwards whatever it is handed. The root is an object like any other, so the free-form-map rule below reaches it too: an `input` declaring `type: object` with no `properties` is open. For a tool that takes no arguments, omit `input` entirely rather than writing an empty `type: object`. It cannot be combined with `body`, which needs a closed schema so that every property has exactly one place to go. A key on a tool that is not one of the keys above is an error, not something ignored: the tool is dropped with an `unknown key` warning.
+
+A body-designated tool, for a route whose fields come from the site's own blueprints:
+
+```yaml
+version: 2
+prefix: flex
+tools:
+  - name: update_object
+    description: Change one or more fields of an object in a Flex directory.
+    method: PATCH
+    path: /flex-objects/{type}/{key}
+    permission: flex-objects.update
+    body: object
+    input:
+      type: object
+      required: [type, key, object]
+      properties:
+        type:   { type: string, description: "Directory name" }
+        key:    { type: string, description: "Object key" }
+        object: { type: object, additionalProperties: true, description: "Fields per the directory blueprint" }
+```
+
+**The JSON Schema subset.** An MCP client converts `input` into its own validator at load time, so a manifest may only use what that conversion understands. A tool that uses anything else is rejected and the reason is reported under `warnings`.
+
+Allowed per property: `type` (`string`, `integer`, `number`, `boolean`, `array`, `object`), `description`, `default`, `enum` (strings or numbers), `nullable: true`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `format` (`date`, `date-time`, `email` or `uri`, advisory only and passed through to the description), `items` (the same subset, for arrays), and `properties` + `required` + `additionalProperties` for nested objects. An `object` with no `properties` is a free-form map, and `additionalProperties` defaults to `true` in that case.
+
+Not allowed anywhere in the tree: `$ref`, `oneOf`, `anyOf`, `allOf`, `not`, `if`/`then`, tuple `items`, `patternProperties`, `const` and `dependencies`.
+
+**Tools built at runtime.** If your tool list depends on data rather than on a file, add entries in code through the `onApiMcpTools` event. The event carries an `McpToolCollector` under `tools`:
+
+```php
+public static function getSubscribedEvents(): array
+{
+    return ['onApiMcpTools' => ['onApiMcpTools', 0]];
+}
+
+public function onApiMcpTools(Event $event): void
+{
+    $event['tools']->add('kahunacart', [
+        'name'        => 'sync_stripe',
+        'description' => 'Re-sync products and prices with the payment provider.',
+        'method'      => 'POST',
+        'path'        => '/kahunacart/providers/stripe/sync',
+        'permission'  => 'kahunacart.settings',
+    ]);
+}
+```
+
+The first argument is your plugin slug, which decides the name prefix and fills the `plugin` field. Entries are validated exactly like manifest entries. Files are read first and the event fires afterwards, so a name your own `mcp.yaml` already claimed wins over the one added in code.
+
+**What the endpoint returns.** `GET /mcp/tools` needs only `api.access`:
+
+```json
+{
+  "data": {
+    "tools": [
+      {
+        "name": "kahunacart_list_products",
+        "plugin": "kahunacart",
+        "title": "List products",
+        "description": "List catalog products ...",
+        "method": "GET",
+        "path": "/kahunacart/products",
+        "permission": "kahunacart.products.manage",
+        "annotations": { "readOnly": true, "destructive": false, "idempotent": true },
+        "input_schema": { "type": "object", "properties": { "q": { "type": "string" } } },
+        "path_params": [],
+        "query": [],
+        "body": null
+      }
+    ],
+    "plugins": [
+      { "slug": "kahunacart", "name": "KahunaCart", "version": "0.1.0", "tools": 48 }
+    ],
+    "warnings": [
+      "kahunacart: tool 'upload_image' skipped: unsupported schema keyword 'oneOf' at properties.file"
+    ],
+    "fingerprint": "5f1d9c2a7b3e4d08"
+  }
+}
+```
+
+A few rules worth knowing while you write a manifest:
+
+- Only enabled plugins are read. A plugin with no `mcp.yaml` and no `onApiMcpTools` listener contributes nothing and is not listed under `plugins`.
+- A tool whose `permission` the caller does not hold is left out, and super admins see everything. Tools without a permission are always included. `plugins[].tools` counts what that caller can see, so the number moves with who is asking.
+- `annotations` always comes back fully populated with the defaults applied, and `input_schema` is always present (`{"type":"object","properties":{}}` for a tool that takes no arguments). `path_params` lists the placeholders in `path` in the order they appear.
+- `body` is always present, and is `null` unless the tool designated one. When it names a property, that property's value is the whole request body and every other property is a path or query parameter; when it is `null`, the body is whatever is left after the path and query parameters are taken out.
+- `fingerprint` hashes the enabled-plugin set plus the manifest file modification times, so a client can tell whether anything changed without diffing the tool list. It is also sent as the `ETag`, and a matching `If-None-Match` gets a 304. Tools added through the event have no file behind them, so editing that code does not move the fingerprint.
+- `warnings` names every entry that was skipped and why, and is safe to show to any authenticated caller. Use it while writing a manifest: a typo costs you that one tool, never the rest of the file.
+- A broken manifest never takes the endpoint down. A YAML parse error becomes one warning naming your plugin and every other plugin is served as usual.
+
+## Events
+
+The API fires events before and after all write operations, allowing plugins to react, validate, modify data, or cancel operations.
+
+### Page Events
+
+| Event | When | Event Data |
+|-------|------|------------|
+| `onApiBeforePageCreate` | Before a page is saved | `route`, `header`, `content`, `template`, `lang` (modifiable by reference) |
+| `onApiPageCreated` | After page creation | `page` (PageInterface), `route`, `lang` |
+| `onApiBeforePageUpdate` | Before a page is updated | `page` (PageInterface), `data` (request body, modifiable by reference) |
+| `onApiPageUpdated` | After page update | `page` (PageInterface), `previous_template` (string, only when the template changed) |
+| `onApiBeforePageDelete` | Before a page is deleted | `page` (PageInterface), `lang` (if language-specific delete), `method` (`batch` in a batch) |
+| `onApiPageDeleted` | After page deletion | `route`, `lang` (if language-specific delete), `undo` (set it to offer an undo, see below; `DELETE /pages/{route}` only), `method` (`batch` in a batch) |
+| `onApiPageDeleteInfo` | Once per request, when page records are built | `recoverable` (set it to `true` when your plugin keeps deleted pages so they can be restored), `user` |
+| `onApiPageMoved` | After page move | `page` (PageInterface), `old_route`, `new_route` |
+| `onApiBeforePageTranslate` | Before a translation is created | `page`, `lang`, `header`, `content` (modifiable by reference) |
+| `onApiPageTranslated` | After translation created | `page`, `route`, `lang` |
+| `onApiBeforePagesReorder` | Before children are reordered | `parent` (PageInterface), `order` (slug array) |
+| `onApiPagesReordered` | After children reordered | `parent` (PageInterface), `order` |
+
+### Media Events
+
+The same media event names are fired from three different places, and the payload differs depending on what the file is attached to. Read the "Payload by emitter" table below before dereferencing anything.
+
+| Event | When | Event Data |
+|-------|------|------------|
+| `onApiBeforeMediaUpload` | Before each file is saved | `page`, `filename`, `type`, `size` — plus `path` on site media, or `object` instead of `page` on flex media |
+| `onApiMediaUploaded` | After upload completes | `page`, `filenames` (array) — plus `path` on site media, or `object` instead of `page` on flex media |
+| `onApiBeforeMediaDelete` | Before a media file is deleted | `page`, `filename` — plus `path` on site media, or `object` instead of `page` on flex media |
+| `onApiMediaDeleted` | After media deletion | `page`, `filename` — plus `path` on site media, or `object` instead of `page` on flex media |
+| `onApiMediaMetadataUpdated` | After a `.meta.yaml` sidecar is written | `page`, `filename` on page media; `path`, `filename` on site media (no `page` key at all) |
+| `onApiMediaMetadataDeleted` | After a sidecar's editable fields are cleared | `page`, `filename` on page media; `path`, `filename` on site media (no `page` key at all) |
+
+**Payload by emitter:**
+
+| Emitted by | Routes | Payload |
+|------------|--------|---------|
+| Page media | `/pages/{route}/media…` | `page` is the `PageInterface` the file belongs to. No `path` key. |
+| Site media | `/media…` | `page` is **always `null`** — site media belongs to no page. An extra `path` key is added: on the upload events it is the destination *folder* relative to the media root (`''` for the root itself); on the delete and metadata events it is the *file's* path relative to the media root. The metadata events carry `path` but no `page` key at all. |
+| Flex media | `/flex-objects/{type}/{key}/media…` (provided by the Flex Objects plugin) | There is no `page` key at all; `object` carries the `FlexObjectInterface` instead. No `path` key. Flex fires only the four upload/delete events, not the metadata pair. |
+
+> A listener that does `$event['page']->route()` will fatal on a site-media upload and warn on a flex one. Check the key exists and is not null, and fall back to `path` (site) or `object` (flex).
+
+Site media folder operations (`POST /media/folders`, `POST /media/folders/rename`, `DELETE /media/folders/{path}`) fire no `onApi*` event, because there is no page-media counterpart to keep parity with.
+
+### Config Events
+
+| Event | When | Event Data |
+|-------|------|------------|
+| `onApiConfigUpdated` | After config is saved | `scope`, `data` |
+
+### User Events
+
+| Event | When | Event Data |
+|-------|------|------------|
+| `onApiUserCreated` | After user creation | `user` (UserInterface) |
+| `onApiUserUpdated` | After user update | `user` (UserInterface) |
+| `onApiBeforeUserDelete` | Before user deletion | `user` (UserInterface) |
+| `onApiUserDeleted` | After user deletion | `username` |
+
+### GPM Events
+
+| Event | When | Event Data |
+|-------|------|------------|
+| `onApiBeforePackageInstall` | Before package install | `package`, `type` |
+| `onApiPackageInstalled` | After package installed | `package`, `type` |
+| `onApiBeforePackageRemove` | Before package removal | `package`, `type` |
+| `onApiPackageRemoved` | After package removed | `package`, `type` |
+| `onApiBeforeGravUpgrade` | Before Grav upgrade | `current_version`, `available_version` |
+| `onApiGravUpgraded` | After Grav upgraded | `previous_version`, `new_version` |
+
+### Route Registration
+
+| Event | When | Event Data |
+|-------|------|------------|
+| `onApiRegisterRoutes` | During router initialization | `routes` (ApiRouteCollector) |
+
+### Admin-Next Integration Events
+
+| Event | When | Event Data |
+|-------|------|------------|
+| `onApiSidebarItems` | Sidebar items are collected via `GET /sidebar/items` | `items` (array, modifiable), `user` (UserInterface) |
+| `onApiPluginPageInfo` | Plugin page definition requested via `GET /gpm/plugins/{slug}/page` | `plugin` (string), `definition` (array\|null, modifiable), `user` (UserInterface) |
+| `onApiDashboardWidgets` | Widget registry is collected via `GET /dashboard/widgets` | `widgets` (array, modifiable), `user` (UserInterface) |
+
+### MCP Events
+
+| Event | When | Event Data |
+|-------|------|------------|
+| `onApiMcpTools` | Plugin tool manifests are collected via `GET /mcp/tools`, after every `mcp.yaml` has been read | `tools` (McpToolCollector) |
+
+### Using Events in Your Plugin
+
+**React to content changes** (e.g., clear a search index when pages change):
+
+```php
+public static function getSubscribedEvents(): array
+{
+    return [
+        'onApiPageCreated' => ['onApiPageCreated', 0],
+        'onApiPageUpdated' => ['onApiPageUpdated', 0],
+        'onApiPageDeleted' => ['onApiPageDeleted', 0],
+    ];
+}
+
+public function onApiPageCreated(Event $event): void
+{
+    $page = $event['page'];
+    $this->searchIndex->add($page);
+}
+
+public function onApiPageUpdated(Event $event): void
+{
+    $page = $event['page'];
+    $this->searchIndex->update($page);
+}
+
+public function onApiPageDeleted(Event $event): void
+{
+    $route = $event['route'];
+    $this->searchIndex->remove($route);
+}
+```
+
+**Undo a page delete** (e.g. a plugin that keeps deleted pages in a trash). `onApiPageDeleted` carries an `undo` slot. Fill it with the call that brings the page back, and `DELETE /pages/{route}` answers `200` with `{"data": {"undo": {...}}}` instead of `204` (the `X-Invalidates` header is sent either way). Admin2 then shows the delete toast with an Undo button that makes that call, and opens the restored page (from the page editor) or refreshes the list. `endpoint` is a path relative to the API base (`/api/v1`), never a URL; `method` defaults to `POST`; `body` (a JSON object) and `label` (the button text, Admin2's own translated "Undo" when left out) are optional. A slot that doesn't fit this is ignored and the delete answers `204`. The undo call is an ordinary API request, so it must check the caller's permissions itself. Batch deletes don't offer an undo.
+
+```php
+public function onApiPageDeleted(Event $event): void
+{
+    $id = $this->trash->commitLatest();
+    $event['undo'] = [
+        'method'   => 'POST',
+        'endpoint' => '/my-trash/' . $id . '/restore',
+        'body'     => ['mode' => 'original'],
+    ];
+}
+```
+
+The response's `route` (when the undo endpoint returns one as `data.route`) is the page Admin2 opens after the undo.
+
+**Say deletes can be undone.** A plugin that keeps deleted pages sets `recoverable` on `onApiPageDeleteInfo`, and every page record then carries `delete_recoverable: true`, so a client can tell people the delete can be undone instead of warning that it is permanent:
+
+```php
+public function onApiPageDeleteInfo(Event $event): void
+{
+    if ($this->trashEnabled()) {
+        $event['recoverable'] = true;
+    }
+}
+```
+
+**Validate or modify data before save** (e.g., enforce content rules):
+
+```php
+public function onApiBeforePageCreate(Event $event): void
+{
+    $header = &$event['header'];
+    $content = &$event['content'];
+
+    // Auto-add a timestamp
+    $header['api_created'] = date('c');
+
+    // Reject empty content
+    if (empty(trim($content))) {
+        throw new \RuntimeException('Page content cannot be empty.');
+    }
+}
+```
+
+**Reject file uploads** (e.g., enforce image-only policy):
+
+```php
+public function onApiBeforeMediaUpload(Event $event): void
+{
+    $type = $event['type'];
+    if (!str_starts_with($type, 'image/')) {
+        throw new \RuntimeException('Only image uploads are allowed.');
+    }
+}
+```
+
+### Admin-Compatible Events
+
+In addition to the `onApi*` events above, the API plugin fires the same `onAdmin*` events that Grav's admin plugin fires. This ensures third-party plugins that subscribe to admin events (SEO Magic, Auto Date, Mega Frontmatter, etc.) work correctly regardless of whether changes come from the admin UI or the API.
+
+Both event families fire for every operation — `onAdmin*` events first, then `onApi*` events.
+
+#### Events Fired
+
+| Event | Controller | Methods | Event Data (matches admin plugin signatures) |
+|-------|-----------|---------|----------------------------------------------|
+| `onAdminCreatePageFrontmatter` | Pages | `create` | `header` (array, modifiable), `data` (request body) |
+| `onAdminSave` | Pages | `create`, `update`, `translate` | `object` (Page, by reference), `page` (Page, by reference) |
+| `onAdminAfterSave` | Pages | `create`, `update`, `translate` | `object` (Page), `page` (Page) |
+| `onAdminAfterDelete` | Pages | `delete` | `object` (Page), `page` (Page) |
+| `onAdminAfterSaveAs` | Pages | `move` | `path` (new filesystem path) |
+| `onAdminAfterAddMedia` | Media | `uploadPageMedia` | `object` (Page), `page` (Page) |
+| `onAdminAfterDelMedia` | Media | `deletePageMedia` | `object` (Page), `page` (Page), `media` (Media), `filename` (string) |
+| `onAdminSave` | Users | `create`, `update` | `object` (User, by reference) |
+| `onAdminAfterSave` | Users | `create`, `update` | `object` (User) |
+| `onAdminSave` | Config | `update` | `object` (Data, by reference) |
+| `onAdminAfterSave` | Config | `update` | `object` (Data) |
+
+#### Event Ordering
+
+For a page create operation, events fire in this order:
+
+1. `onApiBeforePageCreate` — API before event
+2. `onAdminCreatePageFrontmatter` — admin frontmatter injection
+3. `onAdminSave` — admin pre-save (plugins can modify the page)
+4. `onAdminAfterSave` — admin post-save (indexing, notifications)
+5. `onApiPageCreated` — API after event (triggers webhooks)
+
+#### Example: Existing Plugin Compatibility
+
+Plugins that already listen for admin events will automatically work with the API — no code changes needed:
+
+```php
+// This SEO Magic listener fires for both admin UI saves and API saves
+public static function getSubscribedEvents(): array
+{
+    return [
+        'onAdminAfterSave'   => ['onObjectSave', 0],
+        'onAdminAfterDelete' => ['onObjectDelete', 0],
+    ];
+}
+```
+
+## Configuration Reference
+
+Full configuration in `user/config/plugins/api.yaml`:
+
+```yaml
+enabled: true
+route: /api
+version_prefix: v1
+
+auth:
+  api_keys_enabled: true
+  jwt_enabled: true
+  jwt_secret: ''          # Auto-generated on first use
+  jwt_algorithm: HS256
+  jwt_expiry: 3600        # Access token lifetime (seconds)
+  jwt_refresh_expiry: 604800  # Refresh token lifetime (seconds)
+  session_enabled: true
+
+cors:
+  enabled: true
+  origins: ['*']
+  methods: [GET, POST, PATCH, DELETE, OPTIONS]
+  headers: [Content-Type, X-API-Token, X-API-Key, Authorization, If-Match, If-None-Match]
+  expose_headers: [ETag, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset]
+  max_age: 86400
+  credentials: false
+
+rate_limit:
+  enabled: true
+  requests: 120
+  window: 60
+
+pagination:
+  default_per_page: 20
+  max_per_page: 100
+```
+
+## OpenAPI Specification
+
+A complete OpenAPI 3.0 specification is included at [`openapi.yaml`](openapi.yaml). Import it into:
+
+- **Grav Docs** via the [API Doc Import](https://github.com/getgrav/grav-plugin-api-doc-import) plugin
+- **Postman** for interactive testing
+- **Swagger UI** for browsable documentation
+- **Any OpenAPI-compatible tool** for client SDK generation
+
+`openapi.yaml` is the source of truth. `OpenApiCoverageTest` fails when a core route is missing from it (or it still lists a removed one), and `npm run lint:openapi` validates it.
+
+For Postman you can also import [`grav-api.postman_collection.json`](grav-api.postman_collection.json) directly. It has a request for every route with `base_url`, `api_key` and `grav_environment` variables already wired. The collection doubles as the Newman test suite: its hand-written requests carry the tests, and `npm run postman:sync` adds a request, generated from the spec, for every route none of them call. Generated requests skip themselves under `npm run test:api`, since many of them change or delete data.
+
+## Development
+
+### Running Tests
+
+```bash
+composer install
+composer test
+```
+
+Run the tests from inside a Grav install (the plugin's normal home at
+`user/plugins/api`). The bootstrap auto-detects the hosting Grav and loads its
+autoloader, which provides `symfony/yaml` — the plugin relies on Grav's copy
+rather than bundling its own (see the `replace` entry in `composer.json`).
+
+Most unit tests fall back to lightweight stubs and run without a Grav
+installation, but the YAML-dependent tests (config diffing, page header
+merging, API key storage) need Grav reachable. If you're working from a
+standalone source clone that the bootstrap can't locate automatically, point it
+at your Grav root:
+
+```bash
+GRAV_ROOT=/path/to/grav composer test
+```
+
+For integration tests within a Grav instance:
+
+```bash
+vendor/bin/phpunit --group integration
+```
+
+### Project Structure
+
+```
+grav-plugin-api/
+├── api.php                          # Plugin entry point
+├── api.yaml                         # Default configuration
+├── blueprints.yaml                  # Admin UI configuration
+├── permissions.yaml                 # ACL permission definitions
+├── openapi.yaml                     # OpenAPI 3.0 specification
+├── languages/en.yaml                # Translation strings
+├── composer.json
+├── classes/Api/
+│   ├── ApiRouter.php                # FastRoute dispatcher + middleware chain
+│   ├── ApiRouteCollector.php        # Plugin route registration helper
+│   ├── Auth/
+│   │   ├── AuthenticatorInterface.php
+│   │   ├── ApiKeyAuthenticator.php
+│   │   ├── JwtAuthenticator.php
+│   │   ├── SameOriginGuard.php
+│   │   ├── SessionAuthenticator.php
+│   │   └── ApiKeyManager.php
+│   ├── Controllers/
+│   │   ├── AbstractApiController.php
+│   │   ├── AuthController.php
+│   │   ├── ConfigController.php
+│   │   ├── DashboardController.php
+│   │   ├── DashboardWidgetController.php
+│   │   ├── GpmController.php
+│   │   ├── MediaController.php
+│   │   ├── PagesController.php
+│   │   ├── SchedulerController.php
+│   │   ├── SystemController.php
+│   │   ├── UsersController.php
+│   │   └── WebhookController.php
+│   ├── Exceptions/
+│   │   ├── ApiException.php
+│   │   ├── ConflictException.php
+│   │   ├── ForbiddenException.php
+│   │   ├── NotFoundException.php
+│   │   ├── UnauthorizedException.php
+│   │   └── ValidationException.php
+│   ├── Middleware/
+│   │   ├── AuthMiddleware.php
+│   │   ├── CorsMiddleware.php
+│   │   ├── JsonBodyParserMiddleware.php
+│   │   └── RateLimitMiddleware.php
+│   ├── Response/
+│   │   ├── ApiResponse.php
+│   │   └── ErrorResponse.php
+│   ├── Serializers/
+│   │   ├── SerializerInterface.php
+│   │   ├── PageSerializer.php
+│   │   ├── MediaSerializer.php
+│   │   ├── PackageSerializer.php
+│   │   └── UserSerializer.php
+│   └── Webhooks/
+│       ├── WebhookManager.php
+│       └── WebhookDispatcher.php
+└── tests/
+    ├── bootstrap.php
+    ├── Stubs/
+    └── Unit/
+```
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.
+
+## Credits
+
+Built by [Team Grav](https://getgrav.org) for the Grav CMS community.

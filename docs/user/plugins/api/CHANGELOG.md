@@ -1,0 +1,1212 @@
+# v1.1.16
+## 11/07/2026
+
+1. [](#bugfix)
+    * Page Statistics no longer count requests nobody made: link-preview fetchers such as `facebookexternalhit` (which loads a page each time a shared link or ad is shown), AI fetchers like `ChatGPT-User` and `ClaudeBot`, uptime and monitoring services, and headless or auditing tools like HeadlessChrome and Lighthouse are now skipped along with `curl` and similar clients, while **Exclude Non-Browser Clients** is on. Facebook's and Instagram's in-app browsers are still counted as visitors
+
+# v1.1.15
+## 11/06/2026
+
+1. [](#new)
+    * A page's group permissions can grant media management on its own with the new `media` rule (letter `m`), so someone can upload and caption a page's images without being able to edit the page. Where a rule says nothing about media, the page's update rule still decides. Thanks @phmg701 [#77](https://github.com/getgrav/grav-plugin-api/issues/77) [#78](https://github.com/getgrav/grav-plugin-api/pull/78)
+1. [](#bugfix)
+    * Page media uploads and deletes no longer touch the page's own Markdown file or `frontmatter.yaml`; changing those needs the right to edit the page
+
+# v1.1.14
+## 11/05/2026
+
+1. [](#new)
+    * Admin Next web components from plugins and themes are now also served as public same-origin modules, so Admin2 can run under a strict Content-Security-Policy [admin2#212](https://github.com/getgrav/grav-plugin-admin2/issues/212)
+1. [](#bugfix)
+    * Adding your own media metadata field no longer takes alt, title, caption, description or tags out of the editor. The built-in fields stay unless a field with the same key sets the new **Hide from editor** option (`remove: true`) [#76](https://github.com/getgrav/grav-plugin-api/issues/76)
+    * Editing a page's group permissions in Admin2 no longer rewrites rules written as a map, such as `{ update: true, delete: false }`, into letters that grant different actions. Those rules are saved back as a map, keeping keys the C/R/U/D buttons don't show
+
+# v1.1.13
+## 11/05/2026
+
+1. [](#improved)
+    * [security] Changing the settings of the Login, Email, Git Sync and Admin2 plugins, and of Login and Email provider plugins, now needs an API super user, like the API plugin's own settings. A configuration editor without super-admin can still change other plugins' settings. Demo mode keeps these plugins read-only too. Thanks @rng70
+
+# v1.1.12
+## 11/04/2026
+
+1. [](#improved)
+    * [security] A user manager without super-admin (`api.users.write`) can only grant permissions their own account holds, through their own access or a group. Creating a user, editing a user's access and presetting an invitation's access all check it, so a manager can no longer give anyone, themselves included, `api.gpm.write`, `api.config.write` or anything else they don't have. Permissions the account already has are left alone when it's saved, including children of a blanket grant such as `api.pages: true`, and taking permissions away is always allowed
+    * `GET /blueprints/users/permissions` marks each permission `grantable`, so Admin2 can lock the toggles a user manager can't grant
+
+# v1.1.11
+## 11/03/2026
+
+1. [](#new)
+    * New **Show Password Form** setting (`login.show_password_form`) to hide the username and password form on the admin login screen, to offer only other login options such as single sign-on buttons. It only hides the form; password logins still work
+    * `GET /dashboard/popularity` takes a `range` of `7d`, `14d` (the default), `30d`, `90d` or `12m`, and returns a `range` block with the time frame's total and the total of the period of the same length before it (`null` when the history doesn't reach back that far). `12m` plots monthly totals. Chart points also carry an ISO `key`
+1. [](#improved)
+    * Page view history is kept for 365 days and 24 months by default (was 30 days and 12 months), so the dashboard can chart 90 days and 12 months and compare each with the period before. Change it with `popularity.history.daily` and `popularity.history.monthly`
+1. [](#bugfix)
+    * Fields inside a `type: conditional` field keep their own names, as in the form plugin, instead of being prefixed with the conditional's name, so Admin2 shows their saved values and saves them to the right key. A file field inside a conditional accepts uploads too ([#75](https://github.com/getgrav/grav-plugin-api/issues/75))
+    * Uploaded files (page media and blueprint file fields such as a theme logo) get the normal file permissions again instead of owner-only `0600`, which gave a 403 on hosts where the web server serves files as a different user than PHP ([#74](https://github.com/getgrav/grav-plugin-api/issues/74))
+    * `GET /admin/languages` needs only `api.access` instead of `api.system.read`, so every Admin2 user can pick from all the admin languages in their settings, not just English ([#73](https://github.com/getgrav/grav-plugin-api/issues/73))
+    * [security] A scoped API key is held to its own scopes when a page's permission rules apply: without `admin.super` in its scopes it can no longer override a page that denies an action, and changing a page's media checks the key's scopes rather than the account's
+
+# v1.1.10
+## 11/03/2026
+
+1. [](#new)
+    * The page list has an `editable=true` filter that shows only the pages you can edit, plus the folders that lead to them, for editors who only look after a few pages ([admin2#209](https://github.com/getgrav/grav-plugin-admin2/issues/209))
+    * Passkey sign-in for Admin2, with Login 3.12 or later on Grav 2 (`plugins.login.passkeys.enabled`): `GET /auth/passkey` says whether it is on, `POST /auth/passkey/options` and `POST /auth/passkey` sign in with a passkey alone (it is both factors, so no 2FA challenge) or finish a `requires_2fa` challenge in place of the code. Same token pair as `POST /auth/token`
+    * `/users/{username}/passkeys` lists, adds, renames and removes an account's passkeys. Adding and renaming are for your own account only and take the current password (or 2FA code); removing someone else's, for a lost device, takes `api.users.write`. The user resource now carries a `passkeys` count
+1. [](#improved)
+    * Page-level permissions now decide what the page list shows: pages your groups may not read or list are left out of the list, the tree and the page navigator, and the counts match. A folder you can't open still appears, marked `ancestor_only`, when there is a page inside it you can read, so you can still reach that page. Such a folder shows only its title and place in the tree, nothing else about it ([admin2#209](https://github.com/getgrav/grav-plugin-admin2/issues/209))
+    * Large page lists load faster for editors on sites with page-level permissions, as each page's rules are no longer read from disk for every row, and saving, creating, moving, copying, deleting or reordering a page no longer makes the next list rebuild them all (about 0.1 s on a 500-page site) ([admin2#209](https://github.com/getgrav/grav-plugin-admin2/issues/209))
+    * A single page's `permissions` now has a `media` entry: whether you can change that page's media. It can be true on a page with no rules where `update` is false, so Admin can keep the media panel working while the page's fields are read-only ([admin2#209](https://github.com/getgrav/grav-plugin-admin2/issues/209))
+    * With `editable=true`, a folder you can read but not edit that leads to pages you can edit is still marked `ancestor_only`, but now comes back as a full row so it can be opened read-only ([admin2#209](https://github.com/getgrav/grav-plugin-admin2/issues/209))
+    * `passkeys` and `webauthn_id` are never written through `PATCH /users/{username}` or `POST /users`, so a user editor can't plant a passkey on another account
+1. [](#bugfix)
+    * A parent page whose collection is ordered by `publish_date` or `unpublish_date` now lists its children in that order in the admin, instead of falling back to folder order ([admin2#208](https://github.com/getgrav/grav-plugin-admin2/issues/208))
+    * Dragging pages into a new order no longer gives a page the same number as a sibling you can't see: the server numbers against every page in the folder, and moves a hidden page along only when it has to. Reordering with a partial list keeps the pages you didn't list in their place, and an error from a reorder no longer names a folder you can't see: a page you can't see is treated as not there ([admin2#209](https://github.com/getgrav/grav-plugin-admin2/issues/209))
+    * On a page with page-level rules, changing its media (and file fields that save into its folder) now needs the right to update that page, so an editor who may only read the page can't change its images. Pages without rules work as before with `api.media.write` ([admin2#209](https://github.com/getgrav/grav-plugin-admin2/issues/209))
+
+# v1.1.9
+## 11/01/2026
+
+1. [](#new)
+    * `POST /reports/twig-content/trusted-partial` adds a theme or plugin template to `security.twig_sandbox.trusted_partials`, the fix for a page whose include of a partial shows its Twig as plain text since Grav 2.2.18. Super admins only, needs Grav 2.2.18 or later
+1. [](#improved)
+    * The Twig in Content report names the template each block happened in, and when it's a partial the page includes, offers trusting that partial instead of allowing what it uses (such as `raw`) for all page content. Blocks from partials the site now trusts drop out of the report
+    * The report's hints no longer suggest turning the Twig sandbox off, and say that an allowed filter or function is open to every page editor
+    * A page that keeps getting blocked is listed once in the Twig in Content report, instead of once per visit
+
+# v1.1.8
+## 10/31/2026
+
+1. [](#bugfix)
+    * JSON request bodies are now read once instead of twice, and with Grav 2.2.20 or later a body over the site's JSON limits gets a clear "Payload Too Large" error.
+
+# v1.1.7
+## 10/31/2026
+
+1. [](#bugfix)
+    * Deleting a user now removes the account when the site uses Flex accounts, instead of reporting success and leaving it in place.
+
+# v1.1.6
+## 10/31/2026
+
+1. [](#bugfix)
+    * [security] The security fixes below were found by Anthropic's OSS Scanner
+    * [security] Page dates that are too long are now ignored when preparing API responses.
+    * [security] Pages edited in demo mode now keep their safe rendering settings.
+    * [security] SVG upload checks now finish before files become publicly available.
+    * [security] Media descriptions must now be plain text.
+    * [security] Media renaming now keeps metadata and ordering files reserved for their intended use.
+    * [security] Two-factor sign-in attempts now have a separate limit for each account.
+    * [security] Saving an account that has changed elsewhere now returns a conflict response.
+    * [security] Saving unsupported settings now returns a validation error.
+    * [security] Account email addresses must be text, and existing invalid addresses can be corrected.
+    * [security] Disabled groups no longer grant API permissions.
+    * [security] First-run setup now refuses to replace an existing account.
+
+# v1.1.5
+## 10/30/2026
+
+1. [](#improved)
+    * Listing environments (`GET /system/environments`) needs only `api.access` instead of `api.system.read`, so Admin2 can show every user the right environment and hide its switcher when there's nothing to switch. It lists names only; creating and deleting environments keep their permissions
+2. [](#bugfix)
+    * A PNG or other image whose binary data happened to contain the text `<svg` was taken for SVG and saved as an empty file. Raster images are no longer sent through the SVG sanitizer, and an SVG upload the sanitizer empties is refused instead of saved as 0 bytes [#70](https://github.com/getgrav/grav-plugin-api/issues/70)
+    * Thumbnails of photos taken sideways or upside down (most phone photos) are now turned upright using their EXIF orientation, as the full image already is. Existing thumbnails are made again. Needs PHP's `exif` extension [#68](https://github.com/getgrav/grav-plugin-api/issues/68)
+
+# v1.1.4
+## 10/29/2026
+
+1. [](#bugfix)
+    * [security] Changing your own email address through the API (Admin2's account screen) now needs your current password, as changing your password does and as the Login plugin's profile form asks from 3.11.1, so whoever holds a signed-in session can't move the account to an address they control. An account with no password yet, and an admin changing someone else's address, aren't asked. A wrong password counts against the sign-in limits
+    * [security] Settings file fields can no longer upload into or delete from theme and plugin folders without config access, template folders and anything outside `user/` need super-admin access, and file names ending in a space or dot, or carrying control or invisible characters, are refused. Thanks @sagarbanwa
+
+# v1.1.3
+## 10/29/2026
+
+1. [](#new)
+    * Page records include `uuid`, the page folder's permanent id (Grav 2.2.15 page ids), or null when it has none, and a page copied with the copy action or a batch copy gets its own id instead of sharing the original's
+    * Several media files on one page can have the same details (title, alt text, tags and so on) written in a single request, the page counterpart of the site media batch route. Thanks to @phmg701 [#67](https://github.com/getgrav/grav-plugin-api/pull/67)
+    * **Undo a page delete**: a plugin can attach an undo to a delete by filling the new `undo` slot of `onApiPageDeleted` (`method`, `endpoint` relative to the API, optional `body` and `label`). `DELETE /pages/{route}` then answers `200` with `{"data": {"undo": {...}}}` instead of `204`, and Admin2 offers an Undo button on the delete toast. See "Undo a page delete" in the README
+    * A plugin that keeps deleted pages so they can be restored says so on the new `onApiPageDeleteInfo` event, and page records then carry `delete_recoverable: true`, so Admin2's delete confirmation can say the page can be restored instead of "This cannot be undone"
+    * A sidebar item can set `placement: footer` to show in Admin2's bottom group, above Settings, instead of among the plugin items
+
+# v1.1.2
+## 10/26/2026
+
+1. [](#bugfix)
+    * The Pages list shows a page's `template:` from its frontmatter instead of its file name, and filtering by template finds it [getgrav/grav-plugin-admin2#201](https://github.com/getgrav/grav-plugin-admin2/issues/201)
+    * Translating a page that sets `template:` in its frontmatter saves the translation under the page's own file name, and deleting that translation no longer removes the whole page folder
+    * Site media, icon sets and blueprint uploads work on Windows servers, where every request naming a file or folder was refused with a 422 [#66](https://github.com/getgrav/grav-plugin-api/issues/66)
+
+# v1.1.1
+## 10/25/2026
+
+1. [](#improved)
+    * A new `sidebarFolded` preference remembers, for each user, which plugin items in the Admin2 sidebar have their shortcuts folded away
+
+# v1.1.0
+## 10/23/2026
+
+1. [](#new)
+    * **Arrange the sidebar**: a new `sidebarLayout` preference holds the order of the Admin2 sidebar, the items hidden from it and the shortcuts picked under each plugin item, with a site default and an override for each user, like the other appearance preferences
+    * **Sidebar shortcuts**: a plugin's sidebar item can list `children`, screens of the plugin a user can star to show under it. The ones marked `default` show until the user picks their own, and each is checked against its own `authorize`
+2. [](#improved)
+    * [security] **Changing your own password needs the current one**: `PATCH /users/{username}` on your own account refuses a new `password` without a correct `current_password` (422), and wrong ones count toward the sign-in lockout (429). See "Changing your own password" in the README
+    * An account with no password yet (one made by a sign-in service) sets its first without a current one, and user records now say which accounts have a password with `has_password`
+    * Changing your own password with a JWT returns a fresh token pair in `meta.tokens`, so you stay signed in while every other token stops working
+    * A password change or reset also signs the account out of its other browsers and forgets its remember-me cookies (with Login 3.11.0), and a browser session from before the change can no longer use the API
+    * [security] Making a new 2FA secret for your own account while 2FA is on (`POST /users/{username}/2fa`) now takes the current `code`, and so does turning off your own 2FA when you also manage users, so a signed-in session alone can't drop the second factor; an admin resetting someone else's still needs none
+    * [security] Wrong 2FA codes sent to turn off or replace your own 2FA count toward the same limit as the sign-in challenge (429)
+3. [](#bugfix)
+    * [security] Exchanging one refresh token in several requests at once now yields a single new token pair, and the same holds for a 2FA challenge token. Thanks @yssoe
+    * [security] An invitation can only be accepted once, even when several accept requests arrive at the same moment, and creating or removing invites no longer writes back invites that were already used. Thanks @yssoe
+    * [security] Creating or revoking an API key while other keys are in use can no longer be overwritten by another request, so a revoked key stays revoked. Thanks @yssoe
+    * [security] Creating or copying a page now refuses a route segment of `.` or `..`, so the new page always gets its own folder
+
+# v1.0.57
+## 10/22/2026
+
+1. [](#new)
+    * **Icon sets for the `iconpicker` field**: a theme or plugin that draws its own icons registers them as a set on the new `onApiIconSets` event (SVG markup, IconSpec values, or a YAML file of them), and a blueprint field lists that set instead of Font Awesome with `icons: <set>`. The icons travel with the field as structured SVG data, never as markup. See "Icon sets for the `iconpicker` field" in the README
+2. [](#improved)
+    * **Admin branding honors an environment's own `admin-next.yaml`**: the sign-in card, logo and title are read through Grav's config, so a copy of `admin-next.yaml` in `user/env/<env>/config/` takes the place of the site's one for that environment (a local copy of a demo can name its own sign-ins, for example). Saving from the admin still writes `user/config/admin-next.yaml`
+    * The list of modular templates (`GET /blueprints/pages?modular=true`, and a module's Template select) names each type after the `title` of its own blueprint, instead of its file name made readable. Types with no blueprint title keep the file name
+3. [](#bugfix)
+    * Creating a module at the top level of the site is refused with a clear message: nothing draws a module without a modular page above it, so it only made a folder that never showed
+    * An icon set's `file` is read only when it is a `theme://`, `plugin://`, `user://`, `plugins://` or `themes://` URL for a `.yaml` or `.yml` file inside that stream's folders: plain and absolute paths, `..` segments and symlinks out of the folder are refused
+    * The top-level module refusal covers every way a module can land there: moving a page, renaming one to a `_` name, copying a module and reorganizing it to the top level of the site are refused with the same message as creating one, however the root or the order prefix is spelled
+
+# v1.0.56
+## 10/22/2026
+
+1. [](#bugfix)
+    * Opening a folder with thousands of pages in the admin's Tree or Columns view is now about five times faster and no longer runs out of memory once the cache is warm [getgrav/grav-plugin-admin2#200](https://github.com/getgrav/grav-plugin-admin2/issues/200)
+    * Duplicating a page that has a number in its folder name now numbers the copy too, so it keeps its place in the menu instead of disappearing from navigation [grav#4367](https://github.com/getgrav/grav/issues/4367)
+    * An API key whose ID happens to be all digits no longer fails with a server error on some requests, and new keys never get such an ID. Thanks @srameko and @sandymac [#64](https://github.com/getgrav/grav-plugin-api/issues/64)
+    * Updating a page that only exists in a non-default language now saves that translation when no language is given, the same one reading the page returns, instead of refusing the edit as changed or silently saving nothing
+
+# v1.0.55
+## 10/22/2026
+
+1. [](#new)
+    * Media metadata fields can now be a number (with an optional minimum and maximum), a date or a yes/no toggle, and any field can be marked required so a save can't leave it empty. Thanks @phmg701 [#63](https://github.com/getgrav/grav-plugin-api/pull/63)
+2. [](#improved)
+    * Saving metadata to several media files at once now checks the values first and refuses the whole batch when one is invalid, instead of reporting the same error for every file
+3. [](#bugfix)
+    * A page that only has a translation, and no file in the site's default language, now opens in the editor as that translation, so it can be deleted and its Translations card is right. Saving it in the missing language is refused instead of silently doing nothing [admin2#199](https://github.com/getgrav/grav-plugin-admin2/issues/199)
+
+# v1.0.54
+## 10/20/2026
+
+1. [](#new)
+    * Demo mode can now allow part of an area: create and edit pages but not delete them, upload media but not delete it, and so on, with `api.pages.create`, `api.pages.update`, `api.pages.delete`, `api.media.upload`, `api.media.update` and `api.media.delete`. The old `api.pages.write` and `api.media.write` still mean all three. Admin2 hides the actions that aren't allowed
+    * Demo accounts can now be allowed to change site, plugin or theme settings (`api.config.site`, `api.config.plugins`, `api.config.themes`). The system, security, media, scheduler and backups settings and the API, Admin, Login and Email plugin settings stay refused
+    * `demo.allow_routes` lets a demo account write to a plugin's own API routes, which are refused by default
+    * `bin/plugin api demo:status` shows what demo accounts may change, when the last and next reset are, and which files have changed since the baseline
+    * `demo.include_code` also restores `user/plugins` and `user/themes` on every reset, and `demo.extra_roots` adds more `user://` folders, such as `user://data` for what visitors do on the site itself
+2. [](#improved)
+    * Demo mode is read-only by default. It used to let demo accounts edit pages and media unless `demo.writable` was changed
+    * Pages a demo account saves show raw HTML as text (`demo.escape_html`, on by default), and a demo account can't save a page that runs Twig
+    * The scheduled demo reset now keeps the configured interval exactly. Intervals that don't divide an hour used to reset early, at the top of every hour
+    * A reset only restores the settings a demo account can change, so the owner's own later changes to other settings, the demo settings included, are kept. Settings saved in an environment folder are reset as well
+3. [](#bugfix)
+    * Demo accounts can sign in to Admin2 again. Every request that checked `api.access`, `GET /me` included, was refused as if it were a write
+    * A demo reset no longer rolls back `user/data/api` (API keys, the audit log and the demo's own baseline and safety copies), and leaves symlinked folders alone instead of replacing them with copies
+    * The API only answers at its own address (`/api/v1` by default). Any path starting with `/api` used to reach it, with the start cut off by length, so `/api/v2/users/x` and `/apixy/users/x` were both served as `/users/x`. That let requests past plugins that guard the API by its real address, and took over a site's own pages whose route starts with `/api`, such as `/apiary`
+
+# v1.0.53
+## 10/19/2026
+
+1. [](#bugfix)
+    * On pages, a file removed from a file field no longer comes back after saving, and a new upload to a `self@` file field is recorded with the page's real folder (`01.home`) so it shows on the site. Thanks @sami [#62](https://github.com/getgrav/grav-plugin-api/pull/62)
+
+# v1.0.52
+## 10/17/2026
+
+1. [](#new)
+    * Admin2 branding has a new setting to hide the "Grav was coded with love by Trilby Media" credit at the bottom of the sidebar. It's on by default
+
+# v1.0.51
+## 10/16/2026
+
+1. [](#improved)
+    * Editable Metadata Fields in the API settings can now be set up as Select fields, with their options entered in the form instead of by editing `api.yaml` by hand. Thanks to [@phmg701](https://github.com/phmg701) for finding it and working out the change [#40](https://github.com/getgrav/grav-plugin-api/issues/40)
+2. [](#bugfix)
+    * `bin/plugin api keys:revoke` revokes the key you pick from the list again, instead of failing with "No key ID provided" [#60](https://github.com/getgrav/grav-plugin-api/issues/60)
+    * Moving, renumbering or reordering a page that has a `slug:` in its frontmatter no longer renames its folder after the slug [getgrav/grav-admin-next#40](https://github.com/getgrav/grav-admin-next/issues/40)
+
+# v1.0.50
+## 10/14/2026
+
+1. [](#new)
+    * Settings and plugin details now say when a value is overridden by the site's environment folder or by a server variable, so Admin2 can warn that a change saved under Default won't take effect, and the environment's copy can be removed with the existing revert request [getgrav/grav-plugin-sync-mercure#1](https://github.com/getgrav/grav-plugin-sync-mercure/issues/1)
+    * Plugins with their own settings pages can now save to the environment picked in Admin2 through a shared helper, storing only the values that differ from the layer beneath it
+    * Changing your own email through `PATCH /users/{username}` now waits for confirmation when the Login plugin (3.10.0 or later) confirms email changes. The new address is kept as `email_pending`, a link goes to it, and `email` changes once the link is opened, whatever permissions the account has. The response carries `email_pending` and a `meta.message`. Other fields in the same request still save, an admin changing someone else's address saves it at once, and sites without the Login plugin or with the setting off behave as before. `DELETE /users/{username}/email-change` cancels a waiting change and `POST /users/{username}/email-change/resend` mails the link again
+2. [](#bugfix)
+    * Adding an environment folder such as `user/env/<host>/` no longer signs everyone out of Admin2. The API's signing secret stays in `user/config`, and a copy an earlier version put in an environment folder is moved there
+    * The Add Plugin dialog in Admin2 loads again on sites whose API settings still carry the old 100-item page limit, instead of spinning forever. Each page of the plugin and theme directory now starts where the previous one ended, so no plugin is listed twice [getgrav/grav-admin-next#38](https://github.com/getgrav/grav-admin-next/issues/38)
+    * Admin2 pages no longer fail with "Decoding failed" when a theme or plugin file prints a stray blank line or byte-order mark. The API now sends those responses uncompressed instead of sending compressed data the browser can't read [getgrav/grav-plugin-admin#2524](https://github.com/getgrav/grav-plugin-admin/issues/2524)
+
+# v1.0.49
+## 10/14/2026
+
+1. [](#bugfix)
+    * Creating a translation of a modular section (such as the features hero) no longer fails with `Invalid input in "Subtitle"` when the source subtitle has more than one paragraph. Creating and translating a page now validate against the blueprint of the page's real template, not the `default` blueprint that a not-yet-saved `<template>.<lang>.md` file fell back to
+
+# v1.0.48
+## 10/13/2026
+
+1. [](#bugfix)
+    * Deleting a single translation of a modular page (a module such as a features or pricing section) no longer fails with "Could not locate the language file", and removes only that language
+
+# v1.0.47
+## 10/13/2026
+
+1. [](#improved)
+    * Added a Spanish translation, and the plugin's settings labels, help text and options can now be translated. Thanks @pmoreno-rodriguez [#58](https://github.com/getgrav/grav-plugin-api/pull/58)
+    * Media metadata fields can be a dropdown, with `type: select` and a list of `options`
+1. [](#bugfix)
+    * Creating a translation of a page whose source is not in the default language keeps the page's template, content and title when the request names the source language with `source_lang`. Thanks @fdruide [#59](https://github.com/getgrav/grav-plugin-api/pull/59) [getgrav/grav-plugin-admin2#193](https://github.com/getgrav/grav-plugin-admin2/issues/193)
+    * Moving a page to another level with the reorganize endpoint no longer reports success while leaving it in place or fails halfway: moves that change nothing are skipped, and a page moved into another folder takes that folder's order number width. Thanks @Gleydar [getgrav/grav-admin-next#36](https://github.com/getgrav/grav-admin-next/issues/36)
+
+# v1.0.46
+## 10/09/2026
+
+1. [](#bugfix)
+    * A language whose translation is a draft is listed only as translated, in page details and the page's languages, instead of as both translated and untranslated. Thanks @fdruide [#57](https://github.com/getgrav/grav-plugin-api/pull/57)
+    * Copying a page on a multi-language site gives every translation the new page's slug, so a translation with its own slug no longer shares its route with the original [getgrav/grav-admin-next#33](https://github.com/getgrav/grav-admin-next/issues/33)
+
+# v1.0.45
+## 10/06/2026
+
+1. [](#improved)
+    * Permissions in `user/pages/root.md` now apply to the top level of a regular site, as they already did on Flex Pages sites, so a group can be kept from creating top-level pages. Thanks @gareins [getgrav/grav#4345](https://github.com/getgrav/grav/issues/4345)
+    * Creating a module, or switching one to another template, is allowed again when that template doesn't exist on the site yet, and the response now includes a warning saying so, and page details say when a module's template is missing [#55](https://github.com/getgrav/grav-plugin-api/issues/55)
+1. [](#bugfix)
+    * The page preview opens a translation at its own address, such as `/fr/typographie`, so previewing a page in a language other than the default shows that language instead of the default one or a 404. Thanks @fdruide [getgrav/grav-plugin-admin2#188](https://github.com/getgrav/grav-plugin-admin2/issues/188)
+    * A module created at a route with an order prefix, such as `/page/01._hero`, is now recognised as a module, and the prefix no longer ends up in the new page's route [#55](https://github.com/getgrav/grav-plugin-api/issues/55)
+    * A page's ETag is now the same however the page was read (with translations, children or rendered content) and however it was saved, so sending it as `If-Match` on a save works, where the editor's own copy used to be refused with a conflict every time. Thanks @onetrev [getgrav/grav-plugin-admin2#189](https://github.com/getgrav/grav-plugin-admin2/issues/189)
+    * A page's group permissions now deny every letter after a `-` up to the next `+`, so `-c+r-ud`, which the permissions picker saves for create, update and delete denied, no longer allows delete. The picker now writes a sign before each denied letter [getgrav/grav#4340](https://github.com/getgrav/grav/issues/4340)
+
+# v1.0.44
+## 10/01/2026
+
+1. [](#new)
+    * A new `darkShade` preference (`graphite`, `zinc` or `midnight`) sets how dark mode looks, as a site default and as a per-user override. It defaults to `graphite`, and an unknown value falls back to it
+    * A new `helpMode` preference (`inline` or `tooltip`) sets whether field help text shows under the label or in a tooltip behind a small info icon, as a site default and as a per-user override. It defaults to `tooltip`, and an unknown value falls back to it
+    * A plugin or theme's changelog can now be fetched as just the entries newer than the installed version, so the admin can show what an available update changes [getgrav/grav-admin-next#27](https://github.com/getgrav/grav-admin-next/issues/27)
+1. [](#bugfix)
+    * Fetching a page with `render=true` no longer fails with a server error on module pages or pages using shortcodes that render Twig, and page summaries now include that output too [#52](https://github.com/getgrav/grav-plugin-api/issues/52)
+    * Page listings now show the new order or location right after a reorder, move, copy or delete, instead of the old state for up to a minute [#53](https://github.com/getgrav/grav-plugin-api/issues/53)
+    * Creating, copying or moving a page is now refused when a sibling already has the same slug under a different number, and a reorder checks every folder name first and puts things back if a rename fails, so pages are no longer left under `_temp_` names [#54](https://github.com/getgrav/grav-plugin-api/issues/54)
+    * A fieldset's `icon` setting now reaches the admin, so the icon shows beside the fieldset title [getgrav/grav-plugin-admin2#183](https://github.com/getgrav/grav-plugin-admin2/issues/183)
+    * The taxonomy list now returns number-like values such as `2024` as text, as documented, so the admin's Taxonomy field loads on sites that use years as tags or run the Archives plugin [getgrav/grav-plugin-admin2#186](https://github.com/getgrav/grav-plugin-admin2/issues/186)
+    * Creating a module, or switching one to another template, is now refused when that template doesn't exist on the site, with the available modular types listed in the error, instead of leaving a red "template not found" heading on the live page [#55](https://github.com/getgrav/grav-plugin-api/issues/55)
+    * Saving a module with its own template sent as `text` rather than `modular/text` no longer deletes the module's file [#55](https://github.com/getgrav/grav-plugin-api/issues/55)
+    * Switching the template of a page that has a `template` header no longer leaves the old page file behind
+    * A page `template` that is empty, not text or a path is now refused instead of writing a file Grav can't use
+
+# v1.0.43
+## 09/29/2026
+
+1. [](#bugfix)
+    * A modular page's translation status now sees its own files. A module reports its template as `modular/<name>` while its file is `<name>.md`, so the API said a module had no default file and listed none of its language files, even when they were there.
+
+# v1.0.42
+## 09/28/2026
+
+1. [](#bugfix)
+    * You can no longer disable your own account, the same way you can't delete it, since a disabled account is logged out at once and can't log back in [#49](https://github.com/getgrav/grav-plugin-api/issues/49)
+    * A super admin can no longer remove their own super-admin access, either from their permissions or by leaving the group that grants it, since nobody could then give it back from the admin [#49](https://github.com/getgrav/grav-plugin-api/issues/49)
+    * Searching the media library no longer returns files from hidden folders, which could not be opened, renamed or deleted, and the dashboard's media count no longer includes them [#50](https://github.com/getgrav/grav-plugin-api/issues/50)
+    * The token signing key file `user/config/plugins/api-private.php` is now created readable only by the site's own user, instead of being locked down a moment after it is written. Thanks @shxtterme
+    * [security] The public translations endpoint now answers a language that nothing ships a file for with the default language, and serves prefix requests from the full cached dictionary, so requests can no longer grow the cache without limit. Thanks @ma4ter
+    * [security] Syncing a translation now needs edit rights on the translation being overwritten, and a batch copy honours the destination's page rules, the same as a single copy. Comparing translations applies the same Twig content check as opening the page. Thanks @ma4ter
+
+# v1.0.41
+## 09/25/2026
+
+1. [](#bugfix)
+    * Fetching a page with its children no longer includes child pages whose own permissions deny the caller read access [#47](https://github.com/getgrav/grav-plugin-api/issues/47)
+    * Deleting or copying a page, directly or in a batch, is now refused when a page inside it denies that action, instead of taking the protected page along
+    * The page navigator's previous, next, parent and first-child links now skip pages the account can't read, so a read grant on one page no longer reveals the pages around it [#48](https://github.com/getgrav/grav-plugin-api/issues/48)
+    * The plugin zip no longer carries PHPUnit and its dev packages (about 1,700 files): `vendor/` is committed from `composer install --no-dev`
+
+# v1.0.40
+## 09/23/2026
+
+1. [](#new)
+    * The page editor's previous and next buttons can now find a page's neighbours with one small request instead of downloading every page in the folder.
+    * Page lists can be requested without each page's full frontmatter, which roughly halves their size for the admin's tree, list and columns views.
+    * A new Response Compression setting gzips large responses for clients that accept it, and is on by default.
+    * The new admin can now load everything it needs when it starts with one request instead of nine, which matters most right after a cache clear.
+1. [](#improved)
+    * Large responses such as the page list and the translation strings are now sent compressed, about a fifth of their old size over the network.
+    * Opening a folder in the page tree now reads only that folder's pages instead of the whole site.
+    * Pages in a folder that sort the same, such as modules with no order of their own, now keep the folder's order in the admin instead of an arbitrary one.
+    * The Reports screen opens almost instantly on a second visit, because its site-wide scans are remembered until a page, a setting or a YAML file changes.
+    * Calls made with an API key or token and no site cookie, such as scripts and the MCP server, no longer start a PHP session, so they skip the session file and stop sending headers that prevented the browser from caching the translations.
+    * The admin's translations, sidebar and blueprint forms load about twice as fast, because the list of language files is remembered between requests instead of being read again from every plugin each time.
+    * The admin's translation strings are no longer downloaded again when nothing has changed; the browser gets a quick "not changed" reply instead.
+    * The dashboard no longer stalls for a second or two after a cache clear while it downloads the package list. Update counts show as unknown until the next update check.
+    * Enabling or disabling a plugin, or switching themes, is now reflected straight away in which translation wins.
+    * Saving a page, autosave included, now only refreshes the page list on Grav 2.2 and later, instead of clearing the whole cache and making the next page load start from scratch.
+    * Page search now also matches a page's route, so searching for a folder such as `docs/rentals` finds every page inside it.
+    * Opening a page or folder full of photos no longer waits while every thumbnail is resized; each thumbnail is now made the first time it is shown.
+    * On sites using Flex pages, opening a folder in the page tree now reads only that folder's pages instead of the whole site.
+    * On sites using Flex pages, page lists no longer read every page's file from disk again on each request, and editors without full access no longer pay for that twice.
+1. [](#bugfix)
+    * Searching pages now works on sites that don't use Flex pages, where every search used to return every page.
+    * Page search now also narrows the tree and columns views when they list a page's children in their natural order.
+    * Signing out can no longer be quietly undone by another request that was running at the same moment, and the list of signed-out tokens is no longer rewritten on every request.
+    * The API no longer answers every request with an error on a new site whose cache folder is still empty when rate limiting is turned off.
+    * Password fields that switch the site's password rules off with `password_policy: false`, such as a payment provider's secret key, no longer show the password requirements hint in the new admin.
+
+# v1.0.39
+## 09/22/2026
+
+1. [](#improved)
+    * Page statistics no longer keep a record of individual visitors, and any left by an earlier version or by the old admin is removed the next time a page view is counted. [#44](https://github.com/getgrav/grav-plugin-api/issues/44)
+1. [](#bugfix)
+    * Configuration saves now go to the right environment folder on sites that keep their environments outside `user/env/` (`GRAV_ENVIRONMENT_PATH`, `GRAV_ENVIRONMENTS_PATH` or a custom `setup.php`). [#46](https://github.com/getgrav/grav-plugin-api/pull/46)
+    * Your own visits to the site are left out of the page statistics again when you are signed in to the new admin. [#45](https://github.com/getgrav/grav-plugin-api/issues/45)
+    * Media thumbnails no longer come up blank when you scroll through a folder with a lot of files. [getgrav/grav-plugin-admin2#178](https://github.com/getgrav/grav-plugin-admin2/issues/178)
+
+# v1.0.38
+## 09/21/2026
+
+1. [](#new)
+    * Admin branding can now store a custom sidebar height for an uploaded logo.
+1. [](#improved)
+    * **A write signed in by the session cookie alone must come from your own site.** The API accepts a logged-in browser session as well as keys and tokens, and a browser attaches that cookie to anything sent to the host, including a form posted from another site. A cookie-only `POST`, `PUT`, `PATCH` or `DELETE` is now refused unless its `Origin` or `Referer` names this host or an origin in `cors.origins`; with neither header it must carry a JSON content type or a custom header. Keys and JWTs are untouched, reads are untouched, same-origin `fetch` calls pass as they are, and a public route treats a forged write as a guest. The audit log now records `jwt` as its own sign-in method instead of filing it under `session`.
+    * The OpenAPI spec (`openapi.yaml`) now documents every API route, up from about half, and the existing entries were corrected against the code, so it imports cleanly into Postman, Insomnia or an SDK generator.
+    * The Postman collection now includes a ready-made request for every route, generated from the spec with `npm run postman:sync`, alongside the existing test requests.
+    * Setup, password reset, invitations and user management now all apply the same password rule, at least 8 characters when the site sets none, and the password checklist on those screens shows it.
+    * Plugin custom fields now work for editors who can't manage packages, instead of falling back to plain text boxes.
+    * Plugin and theme details answer a repeat request with a quick "not changed" reply when nothing changed.
+    * Deleting an environment now needs a super user, since it also removes the system and security overrides stored in it.
+    * Direct install from a URL now only accepts http or https addresses, not paths to files already on the server.
+    * The backups list now uses the same date format as a newly created backup.
+1. [](#bugfix)
+    * **[security] Media upload rights no longer let an account delete page content or stylesheets.** The blueprint file endpoint now refuses `.md` and CSS files for uploads and deletes unless a developer allows those extensions for a specific field with `allow_extensions` in the field's blueprint, and inside `user/accounts/` only your own avatar can be removed without user management rights.
+    * **[security] Two-factor authentication can no longer be switched off through a normal profile save.** It now only changes through the 2FA screens, which ask for a code.
+    * **[security] Pending invitations are now only listed to accounts that can manage users.** Each one carries the token that accepts it, and read-only accounts could see them.
+    * Accepting an invitation now runs the normal sign-in check, so an invite without admin or API access creates the account but doesn't sign it in.
+    * Invitations now expire after at most 30 days, and the link returned on creation points at a real address.
+    * Resetting a forgotten password now applies the site's password rules; a reset link could set any password before.
+    * Turning 2FA on or off no longer reveals whether a username exists to someone who can't change it, and it now requires API access.
+    * Plugin tabs on the Users list now filter the list on sites that don't store accounts with Flex Objects.
+    * The invalid username message now describes the rules core actually enforces.
+    * Saving site-wide admin preferences no longer resets defaults that weren't part of the save.
+    * Plugin panels in the page editor now respect each plugin's permission and appear in priority order.
+    * A plugin dashboard widget that doesn't list its sizes no longer breaks the dashboard.
+    * Rearranging dashboard widgets no longer moves a widget whose position wasn't part of the save.
+    * Rate limiting now covers every request except live collaboration polling; plugin scripts, and pages whose path merely contains "fields" or "sync", no longer skip it.
+    * Custom logos and favicons now load on sites whose user folder isn't at the standard `user/` location.
+    * A licence key sent with an install is only kept when the install succeeds, so a mistyped package name no longer leaves one behind.
+    * Updating a package that isn't installed now says it wasn't found.
+    * Errors while removing a package no longer show raw colour codes.
+    * A disabled plugin's admin pages, widgets, panels, dialogs and reports no longer load, while its custom fields still do so its settings stay editable.
+    * The Audit Trail now accepts the same `admin.super` API key scope as other super-only screens, and demo accounts get a clear "hidden in demo mode" message.
+    * Next and previous page links on every list (pages, media, users, logs, audit, translations and more) now keep the active filters, search and sort, instead of dropping back to the unfiltered list.
+    * Invalid language codes and malformed edits in the Translations editor now return a clear error instead of a server error.
+    * Saving a filtered translation YAML view with a key from outside the filter now names that key instead of claiming the YAML couldn't be read.
+    * Importing from the Translation Strings plugin now reports bad language codes clearly and writes nothing until they all check out.
+    * The Translation Strings import preview no longer shows server file paths to demo accounts.
+    * Filtering pages with `root=false` now returns every page that isn't top-level, instead of none.
+    * Deleting a page's only translation no longer removes its child pages when the request asks to keep them.
+    * Comparing two language versions of a page now checks access to both.
+    * Sending a language code that isn't text to the page translation endpoints now returns a validation error instead of a server error.
+    * Searching site media no longer lists a folder's sort-order file as media.
+    * Browsing a media folder that doesn't exist now reports the requested page and page size.
+    * Renaming a media folder now reports its real file and folder counts.
+    * The Clear Cache menu's "Images Only", "Assets Only" and "Tmp Only" options now clear only what they say.
+    * A webhook's custom headers can no longer replace the signature headers Grav adds to every delivery.
+    * Creating a webhook with a malformed event list now returns a validation error instead of a server error.
+    * Dismissing a dashboard notification now only accepts real notification IDs.
+    * The System Health widget's data now needs the system read permission rather than the scheduler one.
+    * Deleting an environment that doesn't exist now reports "not found".
+    * The file browser's "use page media instead" error now uses the standard error format.
+    * User groups are now always read from and saved to the same file, so a listed group can always be edited or deleted.
+    * Reverting a configuration section with nothing to revert no longer notifies webhooks and other listeners.
+
+# v1.0.37
+## 09/18/2026
+
+1. [](#bugfix)
+    * The dashboard exposure probe now also tests `.json` files, the format most data in `user/data` is stored in.
+    * The dashboard's "last backup" time no longer counts the exposure probe's test file as a backup. It only counts archives Grav's backup tool created.
+
+# v1.0.36
+## 09/18/2026
+
+1. [](#bugfix)
+    * **[security] A blanket `admin` or `api` grant no longer counts as super user.** Permissions inherit from their parent key, so an account given all of `api` picked up `api.super` along with it — and super is the flag that decides who can hand super to somebody else. Super must now be granted deliberately, and an invitation can no longer carry it. Ordinary permission inheritance is unchanged. Thanks to @redwolf1919
+    * **[security] Disabling or deleting an account now ends its API sessions immediately.** A session carried its own copy of the account's permissions, and if the account could no longer be read from disk that stale copy was kept rather than refused, so a revoked account stayed usable until its session expired. Thanks to @AlpetGexha
+    * The dashboard exposure probe now tests `.dat`, `.txt` and `.zip` files in data, backup and temporary storage, so front proxies serving only some file types are detected. Storage outside the web root is excluded, and the response remains compatible with older Admin2 bundles. [getgrav/grav#4316](https://github.com/getgrav/grav/issues/4316)
+    * Admin2 package resources, including custom field components, now resolve through Grav's `plugins://` and `themes://` streams, honoring configured multisite overlay precedence. [#43](https://github.com/getgrav/grav-plugin-api/pull/43)
+    * The admin language list, plugin details and AI Translate detection now find plugins outside the default `user/plugins` folder, such as in multisite setups.
+
+# v1.0.35
+## 09/15/2026
+
+1. [](#new)
+    * Pages now report their publish and unpublish dates along with an effective publishing state, so an admin listing can tell a page scheduled to go live later apart from a draft, and an expired page apart from either. Dates are read using the page's own date format, so a day-first date is no longer read as month-first. [getgrav/grav-plugin-admin2#2523](https://github.com/getgrav/grav-plugin-admin2/issues/2523)
+
+    * The admin's page media upload settings are now part of the preferences the admin interface reads at start-up, so the new admin can apply the same image resizing and resolution limits the old one always has [getgrav/grav-plugin-api#41](https://github.com/getgrav/grav-plugin-api/issues/41)
+
+1. [](#bugfix)
+    * Plugins that watch media are now told before a file is added to or removed from the site Media library, the same way they already were for page media. A plugin that checks or blocks uploads was quietly skipped for anything done on the Media screen. Thanks to @onetrev [#41](https://github.com/getgrav/grav-plugin-api/issues/41)
+    * The Media count in the sidebar now counts only the site media library. On a site with no `user/media` folder it fell back to counting `user/images` — a plain assets folder plugins and themes write to — so the badge showed a number that had nothing to do with the empty Media screen beside it.
+    * **The Plugins and Themes screens no longer offer to sell you a premium add-on you have already bought.** Where a store sells one licence that covers several packages, the repository entry names the product the key belongs to in `premium.license_product`. The API only reported a package as licensed when a key was filed under that package's own name, so Add Plugin drew a Buy cart beside add-ons the customer's key already covers, and installing one was refused with "requires a license" before the download proxy — which would have approved it — was ever asked. Both now read the key filed under the product the package belongs to. Requires Grav 2.1.5.
+
+# v1.0.34
+## 09/14/2026
+
+1. [](#bugfix)
+    * A plugin or theme whose `blueprints.yaml` gives its version as a plain number, such as `version: 1.0`, is now reported as text rather than as a number. Admin2's Info and Plugins pages went blank on any site with one installed.
+
+# v1.0.33
+## 09/13/2026
+
+1. [](#bugfix)
+    * Disabling an account now immediately stops its API keys from working. They previously kept authenticating until the key itself expired or was revoked by hand, even though the password and token sign-in paths both refused the account. Thanks to @sandymac [#37](https://github.com/getgrav/grav-plugin-api/issues/37)
+    * A plugin or theme whose name or description in its `blueprints.yaml` is a translation key now shows the translated text in Admin2, instead of the key itself. Anything that is not a translation key, or has no translation on the site, is still shown exactly as its author wrote it. Thanks to @phmg701 [#39](https://github.com/getgrav/grav-plugin-api/issues/39)
+
+# v1.0.32
+## 09/11/2026
+
+1. [](#bugfix)
+    * Upgrading Grav with the override option now also lets the upgrade go ahead when plugin updates are still pending. The API asked core for a switch under the wrong name, so only the incompatible-plugin block could be overridden
+
+# v1.0.31
+## 09/11/2026
+
+1. [](#bugfix)
+    * A licence key from a store other than Grav Premium, such as a KahunaCart `KC-XXXX-XXXX-XXXX-XXXX` key, is no longer refused by the install endpoint's format check. The message for a key that cannot be one at all no longer describes the Grav Premium shape as the only one
+    * When getgrav.org refuses a premium download, the install error in Admin2 now carries the store's explanation when it gave one (an updates window that has ended, a key that does not cover this add-on, with where to renew or buy), and otherwise says the key was not accepted, instead of echoing the download URL with the key inside it
+    * Requires Grav 2.1.0, which is where the key check and the refusal reason live. Older sites keep being served 1.0.30
+
+# v1.0.30
+## 09/10/2026
+
+1. [](#improved)
+    * Plugins and themes that read the current user now see the account making the request during Admin2 and API calls, instead of a guest, so something like a page type picker filtered by group works in Admin2 the way it did in the classic admin. An API key limited to specific scopes still looks like a guest to them, since the account behind it can do more than the key allows. Thanks to @etucek [#36](https://github.com/getgrav/grav-plugin-api/issues/36)
+
+1. [](#bugfix)
+    * Folders the API plugin creates for webhooks, thumbnails, page-view stats, the audit log and avatars are group-writable like the rest of Grav, so on hosts where the web server and the command line run as different users, the command line can clear them. Thanks to @sandymac [getgrav/grav#4295](https://github.com/getgrav/grav/issues/4295)
+    * Clearing the Twig-in-Content report's events now needs permission to change system settings. Viewing reports was enough before, so an account that could only look at the report could empty a record every admin relies on. Thanks to @sandymac [#35](https://github.com/getgrav/grav-plugin-api/issues/35)
+
+# v1.0.29
+## 09/09/2026
+
+1. [](#improved)
+    * Previewing a modular child page now loads the page it lives in, with the module in place, instead of rendering the module's template on its own. A module is only ever a section inside its parent, so on its own it came out as a bare, doubled fragment with no theme styling. Unpublished modules show up in the preview too. Thanks to @onetrev [getgrav/grav-plugin-admin2#170](https://github.com/getgrav/grav-plugin-admin2/issues/170)
+
+1. [](#bugfix)
+    * A page whose header sets an empty route alias (`routes.default: ''`) is listed again. The listings skip Grav's invisible root container, and did so by asking whether a page had a route at all, which an empty one answers falsely, so the page went missing from the pages section, the parent picker and the dashboard count. Thanks to @TomOne [#34](https://github.com/getgrav/grav-plugin-api/issues/34)
+    * Such a page is also counted by the page-view tracker again, and can be found through the `parent` filter, both of which had the same flaw
+
+# v1.0.28
+## 09/09/2026
+
+1. [](#new)
+    * A plugin's MCP tool manifest can now name the one argument that carries the whole request body, so a route whose fields are decided by the site's own blueprints, such as a Flex directory's, can be offered as a tool. The fields come from the blueprint rather than the manifest, and an argument called `type` or `key` no longer collides with a path placeholder [#32](https://github.com/getgrav/grav-plugin-api/issues/32)
+    * Manifests opt into that by declaring `version: 2`, so an older API plugin skips such a file with a warning instead of serving a tool that would write a junk field. Version 1 manifests are read exactly as they were
+
+1. [](#improved)
+    * A tool definition carrying a key the manifest format does not define is now dropped with a warning naming the key, instead of being quietly ignored, so a typo costs you that one tool and says so
+    * The README and OpenAPI description now say what `additionalProperties: true` at the root of a tool's `input` means: arguments the schema does not declare are passed through, and it cannot be combined with `body`
+
+# v1.0.27
+## 09/08/2026
+
+1. [](#bugfix)
+    * **Saving a plugin's settings no longer deletes a secret the form did not send back.** Secrets are masked on the way out and restored on the way in, and the restore only looked at the paths present in what was submitted — so a secret that came back as the sentinel was put back, and one that came back missing entirely was silently dropped. Found on a live store: a merchant changed one From address on a plugin's settings form, and every webhook signing secret that plugin kept under a config key its blueprint does not declare was removed, leaving five registered webhooks posting at addresses that had stopped existing with nothing on any screen to say so. A secret absent from a submission is now restored from disk, which is the only honest reading of a field that was not sent. Clearing one on purpose still clears it, because that posts an empty string — a value, not an absence
+
+# v1.0.26
+## 09/05/2026
+
+1. [](#new)
+    * **A plugin page can now draw another plugin's settings.** A page definition gains a `settings_page` key beside `settings_route`, naming the plugin whose admin page holds the form. Answer `onApiPluginPageInfo` for an add-on that has no admin page of its own, point it at your page, and `GET /gpm/plugins` and `GET /gpm/plugins/{slug}` carry both keys so Admin Next sends `/plugins/{add-on}` and the Configure button on the Plugins list to `/plugin/{settings_page}{settings_route}`. That is how a suite of add-ons keeps every setting in one admin page instead of scattering them across the Plugins list. The named plugin has to be installed and have an admin page, and `settings_route` still has to be a hash route — otherwise both keys are dropped. Listing plugins now asks every installed plugin rather than only those with a page on disk, which is what lets a plugin answer for its add-ons.
+
+# v1.0.25
+## 09/03/2026
+
+1. [](#improved)
+    * The `onApiPageUpdated` event now says which template a page had before, when a save changed it, so a plugin keeping anything keyed on the template can clean up after itself [getgrav/grav-plugin-sync#4](https://github.com/getgrav/grav-plugin-sync/issues/4)
+
+# v1.0.24
+## 09/03/2026
+
+1. [](#bugfix)
+    * A package built for another generation of Grav can no longer be installed from the Plugins page. Nothing on this path checked, so a plugin still requiring the Grav 1.7 admin plugin could pull it in alongside Admin 2 whenever the repository happened to serve it [getgrav/grav-premium-issues#618](https://github.com/getgrav/grav-premium-issues/issues/618)
+
+# v1.0.23
+## 09/02/2026
+
+1. [](#new)
+    * A plugin page can now say its settings live on the plugin's own page, with a `settings_route` key holding a hash route such as `#/settings`. The plugin's entry in `GET /gpm/plugins` and `GET /gpm/plugins/{slug}` carries it too, so Admin Next can send `/plugins/{slug}` and the Configure button on the Plugins list straight to the plugin's own settings screen instead of drawing a second copy of the same form. Only a hash route is accepted, so the key names a place inside the plugin's page and nowhere else, and a plugin with no admin page on disk is never asked.
+    * Albert Sans joins the admin font choices. The preferences resolver accepts `albert-sans` as a site default and as a personal choice, to match the Admin Next 2.1.4 bundle that ships the face.
+    * Page Statistics now ignores command-line and library HTTP clients such as curl, wget and python-requests, which were being counted as real visitors. A new Excluded User Agents setting lets you add your own, for monitoring tools and scanners. Thanks to @mschiegg [#4274](https://github.com/getgrav/grav/issues/4274)
+    * Uploading or deleting a file on the Media page now notifies plugins, the same way uploading to a page always has. Plugins that react to media changes, such as Git Sync's automatic sync, previously never heard about a site-wide upload [#261](https://github.com/trilbymedia/grav-plugin-git-sync/issues/261)
+
+1. [](#bugfix)
+    * **The route cache follows plugin upgrades.** The compiled route table was keyed on the set of enabled plugins alone, so a plugin whose new version registered a route it did not have before kept the old table until someone ran `bin/grav clear`, and every call to the new route answered 404 while the admin screen that made it looked installed. The key now also carries the modification time of each enabled plugin's `blueprints.yaml`, which a version bump always edits, at the cost of one stat per plugin per request.
+
+# v1.0.22
+## 08/31/2026
+
+1. [](#new)
+    * A plugin can now describe its API routes as MCP tools in an `mcp.yaml` manifest at its root, or add them in code through the new `onApiMcpTools` event. `GET /mcp/tools` serves the union for the authenticated caller, filtered to the tools their permissions let them call, so an MCP server such as grav-mcp offers a model every plugin's tools with no code written per plugin. See the README section "MCP tool manifests" for the format.
+1. [](#bugfix)
+    * Moving or reordering a page now keeps the number of digits its folder already used, so a site set up for three-digit ordering no longer has `005.about` quietly rewritten to `05.about`
+
+# v1.0.21
+## 08/27/2026
+
+1. [](#new)
+    * Added an optional captcha on the admin login form, using a built-in challenge that needs no keys and no third-party service [#4254](https://github.com/getgrav/grav/issues/4254)
+    * Cloudflare Turnstile and Google reCAPTCHA can be used for that challenge instead, on sites that already have them configured in the Form plugin
+    * The captcha can also guard the forgotten-password and first-run setup forms
+    * Blueprint fields now carry their `sources` list to the admin, so a `media` field can say which pickers it offers
+    * `POST /scheduler/run` can now run the jobs that have missed their scheduled time, which is what a manual trigger is usually for, and is what it does by default. It can also run every job regardless of schedule, or a single job by name
+    * The scheduler job listing now says when each job next runs, whether it has missed its last scheduled time, and whether its last run was started by cron or by hand
+1. [](#improved)
+    * A manual scheduler run now reports which jobs actually ran, whether each succeeded and what it printed, instead of only that the run finished
+1. [](#bugfix)
+    * Fixed the admin never receiving Grav's own translations or any plugin's. Only the admin plugin's strings were being sent, so a plugin's labels showed up as a guess at the key name rather than the text it ships [#259](https://github.com/trilbymedia/grav-plugin-git-sync/discussions/259)
+    * Fixed every API-key request failing on a site where `user/data` is not writable by the web server. Recording when a key was last used is bookkeeping and no longer takes down the request that triggered it. Thanks to @sandymac for the report and the diagnosis [#30](https://github.com/getgrav/grav-plugin-api/issues/30)
+    * Fixed the same failure in three other places: an unwritable folder no longer breaks token validation, frontend page views, or the media manager's thumbnails.
+    * Errors from a folder that cannot be written now say which path is at fault, instead of reporting a missing temporary file.
+    * Fixed the account, user group and configuration forms failing with "Parent blueprint missing" on any site that adds its own fields to them. A site's own blueprint was loaded on its own, so the one it was extending was no longer there to extend. Thanks to @nerdyjan for the report and the diagnosis [#31](https://github.com/getgrav/grav-plugin-api/issues/31)
+
+# v1.0.20
+## 08/21/2026
+
+1. [](#bugfix)
+    * [security] A user manager who is not a super administrator can no longer grant super-admin access through an invitation.
+    * [security] Administrators who hold super access only through a group are now protected from being taken over by a lower-privileged user manager, and the API-key management guard that was meant to enforce this now works.
+    * [security] Password reset, invitation and single sign-on links are now built from the site's configured address rather than the address the request arrived on, so they can no longer be redirected to a server an attacker controls.
+    * [security] The API no longer accepts a front-end session that has passed its password but not yet its two-factor code.
+    * Media stored outside the standard folder, as on a multi-site install, now shows correctly in the admin media manager instead of appearing as broken images. Thanks to @nerdyjan for the diagnosis and the fix.
+    * Thumbnails are now generated for media in the site media folder, which previously failed silently and left every item without a preview.
+    * Blueprint fields keep the rest of their documented common attributes on the way to the admin, so `sublabel`, `display_label`, `labelclasses` and `outerclasses` work again as they do in Grav 1.7 [#18](https://github.com/getgrav/grav-admin-next/issues/18)
+    * The scheduler status now reports which environment the site and the last scheduler run used, so the admin can warn when a cron job runs under a different configuration than the site [#4248](https://github.com/getgrav/grav/issues/4248)
+1. [](#new)
+    * Added an After Save preference for Flex Objects, so the admin remembers where you chose to go after saving a record [#160](https://github.com/getgrav/grav-plugin-admin2/issues/160)
+    * A premium package can now name its own store and checkout link, so packages sold outside the Grav Premium store send buyers to the right place instead of always to licensing.getgrav.org.
+
+# v1.0.19
+## 08/14/2026
+
+1. [](#new)
+    * Added a report endpoint that returns the effective Twig content sandbox policy, so the admin can show the built-in defaults alongside a site's own additions and restrictions.
+    * Added a translations API for browsing every string the site displays and telling apart what a plugin or theme provides, what this site has changed, and what has no translation yet.
+    * Site translation overrides now live in `user/languages` as ordinary language files, applied late enough to take precedence over the active theme's own wording.
+    * Added machine translation of missing strings through the AI Translate plugin, with placeholders shielded so they survive the round trip intact.
+    * Added `bin/plugin api i18n:migrate` for moving existing overrides out of the Translation Strings plugin.
+    * The admin can now report what the Translation Strings plugin is holding and import it, showing beforehand which strings are new, which disagree with what is already here, and which name keys nothing on the site provides.
+1. [](#bugfix)
+    * Strings belonging to a theme that is installed but not in use no longer reach the admin interface.
+
+# v1.0.18
+## 08/12/2026
+
+1. [](#bugfix)
+    * An API key limited to a narrower set of permissions can no longer manage other super-admin accounts just because it belongs to a super-admin.
+    * The same limit now applies to deleting a super-admin account.
+    * Page permissions can no longer be edited through an API key that was never granted configuration access.
+    * The Twig option on the page form is now hidden from API keys that would not be allowed to save it.
+    * Dashboard widgets are now limited to what the API key permits, rather than everything its account can see.
+    * The list of configuration areas no longer mentions backups to API keys that cannot read them.
+
+# v1.0.17
+## 08/11/2026
+
+1. [](#bugfix)
+    * Duplicating a page that sets its own slug now gives the copy its own slug, so the two pages no longer claim the same address ([#25](https://github.com/getgrav/grav-plugin-api/issues/25)).
+    * Bulk-copying pages does the same, in every language a page is translated into.
+    * Scheduler status is now reported as far as the host allows rather than failing the whole request, so the Scheduler page still loads where cron details cannot be read [getgrav/grav-admin-next#16](https://github.com/getgrav/grav-admin-next/issues/16)
+    * Asking to run the scheduler on a host that cannot start jobs now returns a clear explanation instead of an unexpected error
+
+# v1.0.16
+## 08/07/2026
+
+1. [](#new)
+    * The list of page templates offered when adding a page can again be renamed and filtered by plugins, through the same two events the classic admin provided, so existing customisations keep working ([getgrav/grav-plugin-admin2#152](https://github.com/getgrav/grav-plugin-admin2/issues/152)).
+    * Templates can also still be hidden through the `hide_page_types` and `hide_modular_page_types` settings, as in the classic admin.
+    * Page permissions set in a page's Security tab or frontmatter are now enforced, so a group can be granted or denied editing on individual pages regardless of its site-wide page permissions ([getgrav/grav-plugin-admin2#150](https://github.com/getgrav/grav-plugin-admin2/issues/150)).
+    * Those permissions are inherited by child pages, and also cover page media, batch actions and reorganising.
+    * Each page returned by the API now reports what the current user may do to it, so the admin can hide the actions they are not allowed.
+    * Bulk publish, unpublish, delete and copy, and copying a single page, now announce themselves to plugins exactly as the single-page endpoints do ([getgrav/grav-plugin-api#23](https://github.com/getgrav/grav-plugin-api/issues/23)).
+    * Reorganising pages now reports each individual page move as well as the reorganise itself.
+1. [](#bugfix)
+    * [security] An account that can manage users but is not a super admin can no longer run a plugin's row action against a super admin, nor change that account's avatar ([GHSA-985r-mpj8-5rqw](https://github.com/getgrav/grav/security/advisories/GHSA-985r-mpj8-5rqw)).
+    * [security] A webhook is now delivered to the exact address that was checked, so a target whose DNS answer changes between the check and the delivery can no longer redirect it at an internal service ([GHSA-hq2v-cgw4-fw2w](https://github.com/getgrav/grav/security/advisories/GHSA-hq2v-cgw4-fw2w)).
+    * [security] Webhook targets in carrier-grade NAT, benchmarking, NAT64 and documentation address ranges are now rejected, as these are not reachable from the public internet but can reach internal services.
+    * Signing in to the admin with an external provider now works, instead of always coming back to the login screen with a state mismatch ([getgrav/grav-plugin-api#22](https://github.com/getgrav/grav-plugin-api/issues/22)).
+    * Syncing one language of a page onto another now writes to the translation being synced, rather than silently rewriting the language it was copied from ([getgrav/grav-plugin-api#24](https://github.com/getgrav/grav-plugin-api/issues/24)).
+    * Comparing two languages of a page now shows each language's own content, instead of showing the source language on both sides.
+    * Bulk actions are now recorded in the audit trail and delivered to webhooks, where before they left no trace at all.
+    * A bulk copy now tells the admin to refresh the newly created page instead of the page it was copied from.
+    * Generating media thumbnails no longer raises deprecation notices on PHP 8.5.
+
+# v1.0.15
+## 08/03/2026
+
+1. [](#new)
+    * Added a `DELETE /system/logs` endpoint so a log file can be emptied out from the admin, restricted to super admins.
+    * A cleared log keeps a single entry naming who cleared it, and the clear is recorded in the audit trail.
+1. [](#bugfix)
+    * [security] An uploaded image is now checked for SVG markup by its contents rather than by being named `.svg`, so the same script payload can no longer be stored untouched under another name such as `.svgz` ([GHSA-66xf-ggf4-6hmc](https://github.com/getgrav/grav/security/advisories/GHSA-66xf-ggf4-6hmc)). Requires Grav 2.0.15 for the matching upload rules.
+    * A plugin, theme or configuration screen whose fields are generated in code now shows them, instead of rendering an empty box ([getgrav/grav-plugin-api#21](https://github.com/getgrav/grav-plugin-api/issues/21)).
+    * Fixed responses failing outright when the data contained invalid UTF-8. `json_encode()` returns `false` on malformed bytes, which then hit the PSR-7 stream's string type hint and raised an unhandled `TypeError` instead of returning a response. Most visibly this broke the system log viewer, since `grav.log` collects whatever third-party content gets logged, bad byte sequences included. Invalid bytes are now substituted rather than fataling. The same fix covers the RFC 7807 error responses, where an exception message carrying a bad byte previously took out the error handler itself and turned a clean 4xx into a fatal.
+
+# v1.0.14
+## 07/30/2026
+
+1. [](#bugfix)
+    * [security] Plugin toolbar actions now check the permission the plugin declared on the button, so someone who cannot see a button can no longer run it by calling the API directly ([GHSA-8mjx-xjfv-9c88](https://github.com/getgrav/grav/security/advisories/GHSA-8mjx-xjfv-9c88)).
+    * [security] A scoped API key is now held to its scopes when a blueprint upload or file listing targets another account's folder, closing a way a media-only key on a super-admin account could reach into user accounts ([GHSA-435x-66r2-jwv2](https://github.com/getgrav/grav/security/advisories/GHSA-435x-66r2-jwv2)).
+    * [security] Sidebar entries, toolbar buttons, editor buttons and user-list columns are now filtered against the API key's own scopes rather than the account's permissions, so a limited key no longer sees or runs entries it was not granted ([GHSA-p57v-xhv3-mf2w](https://github.com/getgrav/grav/security/advisories/GHSA-p57v-xhv3-mf2w)).
+    * [security] The user list no longer returns every account to a key that was not scoped to read users, and admin-only fields on your own account are held to the key's scopes as well.
+    * [security] Sign-in return addresses containing a backslash, tab or line break are now rejected, since browsers read those as a slash and would have followed them off the site ([GHSA-x72c-4jc4-8rh6](https://github.com/getgrav/grav/security/advisories/GHSA-x72c-4jc4-8rh6)).
+    * Custom fields added to the account form by extending the account blueprint now keep showing their saved value, instead of coming back empty right after you save ([getgrav/grav-plugin-admin2#138](https://github.com/getgrav/grav-plugin-admin2/issues/138)).
+    * Adding your own entry to a key-and-value setting such as the asset Collections now keeps the entries Grav ships with it, instead of silently dropping them and leaving the site without jQuery ([getgrav/grav-admin-next#15](https://github.com/getgrav/grav-admin-next/issues/15)).
+    * Configuration screens now show a key-and-value setting exactly as Grav resolves it, rather than blending in default entries the site had already replaced.
+    * The two-factor authentication panel no longer disappears from an account until the next page load after saving it.
+    * Super-admin access granted through a group is now recognised, so an account that gets `api.super` from its group is treated as a super admin instead of being cut back to the handful of areas its other permissions allow.
+
+# v1.0.13
+## 07/25/2026
+
+1. [](#bugfix)
+    * [security] A scoped API key created on a super-admin account is now held to its declared scopes when writing groups, account settings, site preferences, and the shared dashboard layout, so a limited or read-only key can no longer be used to grant itself or others super-admin access ([GHSA-jqgq-v53x-x99g](https://github.com/getgrav/grav-plugin-api/security/advisories/GHSA-jqgq-v53x-x99g)).
+    * [security] A scoped API key can no longer create another key with broader scopes than its own, closing a way a limited key on a super-admin account could mint itself an unrestricted key ([GHSA-95v9-4fcj-96gh](https://github.com/getgrav/grav/security/advisories/GHSA-95v9-4fcj-96gh)).
+    * [security] That same scope limit now also applies when creating or updating users, sending invitations, removing a user's two-factor authentication, enabling Twig in page content, changing the report sandbox allowlist, writing privileged configuration such as the scheduler, and using the demo controls, so a limited key on a super-admin account cannot use any of these to act beyond its granted scopes ([GHSA-jrm3-jpp7-3gmx](https://github.com/getgrav/grav/security/advisories/GHSA-jrm3-jpp7-3gmx), [GHSA-wvpj-fg8h-843q](https://github.com/getgrav/grav/security/advisories/GHSA-wvpj-fg8h-843q), [GHSA-2x29-3mjq-2pvx](https://github.com/getgrav/grav/security/advisories/GHSA-2x29-3mjq-2pvx), [GHSA-96xv-p87j-58mx](https://github.com/getgrav/grav/security/advisories/GHSA-96xv-p87j-58mx), [GHSA-v5ph-7v92-wqm6](https://github.com/getgrav/grav/security/advisories/GHSA-v5ph-7v92-wqm6), [GHSA-22p9-6fh4-mmf2](https://github.com/getgrav/grav/security/advisories/GHSA-22p9-6fh4-mmf2), [GHSA-vq9w-jwj5-wfjg](https://github.com/getgrav/grav/security/advisories/GHSA-vq9w-jwj5-wfjg)).
+    * Custom fields added to the account form by extending the account blueprint are now saved instead of being silently dropped ([getgrav/grav-plugin-admin2#138](https://github.com/getgrav/grav-plugin-admin2/issues/138)).
+
+# v1.0.12
+## 07/20/2026
+
+1. [](#new)
+    * The site media listing can now filter and sort by the same metadata fields as page media, for example `GET /media?filter=rating:>=:3&sort=rating&order=desc` ([getgrav/grav#4210](https://github.com/getgrav/grav/issues/4210)).
+1. [](#improved)
+    * Translations now fall back to English for any string a language has not translated yet, instead of showing a mangled version of the key name ([getgrav/grav-plugin-admin2#129](https://github.com/getgrav/grav-plugin-admin2/issues/129)).
+1. [](#bugfix)
+    * Blueprint option lists that come from a theme or plugin now resolve against the same approved-provider list Grav core uses, and a theme or plugin can register its own provider.
+    * Invalid input to the option-resolving and backup endpoints now returns a proper validation error instead of a server error.
+    * Reordering or copying a page beneath a Home page that is hidden from URLs now uses its real folder location, so the page is no longer moved out to the site root ([getgrav/grav-plugin-admin2#132](https://github.com/getgrav/grav-plugin-admin2/issues/132)).
+    * Concurrent dashboard requests no longer occasionally fail with a "mkdir(): File already exists" error when several of them create the same cache folder at once ([#18](https://github.com/getgrav/grav-plugin-api/issues/18)).
+
+# v1.0.11
+## 07/13/2026
+
+1. [](#new)
+    * The page media listing endpoint can now filter and sort by the metadata fields configured for the plugin, for example `GET /pages/{route}/media?filter=rating:>=:3&sort=rating&order=desc`. Fixes [getgrav/grav#4200](https://github.com/getgrav/grav/issues/4200).
+1. [](#improved)
+    * The dashboard statistics endpoint now reports how many plugin, theme, and Grav core updates are available, plus whether the active theme itself has one, so the admin can show update counts without a separate request ([getgrav/grav-plugin-admin2#124](https://github.com/getgrav/grav-plugin-admin2/issues/124)).
+
+# v1.0.10
+## 07/09/2026
+
+1. [](#new)
+    * A new per-account demo mode makes an account read-only across the whole admin, with an optional allowlist to still permit editing pages or uploading media.
+    * Demo content resets back to a captured baseline on a timer or with the new `bin/plugin api demo:baseline` and `demo:reset` commands, so a shared demo cleans itself up after visitors.
+    * Plugins can add per-user action buttons to the new admin's Users list that run a server-side operation against an account and can hand back a message or a safe redirect ([getgrav/grav-plugin-admin2#115](https://github.com/getgrav/grav-plugin-admin2/issues/115)).
+    * Autoloading admin widgets can declare the routes they apply to, so their script loads only on the matching admin screen instead of on every page ([getgrav/grav-plugin-admin2#116](https://github.com/getgrav/grav-plugin-admin2/issues/116)).
+1. [](#improved)
+    * Plugin and theme details now include the documentation and issue-tracker links from their blueprint, so the admin can link straight to a project's docs and bug tracker.
+    * The API plugin's own settings are now organized into tabs instead of one long scrolling form.
+    * Plugin-contributed link columns in the new admin's Users list can now show separate visible text from the link they point to ([getgrav/grav-plugin-admin2#111](https://github.com/getgrav/grav-plugin-admin2/issues/111)).
+1. [](#bugfix)
+    * Plugin sidebar labels now display in the signed-in user's admin language instead of the site's content language, so the sidebar no longer mixes languages ([#14](https://github.com/getgrav/grav-plugin-api/pull/14)).
+    * Filtering the pages list by published, visible, or routable status now actually filters the results instead of being ignored ([getgrav/grav-plugin-admin2#121](https://github.com/getgrav/grav-plugin-admin2/issues/121)).
+    * Saving metadata with several media files selected now updates every selected file instead of only the last one ([getgrav/grav-plugin-admin2#117](https://github.com/getgrav/grav-plugin-admin2/issues/117)).
+    * [security] Reading a configuration section through the API no longer exposes stored passwords, API keys, and other secret values in plain text.
+    * [security] A user who can edit pages can no longer move a page to a location outside the pages folder, closing a path that let a page's files be written anywhere the server can write (GHSA-qjq4-jp55-4mx2).
+    * [security] Inviting a new user into a group is now restricted to super administrators, so a user who can only manage accounts can no longer invite someone straight into a super-admin group (GHSA-m86m-jjcg-gcvv).
+    * [security] Changing the API plugin's own settings, such as its CORS policy and rate limiting, now requires a super administrator, so a user with general configuration access can no longer weaken the API's own protections (GHSA-4pqv-2qj5-38fp).
+
+# v1.0.9
+## 07/06/2026
+
+1. [](#new)
+    * The new admin can now retrieve the Grav core changelog for versions newer than the one installed, so it can show what changed before you upgrade ([getgrav/grav-plugin-admin2#109](https://github.com/getgrav/grav-plugin-admin2/issues/109)).
+    * Plugins can now add their own columns to the new admin's Users list, contributing safe per-user values that stay scoped to the page you are viewing ([getgrav/grav-plugin-admin2#111](https://github.com/getgrav/grav-plugin-admin2/issues/111)).
+1. [](#improved)
+    * Media listings now include each file's saved alt text and title from its metadata, so the admin can insert an image with proper alt text instead of the filename ([getgrav/grav-plugin-admin2#114](https://github.com/getgrav/grav-plugin-admin2/issues/114)).
+1. [](#bugfix)
+    * The page summary preview now returns clean stripped text instead of a slice of raw Markdown, so leading links and images no longer leave broken fragments in the new admin's page list ([getgrav/grav-plugin-admin2#110](https://github.com/getgrav/grav-plugin-admin2/issues/110)).
+    * Media files whose extension has any uppercase letters, such as `.JPG`, can now be deleted instead of failing with a not-found error ([getgrav/grav#4196](https://github.com/getgrav/grav/issues/4196)).
+
+# v1.0.8
+## 07/04/2026
+
+1. [](#new)
+    * You can now edit a media file's metadata such as alt text, title, caption, description, and tags directly in the new admin, with the fields you want to manage configurable in the plugin settings ([getgrav/grav-plugin-admin2#99](https://github.com/getgrav/grav-plugin-admin2/issues/99)).
+    * The new admin's page editor can now preview an unpublished page instead of showing a 404, so you no longer need a separate plugin to preview drafts ([getgrav/grav-plugin-admin2#100](https://github.com/getgrav/grav-plugin-admin2/issues/100)).
+1. [](#improved)
+    * A plugin that adds tabs to the new admin's Users list can now choose which tab it opens on and hide the built-in "All Users" tab when showing every account isn't a useful default ([getgrav/grav-plugin-admin2#51](https://github.com/getgrav/grav-plugin-admin2/issues/51)).
+    * The new admin now remembers a per-user Vim keybindings choice for its Markdown and code editors, saved to the user's account ([getgrav/grav-plugin-admin2#95](https://github.com/getgrav/grav-plugin-admin2/issues/95)).
+    * Media, theme, and avatar listings now prepare each image thumbnail in a single pass, speeding up image-heavy listings.
+    * Requests authenticated with an API key no longer rewrite the key storage file on every call; the key's last-used time is refreshed at most once a minute.
+    * The dashboard now remembers its media file count for a few minutes instead of scanning the whole media folder on every visit.
+1. [](#bugfix)
+    * The new admin's log viewer now lists the security log and any other log files in your logs folder, instead of only a fixed set ([getgrav/grav-plugin-admin2#107](https://github.com/getgrav/grav-plugin-admin2/issues/107)).
+    * A configuration tab added by a plugin or theme now opens and saves in the new admin, instead of showing a "scope not found" error ([getgrav/grav-plugin-migrate-grav#16](https://github.com/getgrav/grav-plugin-migrate-grav/issues/16)).
+    * The dashboard media count no longer includes hidden sidecar files such as metadata and ordering files, so it reflects the number of actual media files.
+    * [security] Generating or revoking an API key for another account now requires account-management permission, and only a super administrator can do so for a super-admin account, so a user with only basic panel access can no longer mint a key that carries another account's API permissions ([GHSA-7v74-m76q-8wf3](https://github.com/getgrav/grav/security/advisories/GHSA-7v74-m76q-8wf3)).
+    * A user migrated from the classic admin now keeps the interface language they had set there, instead of dropping to the site default, until they pick a different one in the new admin ([getgrav/grav-plugin-admin2#98](https://github.com/getgrav/grav-plugin-admin2/issues/98)).
+    * The new admin's taxonomy field now lists every taxonomy type declared for the site so you can add categories and tags on a page even when none have been used yet ([getgrav/grav-plugin-admin2#90](https://github.com/getgrav/grav-plugin-admin2/issues/90)).
+    * Opening a page preview in the new admin no longer logs out a visitor signed in to the public site in the same browser, because the preview now renders without touching the shared front-end session ([getgrav/grav-plugin-admin2#88](https://github.com/getgrav/grav-plugin-admin2/issues/88), [getgrav/grav-plugin-admin2#79](https://github.com/getgrav/grav-plugin-admin2/issues/79)).
+    * The new admin's scheduler view now includes the core backup jobs, which were previously missing from the list and its health check.
+
+# v1.0.7
+## 06/30/2026
+
+1. [](#bugfix)
+    * Working in the new admin no longer logs out a visitor who is signed in to the public site in the same browser, by stopping API calls from replacing the visitor's session cookie when the admin reaches the API without one ([getgrav/grav-plugin-admin2#88](https://github.com/getgrav/grav-plugin-admin2/issues/88), [getgrav/grav-plugin-admin2#79](https://github.com/getgrav/grav-plugin-admin2/issues/79)).
+
+# v1.0.6
+## 06/29/2026
+
+1. [](#new)
+    * The API can now keep an optional audit trail of admin activity such as logins, content edits, user changes, and configuration changes, available to super admins and turned off by default.
+    * Plugins can now add their own buttons to the new admin's Markdown editor toolbar.
+    * The new admin can now sign in through an OAuth provider such as GitHub or Google when the Login OAuth2 plugin is configured for it ([getgrav/grav-plugin-login-oauth2#52](https://github.com/trilbymedia/grav-plugin-login-oauth2/issues/52)).
+1. [](#improved)
+    * The new admin now loads a plugin's custom field scripts in a single request per plugin instead of one request per field, so the page editor opens with far fewer round-trips.
+    * Custom field and editor scripts are now cached and revalidated cheaply, so reopening the editor no longer downloads them again each time.
+1. [](#bugfix)
+    * The new admin's page editor no longer intermittently fails to load the editor or custom fields when many of them request their scripts at the same time.
+    * The new admin's page editor again shows the Twig processing toggle to super admins and users granted the Twig content permission when the "Allow editors to toggle Twig in Content" option is off, matching what they are already allowed to save ([getgrav/grav-admin-next#5](https://github.com/getgrav/grav-admin-next/issues/5)).
+    * Saving a page whose frontmatter has a text `modified` date no longer fails with an error in the new admin ([getgrav/grav#4170](https://github.com/getgrav/grav/issues/4170)).
+    * Signing in to the new admin no longer resets the session of a visitor who is logged in to the public site in the same browser, so front-end logins are no longer dropped while you work in the admin ([getgrav/grav-plugin-admin2#79](https://github.com/getgrav/grav-plugin-admin2/issues/79)).
+    * Renaming a media file now keeps its original extension and cleans spaces and other unsafe characters out of the new name, so the renamed file still works in Markdown image links ([getgrav/grav-plugin-admin2#77](https://github.com/getgrav/grav-plugin-admin2/issues/77)).
+    * Saving system configuration in the new admin no longer fails when an unrelated, pre-existing setting is invalid, such as a value carried over from a migrated site, because only the fields you actually changed are now validated ([getgrav/grav#4176](https://github.com/getgrav/grav/issues/4176)).
+    * Creating, copying, or moving a page at the site root no longer fails with a "Parent page not found" error on Windows ([getgrav/grav-plugin-admin2#82](https://github.com/getgrav/grav-plugin-admin2/issues/82)).
+    * Admin labels for a region-specific admin language such as `ru-RU` now fall back to a plugin's matching short-code language file (`ru`) before English, so plugins that ship plain language files are translated correctly ([#11](https://github.com/getgrav/grav-plugin-api/pull/11), thanks @Sogl).
+    * The "Add to allowlist" button in the Twig-in-Content report now removes the block it just resolved instead of leaving the same row behind, so it is clear the action took effect ([getgrav/grav-plugin-admin2#85](https://github.com/getgrav/grav-plugin-admin2/issues/85)).
+    * Content entered into an Elements field's sub-fields is now saved in the new admin instead of being discarded, and editing those sub-fields now enables the Save button ([getgrav/grav-plugin-admin2#86](https://github.com/getgrav/grav-plugin-admin2/issues/86)).
+
+# v1.0.5
+## 06/25/2026
+
+1. [](#new)
+    * API controllers can now send debug output to Grav's debugger without corrupting the JSON response, so values can be inspected in Clockwork and the new admin's debug panel ([getgrav/grav-plugin-admin2#66](https://github.com/getgrav/grav-plugin-admin2/issues/66)).
+    * The API now keeps Grav's object cache on for its own requests even when caching is turned off for the site, so the new admin stays fast while you develop the frontend with the cache disabled ([getgrav/grav-plugin-admin2#65](https://github.com/getgrav/grav-plugin-admin2/issues/65)).
+    * Requests authenticated with an API key are now much faster when repeated, because a verified key is briefly remembered instead of being re-checked with a deliberately slow hash on every request.
+    * API requests now report their authentication, routing, and controller timings to Grav's debugger, so the new admin's debug panel timeline shows where each request spends its time ([getgrav/grav-plugin-admin2#65](https://github.com/getgrav/grav-plugin-admin2/issues/65)).
+    * The new admin's many simultaneous requests no longer queue up waiting on the session one at a time, so pages and lists load noticeably faster ([getgrav/grav-plugin-admin2#65](https://github.com/getgrav/grav-plugin-admin2/issues/65)).
+    * Site-wide media files can now be saved in a custom order, stored per folder and applied whenever that folder's media is listed.
+1. [](#bugfix)
+    * Blueprint field unit labels such as the cache purge age now display correctly, showing "days" instead of a humanized key like "Day Plural" in the new admin ([getgrav/grav-plugin-admin2#64](https://github.com/getgrav/grav-plugin-admin2/issues/64)).
+    * Deleting a page image now works for images that have a retina `@2x` variant, instead of failing with a "not found" error, and it removes the variant too rather than leaving it orphaned ([getgrav/grav-plugin-admin2#68](https://github.com/getgrav/grav-plugin-admin2/issues/68)).
+    * Changing a module's template now renames it in place instead of creating a broken extra child page ([getgrav/grav-plugin-admin2#69](https://github.com/getgrav/grav-plugin-admin2/issues/69)).
+
+# v1.0.4
+## 06/24/2026
+
+1. [](#new)
+    * Admin branding now stores a custom sign-in title, subtitle, a toggle to hide the "Powered by Grav CMS" line, and a custom favicon, exposed to the sign-in screen before login ([getgrav/grav-plugin-admin2#54](https://github.com/getgrav/grav-plugin-admin2/issues/54)).
+    * The branding upload endpoint now accepts a favicon image alongside the light and dark logos.
+2. [](#bugfix)
+    * [security] Password reset and invitation emails now build their links only from your site's own address or an allowlisted origin, so an attacker can no longer redirect a reset link to a server they control and capture the token to take over an account (GHSA-5xc4-j99p-cp4m).
+    * [security] API access tokens can now be invalidated before they expire, so logging out, changing or resetting a password, and disabling an account immediately revoke any tokens already issued to that user (GHSA-m8g9-wxhx-6f86).
+    * New pages now keep only the default values the template author actually set, instead of also copying inherited collection and plugin settings (such as empty sitemap fields) into the page's frontmatter ([getgrav/grav-plugin-admin2#53](https://github.com/getgrav/grav-plugin-admin2/issues/53)).
+    * Profile avatars now display for accounts whose avatar was stored as a plain filename, instead of appearing blank ([getgrav/grav-plugin-api#9](https://github.com/getgrav/grav-plugin-api/pull/9)).
+    * Permissions granted to a user through group membership are now honored, so a user whose access comes only from a group can again see and use Pages, Media, and Reports ([getgrav/grav-plugin-admin2#57](https://github.com/getgrav/grav-plugin-admin2/issues/57)).
+    * A group or user with no permissions set is now returned with an empty permission map rather than an empty list, so the admin can add the first permission to it ([getgrav/grav-plugin-admin2#58](https://github.com/getgrav/grav-plugin-admin2/issues/58)).
+    * Page and media lookups now find pages under a hidden home route, so editing a home child page and its Media panel work when "Hide home route in URLs" is enabled ([getgrav/grav-plugin-api#10](https://github.com/getgrav/grav-plugin-api/issues/10)).
+
+# v1.0.3
+## 06/23/2026
+
+1. [](#new)
+    * Plugins can now add their own tabs to the Users list, such as an "Active" or "Licensed" view that shows a filtered set of accounts, with search, permissions, and pagination still applied ([getgrav/grav-plugin-admin2#51](https://github.com/getgrav/grav-plugin-admin2/issues/51)).
+2. [](#bugfix)
+    * New pages created through the admin now inherit their template's blueprint default values, so a page set to start unpublished is no longer published the moment it is created ([getgrav/grav-plugin-admin2#49](https://github.com/getgrav/grav-plugin-admin2/issues/49)).
+
+# v1.0.2
+## 06/22/2026
+
+1. [](#bugfix)
+    * [security] The token signing secret is now kept in a protected, non-committed file outside your site config instead of in plugins/api.yaml, so it can no longer be read from the config or leaked through templates, and existing logins keep working across the upgrade ([getgrav/grav#4150](https://github.com/getgrav/grav/issues/4150)).
+    * [security] File uploads through the API now reject names that hide a disguised second extension such as `shell.php.jpg`, closing a path that could let an executable script be saved and run on the server (GHSA-66v2-vxxf-xc3v).
+    * [security] SVG images uploaded through the API are now cleaned of any embedded scripts, so a malicious SVG can no longer run code in an admin's browser when viewed (GHSA-7vhm-8x52-2r5p).
+
+# v1.0.1
+## 06/21/2026
+
+1. [](#bugfix)
+    * [security] Profile avatar and admin logo uploads now verify the actual image content instead of trusting the file type claimed by the browser, so a disguised script or PHP file can no longer be saved into your site's files (GHSA-xc64-vh46-vph6).
+    * The ETag header is now readable by the admin when it runs on a different domain than the API, so save conflict protection keeps working in that setup.
+
+# v1.0.0
+## 06/20/2026
+
+1. [](#new)
+    * Page Statistics can now exclude visits from logged-in admins and from specific visitor IP addresses or ranges, so your own testing and demo traffic no longer skews the numbers ([getgrav/grav-plugin-admin2#45](https://github.com/getgrav/grav-plugin-admin2/issues/45)).
+2. [](#bugfix)
+    * [security] An admin who can manage users but is not a super admin can no longer change, create, or delete super-admin accounts, closing a privilege-escalation path that allowed taking over the super admin by resetting its password (GHSA-p97c-g455-q447).
+    * [security] Profile avatar and admin logo uploads now verify the actual image content instead of trusting the file type claimed by the browser, so a disguised script or PHP file can no longer be saved into your site's files (GHSA-xc64-vh46-vph6).
+    * Accounts with two-factor authentication configured are now always challenged at login, closing a gap where migrated or existing 2FA accounts could sign in with only a password ([getgrav/grav#4145](https://github.com/getgrav/grav/issues/4145)).
+    * Two-factor enrollment is now offered in the admin whenever the Login plugin is installed, instead of staying hidden unless a site-wide flag was set ([getgrav/grav#4145](https://github.com/getgrav/grav/issues/4145)).
+
+# v1.0.0-rc.16
+## 06/19/2026
+
+1. [](#new)
+    * Plugins can now provide Admin2 modal dialogs through a new endpoint that serves their modal components.
+2. [](#improved)
+    * Plugins that serialize their own admin config labels can now reuse the API's label translation, so those labels localize to the signed-in user's admin language.
+3. [](#bugfix)
+    * Cross-origin access to the API is now off by default and is never granted with a wildcard on signed-in responses, so another website can no longer read your API data or act on your behalf with a stolen token; add the specific origins you trust in the CORS settings if a browser app on another domain needs access.
+    * An access token passed in the URL query string is now accepted only for file downloads, not for regular API calls, so a token can no longer leak through server logs, browser history, or referrer headers and then be reused to take over an account.
+    * The dashboard user count now uses the same account backend as the Users page, so sites with Flex or custom nested account storage report the real number of users instead of zero ([getgrav/grav-plugin-api#7](https://github.com/getgrav/grav-plugin-api/issues/7)).
+    * Saving a page no longer fails validation when its header still lists a processing option (such as Twig) that has since been disabled site-wide, so a leftover setting the editor never touched can't block every save ([getgrav/grav-plugin-admin2#41](https://github.com/getgrav/grav-plugin-admin2/issues/41)).
+    * The page-type data resolver now returns the modular template list for modular pages when the caller asks for it, instead of always returning the standard list ([getgrav/grav-plugin-admin2#41](https://github.com/getgrav/grav-plugin-admin2/issues/41)).
+
+# v1.0.0-rc.15
+## 06/16/2026
+
+1. [](#new)
+    * Added a dashboard security endpoint that hands the admin Dashboard a sentinel URL under `user/data`, so it can detect from the browser whether the sensitive `user/` folders are downloadable over the web.
+    * Added user preferences for keeping the Markdown editor toolbar pinned while scrolling and for setting a fixed editor height.
+    * Plugins can now contribute dashboard notifications via a new `onApiDashboardNotifications` event, letting them raise a persistent, dismissible admin banner (grouped by location — `top`, `dashboard`, `feed`) that flows through the existing dismiss and `reappear_after` handling.
+    * Plugin endpoints can now return a toast hint to control the message, type and duration of the notification the admin shows after a save, including errors that stay until dismissed ([getgrav/grav-plugin-admin2#38](https://github.com/getgrav/grav-plugin-admin2/issues/38)).
+2. [](#improved)
+    * Public API endpoints now recognize logged-in callers when credentials are provided, returning their richer permission-filtered responses instead of treating everyone as a guest.
+    * Plugins can now mark public routes as read-only by method, so browsing stays open while writes on the same paths still require login.
+    * Page responses now include the on-disk folder name, including any numeric ordering prefix, so admin tools can show and diagnose page ordering.
+    * File upload fields now honor their blueprint's `random_name`, `avoid_overwriting`, `accept`, and `filesize` settings, matching the classic admin.
+3. [](#bugfix)
+    * Creating, listing, downloading, and deleting site backups now requires a dedicated backup permission (or API super user) instead of the broader system read/write access, because the backup archive includes account password hashes and configuration secrets.
+    * Page and account content saved through the API is now checked for cross-site scripting, closing a hole where an editor without full admin rights could store a script that later ran in other visitors' browsers.
+    * Blueprint fields that use relative dot-naming inside a section (such as `.optionA`) now save their values again, restoring the nested-field behaviour from the classic admin ([getgrav/grav#4120](https://github.com/getgrav/grav/issues/4120)).
+    * Pages on a template the current theme doesn't define now fall back to the default page form in the editor instead of showing a blank screen, matching the classic admin.
+    * Toggle and select options whose Yes/No labels were turned into booleans by strict YAML parsing now render as Yes/No again instead of a blank or "true" button ([getgrav/grav-plugin-admin2#36](https://github.com/getgrav/grav-plugin-admin2/issues/36)).
+    * A caller restored via the login plugin's *remember me* cookie (left `authenticated` but not `authorized`) is now accepted by session authentication, so a remembered user who shows as signed in can use the API instead of being silently rejected on every write until a fresh login. Per-route permission checks still gate what they can actually do.
+    * The page template selector no longer breaks with a "callable not found" error when a blueprint references the classic admin's page-types helper but the classic admin isn't active, falling back to the built-in page types instead ([getgrav/grav-plugin-admin2#41](https://github.com/getgrav/grav-plugin-admin2/issues/41)).
+    * Custom fields provided by a theme are now reported with their provider type and included in the theme's own info, so the admin can load them from the correct route instead of always assuming a plugin ([getgrav/grav-admin-next#3](https://github.com/getgrav/grav-admin-next/issues/3)).
+    * Editing or deleting a specific translation with `?lang=` now targets that language's file instead of silently overwriting or failing to find the default language ([getgrav/grav-plugin-api#6](https://github.com/getgrav/grav-plugin-api/issues/6)).
+
+# v1.0.0-rc.14
+## 06/09/2026
+
+1. [](#new)
+    * The page editor now includes a Security tab for setting page access and permissions, matching the classic admin, with the permissions section limited to users who hold API super or configuration rights.
+    * Page Authors is now a searchable multiselect of the users who can edit pages, instead of free-text username entry.
+    * The users API can now filter accounts by permission or group, so the admin can list everyone who holds a given permission such as admin access.
+    * The user listing now includes each account's group memberships.
+2. [](#improved)
+    * A failed Grav core upgrade now reports the real reason and records it in the log, instead of a generic "Failed to upgrade Grav core" message.
+    * A Grav core upgrade blocked by a compatibility check now lists the packages responsible and can be retried with an explicit override, matching the command-line upgrader.
+    * Saving config, pages or accounts now validates the submitted fields against the blueprint, so a required field left empty or an invalid value is rejected instead of silently saved ([getgrav/grav-plugin-admin2#30](https://github.com/getgrav/grav-plugin-admin2/issues/30)).
+    * Media upload handling is now shared, so other plugins such as Flex Objects can let you attach files to their own records.
+3. [](#bugfix)
+    * Saving a page no longer corrupts its frontmatter with stray internal keys, which previously accumulated on every save when editing in Expert mode ([getgrav/grav-plugin-admin2#31](https://github.com/getgrav/grav-plugin-admin2/issues/31)).
+    * Saving a page through the API no longer fails when an admin-aware plugin posts a flash message from its save handler ([#5](https://github.com/getgrav/grav-plugin-api/issues/5)).
+    * Pages under the home page now appear nested beneath it in the tree and columns views, instead of being listed at the top level ([getgrav/grav-plugin-admin2#32](https://github.com/getgrav/grav-plugin-admin2/issues/32)).
+
+# v1.0.0-rc.13
+## 06/04/2026
+
+1. [](#new)
+    * **Custom top-level configuration files now appear as their own tab in admin2**, alongside System, Site, Media and Security, so the long-standing "add a custom YAML file" cookbook recipe works again.
+    * **Configuration fields that override an inherited default now expose a one-click revert**, with a "Reset overrides" action to clear them all at once, for both the base configuration and per-environment overlays.
+2. [](#bugfix)
+    * **Saving configuration no longer fails with a "modified elsewhere" error on servers that compress responses with zstd**, matching the gzip and brotli handling already in place (follow-up to [getgrav/grav-plugin-admin2#28](https://github.com/getgrav/grav-plugin-admin2/issues/28)).
+    * **Configuration now reads from the correct source behind a reverse proxy that forwards a different hostname than the server booted under**, so the base "Default" view no longer shows another environment's overridden values.
+    * **Configuration saved without an explicit environment now lands in the environment the site is actually running, even behind a reverse proxy**, instead of silently writing to the base configuration.
+
+# v1.0.0-rc.12
+## 06/03/2026
+
+1. [](#new)
+    * **Invite a user by email** instead of creating the account yourself: pre-set their permissions and groups, send a time-limited invite link, and they choose their own username, name and password when they accept (they can never grant themselves more access than you set).
+2. [](#improved)
+    * **Usernames containing periods (e.g. `john.doe`) are now accepted and listed correctly**, matching the characters admin classic has always allowed.
+3. [](#bugfix)
+    * **Saving a configuration twice in a row no longer fails with a "Configuration was modified elsewhere" error** when you toggle an option whose neighbour is left at its default value. Fixes [getgrav/grav-plugin-admin2#28](https://github.com/getgrav/grav-plugin-admin2/issues/28).
+
+# v1.0.0-rc.11
+## 05/29/2026
+
+1. [](#improved)
+    * **Sidebar `authorize` now accepts an array of permissions** (any-of semantics, matching admin-classic's `nav-quick-tray.html.twig` pattern), and the **menubar and floating-widget APIs gained the same `authorize` filtering**. Plugins that register sidebar / menubar / widget items can now hide them from users who lack the relevant permission without needing to check inside their own event handler. Used across grav-plugin-git-sync, grav-plugin-license-manager, grav-plugin-algolia-pro, grav-plugin-cloudflare, grav-plugin-comments-pro, grav-plugin-image-optimize, grav-plugin-rsync, grav-plugin-seo-magic, grav-plugin-translation-service, grav-plugin-warm-cache, grav-plugin-ai-pro, and grav-plugin-ai-translate to fix [getgrav/grav-plugin-admin2#23](https://github.com/getgrav/grav-plugin-admin2/issues/23).
+2. [](#bugfix)
+    * **Hebrew and Arabic admin language responses are correctly marked right-to-left again**, restoring the RTL admin shell that broke after the BCP-47 language code switch.
+    * **Media files and folders whose names contain non-ASCII characters (e.g. `imäge1.png`, `Földer1`) can be deleted again.** Captured route params arrived percent-encoded because Grav's URL parser does not decode them, so the controller looked for a file that didn't exist. Route params are now rawurldecoded once in the dispatcher. Fixes [getgrav/grav-plugin-api#3](https://github.com/getgrav/grav-plugin-api/issues/3).
+    * **Media files whose extension matches a configured page type (`.txt`, `.md`, `.html`, …) can be deleted again.** Grav's URL router strips known page-type extensions before any plugin sees the route, so `/media/notes.txt` arrived as `/media/notes` and 404'd. The dispatcher now re-attaches the stripped extension before matching, fixing every plugin route at once. Fixes [getgrav/grav-plugin-api#3](https://github.com/getgrav/grav-plugin-api/issues/3).
+    * **Saving a page or configuration with YAML list values no longer grows the file with quoted `'0'`, `'1'`, `'2'` keys mixed in alongside the original entries.** Reported via [getgrav/grav-theme-quark2#8](https://github.com/getgrav/grav-theme-quark2/issues/8).
+
+# v1.0.0-rc.10
+## 05/26/2026
+
+1. [](#new)
+    * New `GET /blueprint-files` endpoint browses any Grav stream (`user://media`, `theme://images`, `account://`, …), `self@:` scope token, or relative path under `user/`, so file-picker blueprint fields can list arbitrary folders the way admin-classic always could.
+    * New `?locate=/some/route` parameter on `GET /pages` returns the page-of-results that contains a given route in one round trip, so the admin can jump straight to a deep child of a long folder without walking the listing.
+2. [](#bugfix)
+    * Listing a folder with more than 100 children no longer silently drops the rest — the per-request cap default is now 1000 (raise it further via `plugins.api.pagination.max_per_page` if you need to). Fixes [getgrav/grav#4096](https://github.com/getgrav/grav/issues/4096).
+
+# v1.0.0-rc.9
+## 05/21/2026
+
+1. [](#new)
+    * Page show, create, and update endpoints now enforce the new `security.twig_content.*` gates. Requests that try to enable Twig on a page without permission, or to load a page that already has Twig enabled when the current user can't edit it, return a 403 with a stable reason code so the admin UI can render the right toast. Requires grav ≥ 2.0.0-rc.4.
+    * **New `DELETE /system/environments/{name}` endpoint.** Removes the `user/env/<name>/` folder and everything under it after validating the name, refusing to delete the request's currently active environment, refusing to act on legacy `user/<name>/config/` layouts (those overlap with user-managed paths and must be cleaned up by hand), and guarding against symlink escape via a realpath boundary check.
+    * **New User Groups CRUD endpoints.** `GET /groups`, `POST /groups`, `GET /groups/{name}`, `PATCH /groups/{name}`, `DELETE /groups/{name}` for managing entries in `user/config/groups.yaml`. Reads through the Flex `user-groups` directory when available, falls back to direct YAML I/O otherwise. ETag concurrency on show/update; writes gated on `admin.super` to match the `security@` on the group blueprint.
+    * **New Accounts Configuration endpoints.** `GET /config/accounts` and `PATCH /config/accounts` read and write `user/config/flex/accounts.yaml` — the Flex compatibility + caching toggles classic admin shows under the Users → Configuration tab. Gated on `admin.super`.
+    * **New blueprint endpoints for group editing and accounts config.** `GET /blueprints/groups` and `GET /blueprints/groups/new` serve the resolved `user/group.yaml` and `user/group_new.yaml` blueprints. `GET /blueprints/config/accounts` delegates to `FlexDirectory::getDirectoryBlueprint()` so both the Compatibility tab (from the user-accounts blueprint's `blueprints.configure.fields.import@`) and the shared Caching tab (from `blueprints://flex/shared/configure.yaml`) come through together, matching admin classic.
+    * **Four new Tier B preference keys.** `usersViewMode`, `groupsViewMode`, `pluginsViewMode`, `themesViewMode` (each `cards` or `table`) let admin2 remember per-user list-view choices server-side, the same way `pagesViewMode` already does.
+2. [](#bugfix)
+    * **`POST /pages/{route}/move` no longer corrupts folder names with a double-dot prefix.** `$page->order()` in Grav core returns the matched numeric prefix *including* the trailing dot (e.g. `'04.'`), and the endpoint was treating it as a plain number then appending its own separator, producing folders like `04..an-api-drive-future-for-grav`. Grav then strips only the first `04.` from that name and exposes a slug starting with `.`, which gives the page a route like `/blog/.foo` that the SvelteKit router silently normalizes back to `/blog/foo` — net result was a "Page not found" right after a successful move. The fallback now strips the trailing dot and converts to int before building `dirName`.
+    * **`POST /pages/reorganize` rejects batches where a destination parent is also being moved.** Mid-batch, Phase 2 renames every page to a temp directory under its captured destination path; if the destination parent itself is in the operation list, its on-disk path moves out from under any earlier op that already landed in it, and Phase 3's rename then fails with the confusing `rename(...): No such file or directory`. The endpoint now walks the ancestor chain of every op's destination during validation and throws a clear `ValidationException` naming the conflicting op, so the rollback path keeps disk state intact and the client sees something actionable.
+    * **`POST /pages/reorganize` no longer rejects batches that contain no-op renumbers of the source's parent.** The "destination parent is also being moved" guard was flagging every route in the batch as moved, even ones whose position and parent were unchanged on disk. Dragging a child page back to root with the tree-view drop handler (which renumbers all root siblings to match the new order) failed with `Operation index N targets parent '/foo', but '/foo' is also being moved in the same batch` even though `/foo` was just being renumbered to its existing position. The conflict check now only counts routes that actually rename on disk (parent changed OR position changed vs current order).
+    * **`POST /pages/reorganize` defensively strips leading dots from page slugs.** Mirrors the sanitization the single-page `/move` endpoint already applies. Without this, a page whose slug somehow started with `.` (e.g. inherited from an earlier corrupted folder) would get rebuilt into another double-dot folder on the next batch operation.
+    * **Page listings now serve the real frontmatter title instead of a slug-humanized fallback.** The flex-indexed `PageObject` returned by `GET /pages` doesn't materialize the page header in memory, so `$page->title()` and `->menu()` were silently falling back to `ucfirst(slug)` — pages named `contact-us` with a real `title: "Contact Us"` in their `.md` showed up as `"Contact-us"`. `PageSerializer` already re-parses the frontmatter from disk when the in-memory header is empty; it now also reads `title` and `menu` out of that parsed array in preference to the page-object accessors.
+    * **`POST /menubar/actions/{plugin}/{action}` returns HTTP 200 when a handler ran and reported a domain-level failure**, instead of HTTP 400 with the failure embedded in the body. The action result envelope (`{ status, message }`) already differentiates success from failure, so the admin client's `result.status` toast branch handles both — but on 400 the client's generic error handler was looking for `detail`/`title` fields that aren't part of the menubar envelope, leaving the error toast blank. HTTP 4xx is now reserved for the genuine API error of "no plugin registered for that action" (returns 404). Visible symptom this fixes: clicking the Cloudflare purge button with bad credentials used to surface an empty red toast instead of "Cloudflare purge failed: Authentication error".
+
+# v1.0.0-rc.8
+## 05/17/2026
+
+1. [](#new)
+    * **New `GET /admin/languages` endpoint.** Enumerates `user/plugins/admin2/languages/*.yaml` and returns each available admin UI locale with its native name and RTL flag. Distinct from `GET /languages` (which lists *site content* languages from `system.yaml`) — the admin UI language and site content language are different concepts and shouldn't be conflated.
+    * **`POST /pages` now accepts a `kind` parameter.** Mirrors classic admin's three-way add-page split: `page` (default — folder + `<template>.md`, unchanged behaviour), `folder` (creates the folder only, no `.md` file), or `module` (a modular sub-page — the slug is automatically prefixed with `_` per Grav's modular-folder convention). Validation rejects any other value.
+    * **`GET /blueprints/pages` now accepts `?modular=true`.** Returns `Pages::modularTypes()` instead of `Pages::types()` so the admin can populate a Module-specific template picker (the four `modular/*` templates a theme provides, rather than every standard template).
+    * **`GET /translations/{lang}` now returns `dir: 'rtl'|'ltr'`.** Lets admin2 set `<html dir>` and `window.__GRAV_I18N.dir` from the same payload it's already fetching, avoiding a second roundtrip on every locale switch.
+1. [](#bugfix)
+    * **`GET /translations/{lang}` no longer silently falls back to the default language when the requested locale isn't a *site content* language.** The validation was gating on `$language->getLanguages()` (the list configured under `system.languages.supported`), so a request for Hebrew on an English-only site quietly returned English strings. Admin UI translations and site content languages are independent — the endpoint now validates only the shape of the lang code and lets `Languages::flattenByLang()` decide whether the strings exist.
+    * **Blueprint labels now translate against the user's admin language, not the site default.** Every `/blueprints/*` endpoint (pages, plugins, themes, users, permissions, config, plugin pages, page types) used to call `$lang->translate()` with no language hint, so labels resolved against Grav's globally-active content language. The same admin-next user could see their topbar nav in Hebrew (those come from `/translations/he` which knows the language) and the System config page still in English (those come pre-resolved here). `BlueprintController` now reads each request's authenticated user, resolves their effective `adminLanguage` via `PreferencesResolver`, and passes `[$adminLanguage, 'en']` as the language fallback chain on every translate call. Falls back cleanly to English when no user is attached.
+    * **Modular templates now save with the correct on-disk filename.** `POST /pages` with template `modular/hero` was writing `<folder>/modular/hero.md` (creating a nested `modular/` subdirectory inside the new page folder); it now correctly writes `<folder>/hero.md`. The `modular/` prefix in the template key is purely for template resolution, never part of the filename.
+
+# v1.0.0-rc.7
+## 05/14/2026
+
+1. [](#new)
+    * **New `/admin-next/preferences` endpoint family for admin2 UI settings.** `GET /admin-next/preferences` returns a single resolved payload of branding, site defaults, the caller's overrides, and the merged effective values. `PATCH /admin-next/preferences/user` saves the current user's overrides (debounced from the SPA); `DELETE` clears them. `PATCH /admin-next/preferences/site` writes site-wide defaults (super-admin only) and routes Tier B keys (overridable per-user) to `user/config/admin-next.yaml > ui.defaults` and Tier A2 keys (site-only behavioral — auto-save, real-time collab, menubar links) to `ui.settings`. `PATCH /admin-next/branding` and `POST/DELETE /admin-next/branding/logo` handle the site logo (mode/text plus light/dark image uploads stored under `user://media/admin-next/`). The new `PreferencesResolver` service in `classes/Api/Services/` mirrors the dashboard-layout pattern: built-in defaults overlaid with site values overlaid with per-user overrides, all schema-validated on write.
+
+# v1.0.0-rc.6
+## 05/13/2026
+
+1. [](#new)
+    * **Plugin log files now show up in the admin Logs viewer.** A new `onApiLogFiles` event lets plugins register their own log file alongside the core `grav.log` / `email.log` / `scheduler.log` set, and `GET /system/logs` accepts a `?file=` query to pick which one to read. A companion `GET /system/logs/files` endpoint returns the registered list so the admin can populate a selector. File names are whitelisted by the registered set to prevent path traversal.
+    * **`POST /pages` accepts `order: "auto"` for sibling-aware numeric prefixing.** Mirrors admin-classic's add-page behavior: when the parent already has numerically prefixed children the new page is created with the next free number; when no sibling uses a prefix the new page is created without one. Existing integer and `null` semantics are unchanged.
+1. [](#improved)
+    * **Blueprint serializer now passes through the `create` field property.** Lets array fields opt into admin2's constrained-dropdown rendering by setting `create: false` in their blueprint.
+    * **Self-service paths on `/users` no longer require `api.users.read`.** A caller can fetch their own row (`GET /users/{me}`) and the user-form schema (`GET /blueprints/users`) with just `api.access` — symmetric with what `PATCH /users/{me}` already permitted. The blueprint endpoint is just the form definition with no per-user data leak; the show endpoint still requires `api.users.read` for anyone else's account.
+    * **`GET /users` auto-filters to self for restricted callers.** Without `api.users.read` the listing endpoint used to 403 outright; it now returns a single-row paginated envelope containing only the caller's own user. Admins (super or `api.users.read`) still get the full listing as before.
+    * **Admin login now flows through the standard `Login::login()` event chain.** The previous direct `User::authenticate()` call skipped `onUserLoginAuthenticate`, which meant the LDAP plugin (and any other auth-extending plugin that hooks that event) couldn't participate in admin2 logins. Auth requests now route through `Login::login()` with `'admin' => true` and `'authorize' => 'admin.login'`, with a clean fallback to direct authentication when the Login plugin isn't installed ([grav-plugin-admin2#9](https://github.com/getgrav/grav-plugin-admin2/issues/9)).
+    * **Popularity visitor IPs now hashed with HMAC-SHA256 plus a server-private salt.** The legacy `sha1($ip)` hash was reversible via precomputed table over the IPv4 space, which under GDPR Recital 26 / Art. 4(1) kept the stored value classified as personal data. Hashing now uses `hash_hmac('sha256', $ip, $salt)` with an auto-generated 32-byte salt stored in `user/config/plugins/api.yaml` (never shipped with a default), treated like the JWT secret and redacted from config-API responses. Legacy hashes already on disk age out via the existing visitor-history cap, so no migration is needed ([grav-plugin-admin2#12](https://github.com/getgrav/grav-plugin-admin2/issues/12)).
+1. [](#bugfix)
+    * **API plugin now activates and dispatches correctly on Grav installs mounted at a subpath.** Both the activation check in `setup()` and the path-stripping in `ApiRouter::dispatch()` were comparing against the raw request path, which on a subpath install starts with the base — so `/<base>/api/...` requests fell through to a page-not-found 404. Both code paths now strip the base before testing the api prefix.
+    * **Page Template selector now shows the right list for modular children.** Serializing a `modular/*` page blueprint was hardcoded to call `Pages::pageTypes('standard')`, so a modular child's template dropdown listed every standard template instead of the four `modular/*` ones the theme provides. Serializer now picks `'modular'` or `'standard'` based on the blueprint name. The merge of resolved options with whatever Grav core's `dynamicData()` may have already filled in was also changed to a replace, so themes can't end up with the standard and modular lists concatenated.
+
+# v1.0.0-rc.5
+## 05/08/2026
+
+1. [](#improved)
+    * **Blueprint label resolver now prefers `ICU.<key>` over the flat `<key>`.** Admin2 ships its canonical `PLUGIN_ADMIN.*` vocabulary under the ICU namespace; checking ICU first guarantees admin2 wins for every key it ships, even when admin classic (or any plugin still using the Grav 1 flat convention) is also present. The flat lookup remains as a transition fallback for keys admin2 doesn't ship — but only for keys contributed by *enabled* plugins (see below).
+    * **Disabled plugins no longer influence translations.** Grav core's `flattenByLang()` reads every plugin's lang yaml regardless of enabled state, so a disabled plugin (most painfully, admin classic mid-migration on a Grav 2 site) used to leak its strings into both the `/translations/{lang}` payload served to admin2 and the server-side blueprint label resolver. Both code paths now consult a new `DisabledPluginLangIndex` service that returns the keys contributed exclusively by disabled plugins; those keys are stripped from the response and skipped in `translateLabel()`. Keys also shipped by an enabled plugin stay — the enabled plugin owns them.
+    * **`/translations/{lang}` shadow-strips flat duplicates.** When the same key exists under both `<key>` and `ICU.<key>`, only the ICU side is sent to admin2. Admin2's client-side `t()` already preferred ICU, but stripping flat duplicates at the source shrinks the payload and removes ambiguity for any caller that might bypass the ICU-first lookup.
+
+# v1.0.0-rc.4
+## 05/06/2026
+
+1. [](#improved)
+    * **`POST /gpm/upgrade` now emits a `grav:update` invalidation header** alongside `gpm:update`, so admin clients can refresh cached version info (e.g. the sidebar `Grav v…` label) after a Grav core self-upgrade without waiting for a full page reload.
+
+# v1.0.0-rc.3
+## 05/05/2026
+
+1. [](#bugfix)
+    * **Config saves now land where Grav loads them.** When an environment overlay was active (e.g. a hostname-derived `user/<host>/config/`), `PATCH /config/{scope}` always wrote to base `user/config/` regardless — so any field already pinned in the env file silently shadowed the write and the change appeared to "succeed but not stick" (classic case: enabling a plugin pinned `enabled: false` in `user/localhost/config/plugins/`). Writes now follow Grav's active environment by default; the `X-Config-Environment` header still wins when set, and an explicitly-empty header opts back into a base write.
+
+# v1.0.0-rc.2
+## 05/05/2026
+
+1. [](#bugfix)
+    * **Module-page blueprints (`modular/hero`, `modular/feature`, etc.) now resolve.** `GET /blueprints/pages/{template}` was registered with FastRoute's default placeholder, which doesn't allow slashes — so the embedded `/` in module-page templates 404'd before the controller ran ([grav-plugin-admin2#1](https://github.com/getgrav/grav-plugin-admin2/issues/1)). Route placeholder widened to accept slashes; downstream resolver already handled slashed templates.
+    * **Custom theme page blueprints (replace@, @extends.context, import@, ordering@) now render correctly.** The hand-rolled YAML resolver in `BlueprintController::loadPageBlueprint()` silently dropped `replace@` / `unset@` / `replace-<prop>@` directives, ignored `@extends.context`, and merged `import@` as a map instead of inline-inserting fields — so themes that override fields, switch the parent context, or import partials saw most of their customizations vanish. Resolver now delegates to Grav core's standard `Pages::blueprints()` pipeline (`Blueprint::load()->init()`), the same path admin-classic uses, which honors every BlueprintForm directive ([grav-plugin-admin2#3](https://github.com/getgrav/grav-plugin-admin2/issues/3)).
+    * **`pagemediaselect` / `filepicker` field properties now round-trip.** Blueprint serializer's field-property whitelist was missing `preview_images`, `preview_image`, `on_demand`, `folder`, `filter`, `self`, `display`, `resize`, and `media_picker_field`, so themes that configured those props on a media picker saw them silently stripped from the API response.
+    * **Folders prefixed `00.` now sort to the top of the page tree.** Default-sort branch in `PagesController::indexViaDefaultSort()` bucketed pages by `if ($page->order())`, but Flex's `Page::order()` returns `(int) 0` for `00.` — so `00.sections` landed in the "unordered" bucket and sorted alphabetically after every numbered sibling instead of first ([grav-plugin-admin2#5](https://github.com/getgrav/grav-plugin-admin2/issues/5)). Bucket check changed to `!== false` (the actual sentinel for unordered folders).
+
+# v1.0.0-rc.1
+## 05/04/2026
+
+1. [](#new)
+    * Fire new `onApiBlueprintResolved()` event
+    * Add support for configurable ordering prefixes
+1. [](#improved)
+    * Page creation and reorder now match the digit width of the parent's existing children — adding into a 3-digit collection stays 3-digit, and reorder no longer renormalizes existing 3- or 4-digit prefixes back to two ([grav-plugin-admin#2492](https://github.com/getgrav/grav-plugin-admin/issues/2492)). New collections fall back to the new `system.pages.order_digits` setting.
+
+# v1.0.0-beta.17
+## 04/28/2026
+
+1. [](#bugfix)
+    * **Security: privilege escalation via blueprint-upload (GHSA-6xx2-m8wv-756h).** A user with only basic media-upload permission could plant an account file and instantly become a super-admin. The endpoint now restricts where files can land, who can target another user's avatar, and which file types are allowed.
+    * **Security: hardened destination handling on `/blueprint-upload`.** Added pre-locator input validation that rejects path-traversal characters in the `destination` string before it ever reaches Grav's stream resolver.
+    * **Security: path-traversal hardening in GPM endpoints.** `GET /gpm/{plugins,themes}/{slug}/...` (readme, changelog, blueprints, fields, etc.) now validates the `slug` parameter so a `..` slug can no longer reach files outside the package directory.
+
+# v1.0.0-beta.16
+## 04/28/2026
+
+1. [](#bugfix)
+    * **Fix: `POST /gpm/update-all` now updates packages instead of skipping all of them.** A regression introduced by beta.14's dep-resolution rewrite tripped a Grav core static-cache quirk and mis-labelled every outdated package as "already up to date (installed as a dependency)". The per-package `POST /gpm/update` endpoint was unaffected and remained a working workaround.
+
+# v1.0.0-beta.15
+## 04/27/2026
+
+1. [](#new)
+    * **`onApiBlueprintResolved` now fires for the user-account blueprint.** `GET /blueprints/users` previously returned the serialized `account.yaml` straight to the wire — plugins could extend page / plugin / theme blueprints via the event but had no way to add fields to the user form. The handler now fires `onApiBlueprintResolved` with `template: 'account'` and the requesting user, so admin2 can inject the state-toggle field (or other plugins can add their own fields) on a permission-aware basis.
+    * **`onApiBlueprintResolved` now carries an explicit `context` discriminator, and theme blueprints now fire the event.** Every firing tags itself with `context: 'page' | 'plugin' | 'theme' | 'account'` alongside the existing `template` / `plugin` / `theme` keys. Lets listeners gate behavior to a specific blueprint family without inferring from which sibling key happens to be set — e.g. ai-translate auto-annotates only `context === 'page'` and lets plugins hook a separate `onAiTranslateAnnotateFields` event for opt-in coverage of other contexts. `themeBlueprint()` previously returned the serialized YAML straight to the wire and skipped the event entirely; it now fires `context: 'theme'` symmetrically with the others, so theme-targeted blueprint extensions are finally possible.
+2. [](#bugfix)
+    * **Dashboard layout no longer disables the user account.** `DashboardLayoutResolver::saveUserLayout()` was writing the per-user widget layout to `state.admin_next.dashboard` in the user's account YAML, but Grav's top-level `state:` field is the account-state string (`enabled` / `disabled`). Replacing it with a map flipped affected accounts to "Disabled" in the users list and broke any code that read `state === 'enabled'`. Storage moved to the top-level `admin_next.dashboard` key (no collision), and a one-time read-side migration in `migrateLegacyState()` lifts any pre-existing legacy data out of `state.*` and restores `state: enabled` (or `disabled` if a legacy `state.enabled: false` flag was present). Migration runs on the next dashboard read for each affected user; the save path also calls it as a safety net so an admin reordering widgets self-heals their own record.
+    * **Security: privilege escalation via self-edit (GHSA-r945-h4vm-h736).** `PATCH /users/{username}` allowed any authenticated user with `api.access` to send an `access` payload against their own profile and self-promote to super admin. The self-edit branch only required `api.access` (not `api.users.write`), but the field whitelist still included `access` (and `state`) for everyone — overwriting `access.api.super` / `access.admin.super` on yourself granted full system control and a Twig-template path to RCE. `UsersController::update` now splits the whitelist into self-editable fields (email, fullname, title, language, content_editor, twofa_enabled) and admin-only fields (state, access); a non-manager that sends `access` or `state` in the body now gets a `403 Forbidden` with an explicit "requires the 'api.users.write' permission" message instead of having the field silently land. Managers (super-admin or `api.users.write`) keep full control over both fields, including on their own account. New regression test `UsersControllerUpdatePrivescTest` pins the boundary across five cases: low-priv self-edit of `access` rejected (and access map verified untouched), low-priv self-edit of `state` rejected, low-priv self-edit of plain profile fields succeeds, an admin updates another user's `access` field, and a user holding `api.users.write` self-edits their own `access`. `Grav\Framework\Acl\Permissions` and `Grav\Common\Utils::arrayFlattenDotNotation` were added as minimal stubs in `tests/Stubs/GravStubs.php` so `PermissionResolver` can be exercised in unit tests without the Grav core on the classpath.
+
+# v1.0.0-beta.14
+## 04/25/2026
+
+1. [](#bugfix)
+    * `core.recent-pages` dashboard widget's registered `defaultSize` was `sm` instead of `md` — out of sync with the `Default` preset, which sets it to `md`. Fresh installs (no saved user layout, no site layout) fell through to the registered default and rendered Recent Pages at `sm` even though clicking the Default preset would correctly snap it back to `md`. Bumped the registered `defaultSize` to `md` so a new account's first dashboard render matches the canonical Default layout. The other seven core widgets were already aligned with the preset, audited as part of the fix.
+    * `POST /gpm/update-all` now enforces the same dependency validation as the per-package `POST /gpm/update` path. The old bulk flow iterated `getUpdatable()` and called `GpmService::update()` directly per slug with no checks, so a "Update All" click would happily update plugins whose blueprint declared `grav` (or `php`) requirements the running install didn't satisfy — the dep-resolution intelligence already living in `GPM::checkPackagesCanBeInstalled()` + `GPM::getDependencies()` was being bypassed entirely. The bulk path now runs each package through `getDependencies()` up-front: a Grav-too-old or PHP-too-old failure surfaces as a `failed[]` entry with the original GPM message (color tags stripped) so the toast reads "needy: One of the packages require Grav >=2.0.0-beta.2. Please update Grav to the latest release." instead of silently mis-updating. Plugin-level deps that themselves need an update are processed *before* the package that needs them, mirroring admin-classic's resolution order — a plugin update that requires `shortcode-core >= 5.0.0` will pull `shortcode-core` forward first. The response shape gains `skipped[]` (packages that were originally listed updatable but became current via cascade earlier in the batch — re-checked against a fresh GPM read each iteration, no double-update) and `cascaded_dependencies[]` (slugs installed/updated as deps of others in the batch), so callers can render "also updated as deps: x, y". Admin-next's three "Update All" toasts (dashboard, plugins, themes) now expand failure reasons inline (`"<slug>: <reason>"`) instead of just listing slugs, so the underlying constraint is visible without opening the network panel.
+    * 6 new unit tests in `GpmControllerUpdateAllTest` cover the matrix: Grav-dep mismatch lands in `failed[]` and never invokes `updatePackage`; cascade install runs in correct order and the cascaded dep lands in `skipped[]` (not `updated[]`) on its own iteration; a throwing dep install aborts the parent update with a partial-failure message; `theme: true` is passed only for theme packages and `install_deps: false` is always set; an `updatePackage()` returning non-success surfaces as a `failed[]` entry; an empty batch returns four empty buckets. To enable mocking, `GpmController::getGpm()` was promoted from `private` to `protected` and the static `GpmService::install/update` calls in `updateAll()` now route through new protected `installPackage()` / `updatePackage()` wrappers — overridable in a test subclass without touching network or filesystem. A minimal `Grav\Common\GPM\GPM` stub was added to `tests/Stubs/GravStubs.php` so `createMock(GPM::class)` works when running the suite outside a Grav installation.
+
+# v1.0.0-beta.13
+## 04/25/2026
+
+1. [](#new)
+    * **Customizable dashboard widgets** — three new endpoints back the new admin-next dashboard's per-user / per-site customization. `GET /dashboard/widgets` returns the resolved widget list (visibility, size, order) merged from a built-in core registry + plugin contributions via `onApiDashboardWidgets` + the site-default layout (super-admin) + the current user's overrides. `PATCH /dashboard/layout` saves the user's layout (visibility/size/order per widget); `PATCH /dashboard/site-layout` saves the site-wide default and is super-admin only. The merge is layered: site-hidden widgets are dropped entirely from the user's view (cannot be re-enabled per-user), the user's overrides win for size/order on the rest, and any widget not in either layout falls back to its registered `defaultSize` / priority. A new `DashboardLayoutResolver` service owns the resolution and persistence; resolved widgets carry their `sizes[]` / `defaultSize` / icon / authorize permission, so the client can render the customize-mode size picker without a second round-trip. Plugin widgets are contributed by listening to `onApiDashboardWidgets` and pushing entries into `$event['widgets']`; each widget can declare its own permission gate so the resolver hides widgets the user lacks access to. Allowed sizes are validated server-side against a per-widget allowlist (`xs`, `sm`, `md`, `lg`, `xl`) and silently coerced back to `defaultSize` if a stale layout asks for an unsupported size.
+    * **Notifications v2** — `GET /dashboard/notifications` now fetches from `https://getgrav.org/notifications2.json` and stores its cache under `user/data/notifications/{md5}_v2.yaml` (separate file so v1 caches don't collide). The new schema replaces the v1 "embedded HTML in `message`" approach with structured fields: `type` (`info` | `notice` | `warning` | `promo`), `icon` (emoji or icon name), `title`, `message` (markdown), `link` (whole-row click), `image` + `accent` (for `promo` cards), `action: {label, url}`, and `dependencies` (e.g. `admin: '>= 2.0.0'`). Lets admin-next render every notification natively in its own design language instead of dumping admin-classic CSS into the page.
+    * **Password policy endpoint** at `GET /auth/password-policy` (public, no auth). Parses the configured `system.pwd_regex` into a structured `{ regex, min_length, rules[] }` response by recognizing the common lookahead form (`(?=.*\d)`, `(?=.*[a-z])`, `(?=.*[A-Z])`, `(?=.*\W)`, `.{N,}`) and mapping each to a human-readable rule label. Admins can override the auto-detected rules with an optional `system.pwd_rules: [{id, label, pattern}, …]` list for custom or localized messaging without touching `pwd_regex`. The same structure is piggybacked on the `GET /auth/setup` response so the first-run setup screen can render its strength meter without a second round-trip. `POST /auth/setup` additionally validates the first-user password against `pwd_regex` server-side (previously only enforced `>= 8` chars) — keeps the server authoritative regardless of what the UI is showing.
+    * **HTTP method override** fallback for shared-hosting nginx configs that 405 `DELETE` / `PATCH` / `PUT` at the edge before the request ever reaches PHP. A new `MethodOverrideMiddleware` runs right after CORS/body-parse and transparently rewrites any `POST` that carries an `X-HTTP-Method-Override: DELETE|PATCH|PUT` header to the target method before dispatch, so the FastRoute handlers downstream see the semantic verb they expect. Only the three mutation verbs are honored (never `GET`), and the override is opt-in per request — clients that don't need it pay zero cost. Admin-next complements this with client-side auto-detection: a failed mutation that 405s is retried once as `POST + override`, and the fallback is cached in `sessionStorage` so subsequent requests in the same session skip straight to the compatible path.
+    * **Destination-aware blueprint file uploads** at `POST /blueprint-upload` and `DELETE /blueprint-upload`. Accepts a blueprint `destination` (Grav stream like `theme://images/logo`, `user://assets`, `account://avatars`; `self@:subpath` relative to a blueprint owner; or a plain user-rooted relative path) plus a `scope` (`plugins/<slug>`, `themes/<slug>`, `pages/<route>`, `users/<username>`) and writes the uploaded file to the right place, mirroring admin-classic's `taskFilesUpload` semantics. Streams resolve through Grav's locator so symlinked theme/plugin folders (common in dev setups) work cleanly — the response returns a *logical* user-rooted path (`user/themes/quark2/images/logo/foo.png`) independent of realpath, so a subsequent `DELETE` round-trips through the symlink to remove the actual file. Enforces the usual safety gates: `..` traversal and absolute paths are rejected, filenames are sanitized, and the dangerous-extension allowlist is checked. This gives admin-next parity with admin-classic's file-field uploads for theme/plugin config forms that previously only worked on page-media contexts.
+2. [](#improved)
+    * **Rate limiter `excluded_paths`** — new `plugins.api.rate_limit.excluded_paths` config (defaults to `['/sync/']`) skips the per-user bucket for matching path prefixes. Phase 6 of the sync plugin fires steady ~90 req/min per editing client (1s pull + ~0.5s presence + per-keystroke pushes); the default 120 req/min anti-abuse bucket would trip an actively-typing user within a minute and put sync into a 429 stop/start loop. The bypass is gated by normal auth (sync still requires `api.access` + `api.collab.*`), so it's not a free pass — just removes the global anti-scraping limit from authenticated collaboration traffic. Operators can extend the list to exempt other high-frequency authenticated endpoints (e.g. polling integrations from internal services).
+3. [](#bugfix)
+    * `PATCH /config/{scope}` (and every other ETag-guarded endpoint) no longer returns a spurious `409 Conflict` when the admin is served behind Apache `mod_deflate` or an nginx build that applies gzip/br compression. Both servers weaken the ETag on compressed responses by suffixing it (`<hash>-gzip`, `<hash>-br`, sometimes `;gzip`), and clients echo that suffixed value back in `If-Match` on the next PATCH. The PATCH response body is typically uncompressed, so `generateEtag()` produced the bare hash and the strict equality check failed on every first save. `validateEtag()` now strips known transport suffixes (`-gzip`, `;gzip`, `-br`, `-deflate`) and the weak-validator prefix (`W/`) from inbound `If-Match` headers before comparing, so the hash round-trips cleanly through a compressing proxy. Invisible on `php -S` / MAMP; only reproduces behind real reverse proxies with content compression enabled.
+    * `GET /users` no longer emits phantom entries for stray files in `user/accounts/`. Grav's Flex `FileStorage::buildIndex()` indexes every file in the accounts folder regardless of extension, so snapshot/backup files from other plugins (e.g. revisions-pro's `.rev` snapshots) surfaced as indexable "user" objects. `UsersController::indexViaFlex` now constrains the collection to keys matching the username pattern `[a-z0-9_-]+` before search / sort / pagination, so stray files are filtered out before they ever reach the serializer.
+    * `PATCH /config/{scope}` now uses Grav's blueprint-aware merge (`Blueprint::mergeData()`) instead of a blind `array_replace_recursive`. The old recursive merge deep-merged map values at every level, so when a client sent a file field as `{}` after the user removed the last file, the old path keys from `$existing` survived the merge and the YAML kept referencing the deleted file. Blueprint-aware merge respects field-type semantics — `type: file` (and any other "collection of items" field) is REPLACED wholesale from the incoming body, so removing map entries actually propagates. Falls back to `array_replace_recursive` when no blueprint is available (rare — mostly test fixtures).
+    * `DELETE /blueprint-upload` is now idempotent: a missing file returns `204 No Content` instead of `404 Not Found`. The endpoint's contract is "this file should not be on disk" — already-gone and just-deleted are indistinguishable end states, and surfacing a 404 forced clients into special-case error suppression. Real misuses (path resolves to a directory or something non-file) still error.
+
+# v1.0.0-beta.12
+## 04/22/2026
+
+1. [](#new)
+    * **Environment management API** at `GET /system/environments` (now returning a richer shape: `detected` host, `environments[]` with `name`, `label`, `exists`, `hasOverrides`) and `POST /system/environments` to create a new `user/env/<name>/config/` folder. Writes to `config/plugins/*`, `config/themes/*`, and `config/{system,site,media,security,…}` now honor a new `X-Config-Environment` request header that targets an existing env folder — empty/missing defaults to base `user/config/`, and a non-empty value that doesn't match an existing folder returns a clear `400` instead of silently creating anything. Env folders are **never** created implicitly; clients must opt in via `POST /system/environments`. A shared `EnvironmentService` owns resolution across `user/env/*` and legacy Grav 1.6 `user/<host>/` layouts so both the listing endpoint and the write path see the same set of envs.
+    * **Differential config saves.** Config writes now persist only the delta against the relevant parent yaml, matching the hand-edit workflow instead of forking full defaulted copies. Parent resolution:
+    * `system / site / media / security / scheduler / backups` → `system/config/<scope>.yaml` (Grav core defaults)
+    * `plugins/<name>` → `user/plugins/<name>/<name>.yaml` (the plugin's own shipped defaults)
+    * `themes/<name>` → `user/themes/<name>/<name>.yaml` (the theme's own shipped defaults)
+    * Env-targeted writes (`X-Config-Environment` set) additionally layer `user/config/<scope>.yaml` on top of defaults, so env files only carry keys that differ from the effective base — move a key from base to env by setting it to a different value; leave it alone to inherit.
+    * Defaults come from the raw yaml files on disk, **not** from blueprints — blueprints describe the admin form and routinely diverge from what actually loads at runtime. Sequential arrays (`languages.supported`, `pages.types`, etc.) are treated atomically: any difference retains the whole new list, avoiding the classic admin-classic bug where shortening a list silently merged removed entries back in. Ships with 24 unit tests covering diff semantics, deep merges, key-ordering tolerance, null overrides, and a full parent-resolution round trip against a tempdir Grav layout.
+2. [](#bugfix)
+    * Config saves no longer return a `409 Conflict` on every second edit when sensitive fields are present. `ConfigController::update()` was hashing the PATCH response body from the in-memory `$merged` (non-redacted) but the next save's `If-Match` validation hashed the redacted `config->get()` representation, so the etag the client stored was never going to match on the next round-trip. Both the response body and the `If-Match` comparison now flow through a single `configEtagData()` helper that reads via `config->get()` after the save and applies the same redaction, so the client's stored etag stays valid across consecutive saves and reflects the shape a fresh `GET` would return (including any blueprint defaults or type coercion applied server-side during the filter step).
+    * Config writes no longer silently create `user/<hostname>/config/` folders on save. `writeConfigFile()` was resolving the target directory via `locator->findResource('config://', true, true)`, whose first match can be the hostname-derived env path Grav auto-infers when `user/env/` doesn't exist — then `mkdir` materialized the path on first save, producing orphan `user/localhost/config/`, `user/<ddev-host>/config/`, etc. that then began overriding `user/config/` on every subsequent read. The write path now explicitly resolves to `user://config` (or an existing `user/env/<env>/` when `X-Config-Environment` is set), and the `mkdir` is reserved for plugin/theme sub-directories inside an already-existing write root. Env roots must be created deliberately via `POST /system/environments`.
+
+# v1.0.0-beta.11
+## 04/21/2026
+
+1. [](#bugfix)
+    * `POST /gpm/install` and `POST /gpm/update` now install missing blueprint dependencies before installing the requested package — mirroring admin-classic's behavior via `GPM::checkPackagesCanBeInstalled()` + `GPM::getDependencies()`, which resolves version constraints, checks PHP/Grav requirements, and returns a slug-keyed `install` / `update` / `ignore` map. Previously the naive recursive branch in `GpmService::install()` passed the raw blueprint `dependencies:` list (arrays of `{name, version}`) back into itself where `array_map` silently filtered them all to `false`, so deps were never installed and the user got a half-wired plugin (e.g. installing `shortcode-ui` without `shortcode-core`). Response bodies and `onApiPackageInstalled` / `onApiPackageUpdated` events now carry a `dependencies: string[]` list of slugs that were installed alongside, and cache-invalidation tags cover each new dep so list views refresh accordingly. Failure modes are surfaced cleanly: requiring a newer Grav core, a newer PHP version, or hitting an incompatible version constraint between packages returns a `422 Unprocessable Entity` with the original `GPM::getDependencies()` error message (e.g. "One of the packages require Grav 1.8.0. Please update Grav to the latest release.") — the API never auto-upgrades Grav itself, matching admin-classic. CLI color markup (`<red>`, `<cyan>`, …) is stripped from the propagated message. Deps are installed one-at-a-time so mid-install failures report partial state — the 500 detail includes a "Dependencies already installed before failure: foo, bar." suffix so callers know exactly what got through before the failure.
+
+# v1.0.0-beta.10
+## 04/19/2026
+
+1. [](#bugfix)
+    * `GET /pages` now returns accurate `published` and `visible` values for every page. Flex-indexed `PageObject` instances expose an empty header during listings, so `$page->published()` / `visible()` fell back to Grav's default "true" even when the frontmatter explicitly set them to false — making draft / hidden pages indistinguishable from published ones in list/tree/columns views. `PageSerializer` now parses the YAML frontmatter directly from the `.md` file on disk (with multilang filename resolution: page language → active language → untyped default → glob) whenever it gets a flex page with an empty header, and re-exposes the full header dict alongside correct `published` / `visible` booleans.
+    * `PATCH /pages/{route}` now reflects `published` / `visible` changes in the response without requiring a reload. Legacy `Page` caches `$this->published` and `$this->visible` at init and doesn't re-derive them from header mutations, so after updating the header the API was returning the pre-save values. The update controller now calls the `Page::published()` and `Page::visible()` setters in addition to header replacement whenever those fields are sent (either as top-level keys or nested under `header`), keeping the in-memory object in sync with the just-written file.
+
+# v1.0.0-beta.9
+## 04/17/2026
+
+1. [](#bugfix)
+    * `GET /blueprints/pages/{template}` now honours the newer `'@extends':` and `'@import':` directives (string or `{type, context}` array form) alongside the legacy `extends@:` / `import@:` spellings. Previously, page blueprints using the newer syntax silently lost their inheritance chain — fields defined in the parent (e.g. `content: type: markdown`, `header.media_order: type: pagemedia` from `system://blueprints/pages/default.yaml`) were dropped, leaving only the fields the child blueprint declared locally. Caused custom page templates in themes like Helios to render with raw text inputs instead of markdown editors / page media uploaders in admin-next.
+    * `GET /blueprints/pages/{template}` now fires `Pages::getTypes()` before resolving, which triggers the `onGetPageBlueprints` event and registers plugin-contributed blueprint paths into the `blueprints://pages/` locator stream. Without this, blueprints declared by plugins (via `$types->scanBlueprints('plugin://.../blueprints')`) were unreachable from the API even when the plugin was subscribed correctly.
+
+# v1.0.0-beta.8
+## 04/17/2026
+
+1. [](#new)
+    * `description_html` field added to the plugin/theme package serializer. Plugin and theme `description` strings are YAML-authored and routinely contain inline markdown (links, bold, emphasis) that renders as literal syntax in admin UIs. The API now ships a safe-mode Parsedown rendering alongside the raw `description` so clients can `{@html}` it for detail views and strip tags for one-line list cards without reinventing a markdown pipeline. Present on `GET /gpm/plugins`, `GET /gpm/plugins/{slug}`, `GET /gpm/themes`, `GET /gpm/themes/{slug}`, and the `/gpm/repository/*` endpoints.
+2. [](#bugfix)
+    * `GET /pages/{route}?summary=true` no longer 500s on pages whose content contains plugin shortcodes that rely on the frontend Twig/theme environment (e.g. `[poll]`). Shortcode processing runs as part of Grav's `summary()` pipeline and can throw when it tries to render template partials that aren't wired up in the API request context. The page serializer now catches the failure and falls back to a plain-text rendering of the raw markdown (shortcodes stripped, trimmed to `summary_size` or 300 chars) so admin previews keep working.
+
+# v1.0.0-beta.7
+## 04/17/2026
+
+1. [](#new)
+    * **`X-API-Token` header** added as the preferred transport for JWT access tokens. Sidesteps FastCGI / PHP-FPM / CGI setups (notably MAMP's `mod_fastcgi`) that silently strip the standard `Authorization` header before it reaches PHP — a common source of 401 errors on shared hosts. Accepts either a bare JWT (`X-API-Token: eyJ...`) or the traditional Bearer form (`X-API-Token: Bearer eyJ...`). `Authorization: Bearer` still works as a fallback for standards-compliant clients on hosts that don't strip it.
+    * `GET /me` now returns `grav_version` and `admin_version` so admin UIs can surface the running Grav core and admin plugin versions without a separate request. `admin_version` resolves to the enabled admin2 or admin-classic plugin blueprint.
+    * `is_symlink` field added to the installed-package serializer (present on `GET /gpm/plugins`, `GET /gpm/plugins/{slug}`, `GET /gpm/themes`, `GET /gpm/themes/{slug}`). Detected via `is_link()` on the resolved `plugins://{slug}` or `themes://{slug}` path so admin UIs can flag symlinked packages.
+    * `POST /pages/{route}/adopt-language` — claims an untyped base page file (e.g., `default.md`) as a specific language by renaming it in-place to `{template}.{lang}.md`. Pure filesystem rename + cache bust; content is untouched. Fails if the page already has an explicit file for that language, or if the page has no untyped base file. Fires `onApiBeforePageAdoptLanguage` / `onApiPageLanguageAdopted`. Enables "Save as English" workflows on sites that started single-language and later enabled multilang.
+    * Page translation response (`GET /pages`, `GET /pages/{route}` with `?translations=true`) now includes two new fields to disambiguate Grav's fallback behaviour: `has_default_file` (true when an untyped `{template}.md` exists) and `explicit_language_files` (the subset of site languages with a real `{template}.{lang}.md` on disk). Needed because Grav reports the default lang in `translated_languages` whenever `default.md` exists — admin UIs can now tell whether each lang is backed by an explicit file or the implicit fallback.
+2. [](#improved)
+    * `JwtAuthenticator::extractBearerToken()` now reads `X-API-Token` first, then falls back to `Authorization: Bearer`, then `?token=` query param. When both custom and standard headers are set, the custom header wins (so clients can send both for maximum host compatibility without ambiguity).
+    * OpenAPI spec, README, and Newman test runner updated to lead with `X-API-Token`.
+    * Default CORS allow-headers list in `api.yaml` now includes `X-API-Token` alongside the existing entries, so cross-origin preflights succeed out of the box on fresh installs.
+3. [](#bugfix)
+    * `GET /me` no longer 500s when resolving the admin plugin version. Previous implementation called `$grav['plugins']->get($slug)->getBlueprint()`, but `->get()` returns a `Data` config object, not a `Plugin` instance (no `getBlueprint()` method). Now reads `plugins://{slug}/blueprints.yaml` directly via the locator, matching the pattern used for themes.
+    * `POST /pages/{route}/adopt-language` no longer spuriously rejects the default language with "A translation already exists". The previous check used `$page->translatedLanguages()` which always includes the default lang when `default.md` exists (because it serves as a fallback). The guard now checks the filesystem directly for `{template}.{lang}.md`, so adoption proceeds whenever the concrete language file is genuinely absent.
+
+# v1.0.0-beta.6
+## 04/16/2026
+
+1. [](#new)
+    * `POST /gpm/update-all` — bulk update every updatable plugin + theme in one request (returns `{updated[], failed[]}`)
+    * `POST /gpm/upgrade` — Grav core self-upgrade (refuses to run when Grav is installed via symlink)
+    * `GET /gpm/updates` response now includes `grav.is_symlink` and counts Grav itself in `total` so admin UIs can show the true update count
+    * Events `onApiBeforePackageUpdate` / `onApiPackageUpdated` / `onApiBeforeGravUpgrade` / `onApiGravUpgraded` fire around the new write operations
+2. [](#improved)
+    * `POST /gpm/update` auto-detects whether the slug is a theme and passes `theme: true` to the installer so theme updates land in the right directory
+    * `GpmService` — all GPM write operations (install / update / remove / direct-install / self-upgrade) are now implemented locally in the API plugin, removing the hard dependency on `Grav\Plugin\Admin\Gpm`. admin2 users can manage packages without the classic admin plugin installed
+3. [](#bugfix)
+    * Previously `POST /gpm/update` called the admin plugin's Gpm helper, which meant admin2-only sites (no classic admin) got `500 Admin Plugin Required` when trying to update anything
+
+# v1.0.0-beta.5
+## 04/16/2026
+
+1. [](#bugfix)
+    * `/auth/token` now delegates password check to `User::authenticate()` so the core trait's plaintext-password fallback fires — restores long-standing Grav behavior (admin-classic, Login plugin, frontend login) where a `password:` declared directly in `user/accounts/*.yaml` auto-hashes on first successful login. Previous direct `Authentication::verify()` call required users to pre-populate `hashed_password`, which broke the "edit yaml and log in" workflow that operators rely on when the CLI is unavailable
+    * Persist the auto-generated JWT secret on fresh installs. The previous `findResource(..., true, true)` call returned an array, the fallback concatenated that array into `"Array/..."`, and the write silently went nowhere — so every request minted a different secret, producing a login-then-immediately-expire loop on every fresh 2.0 install. Now resolves the path with default flags and logs+degrades gracefully if persistence genuinely fails.
+
+# v1.0.0-beta.4
+## 04/15/2026
+
+1. [](#new)
+    * Page-view popularity tracker — single-file flat-JSON store with `flock()`, replaces admin-classic's four-file scheme; subscribes `onPageInitialized` for frontend hits only
+    * One-shot import + rename of legacy `daily/monthly/totals/visitors.json` into the new `popularity.json` (ISO-keyed, `pages` capped at 500)
+    * `popularity.{enabled, history.daily/monthly/visitors, ignore}` config block in `api.yaml`
+    * `raw_route` field on serialized pages so admin clients can navigate home / aliased pages correctly
+2. [](#improved)
+    * Strict super-user scoping: `isSuperAdmin()` honors only `access.api.super` (no fallback to `admin.super`); operators can grant API authority without admin-classic implications
+    * `SetupController` writes a minimal admin-next-native account (`site.login` + `api.super` only), with race guards and explicit avatar/2FA reset to prevent flex-stored ghost data
+    * `issueTokenPair()` lifted to `AbstractApiController` so setup, login, refresh, and 2FA share one token-shape source
+    * Pages list / dashboard stats no longer skip the home page — the virtual pages-root is now distinguished by `$page->exists()` instead of by `route() === '/'`
+    * Dashboard `popularity` endpoint reads from `PopularityStore` (handles legacy import transparently)
+3. [](#bugfix)
+    * Pages list and dashboard `pages.total` undercounted by 1 (the home page was being filtered out)
+
+# v1.0.0-beta.3
+## 04/15/2026
+
+1. [new]
+    * Add intial user funtionality
+    * Add `ai.super` permissions
+    * Add missing vendor library
+
+# v1.0.0-beta.2
+## 04/15/2026
+
+1. [improved]
+    * Default `enabled` to `true` since the plugin is not installed by default and admin2 requires it
+
+# v1.0.0-beta.1
+## 04/12/2026
+
+1. [new]
+    * Initial beta release

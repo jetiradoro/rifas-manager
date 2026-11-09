@@ -1,0 +1,2590 @@
+ICU:
+    ADMIN_NEXT:
+        ACCESS_DENIED:
+            ACCESS_DENIED: 'Toegang geweigerd'
+        ACTIVATE: Activeren
+        ACTIVE: Actief
+        ADD_PAGE: 'Pagina toevoegen'
+        ADD_PLUGIN_MODAL:
+            ADD_PLUGIN: 'Plugin toevoegen'
+            FAILED_TO_LOAD_AVAILABLE_PLUGINS_FROM: 'Kan beschikbare plugins niet laden van GPM'
+            FILTER_PLUGINS: 'Plugins filteren...'
+            SELECT_A_PLUGIN_TO_VIEW_DETAILS: 'Selecteer een plugin om details te bekijken'
+        ADD_THEME_MODAL:
+            ADD_THEME: 'Thema toevoegen'
+            FAILED_TO_LOAD_AVAILABLE_THEMES_FROM_GPM: "Kan beschikbare thema's niet laden van GPM"
+            FILTER_THEMES: "Thema's filteren..."
+            SELECT_A_THEME_TO_VIEW_DETAILS: 'Selecteer een thema om details te bekijken'
+        ALLOWED: Toegestaan
+        ALL_CHANGES_SAVED: 'Alle wijzigingen opgeslagen'
+        API_KEYS_FIELD:
+            API_KEYS: API-sleutels
+            API_KEY_GENERATED: 'API-sleutel gegenereerd'
+            BLANK_NEVER: '(leeg = nooit)'
+            COPY_THIS_KEY_NOW_IT_WILL_NOT_BE_SHOWN: 'Kopieer deze sleutel nu — deze wordt niet meer weergegeven.'
+            CREATED: Gemaakt
+            EXPIRES: Vervalt
+            EXPIRY: Vervaldatum
+            E_G_MY_CLI_TOOL: 'bijv. Mijn CLI-gereedschap'
+            FAILED_TO_COPY_TO_CLIPBOARD: 'Kan niet naar klembord kopiëren'
+            FAILED_TO_GENERATE_API_KEY: 'Kan API-sleutel niet genereren'
+            FAILED_TO_LOAD_API_KEYS: 'Kan API-sleutels niet laden'
+            FAILED_TO_REVOKE_API_KEY: 'API-sleutel intrekken is mislukt'
+            GENERATE_KEY: 'Sleutel genereren'
+            GENERATING: 'Bezig met genereren...'
+            KEY_NAME: Sleutelnaam
+            KEY_PREFIX: Sleutelprefix
+            LAST_USED: 'Laatst gebruikt'
+            NO_API_KEYS_HAVE_BEEN_GENERATED_YET: 'Er zijn nog geen API-sleutels gegenereerd.'
+            PLEASE_ENTER_A_KEY_NAME: 'Voer een sleutelnaam in'
+            REVOKE_API_KEY: 'API-sleutel intrekken'
+            REVOKE_KEY: 'Sleutel intrekken'
+        APP:
+            CREATING_BACKUP: 'Back-up wordt gemaakt…'
+            DASHBOARD_GRAV_ADMIN: 'Dashboard — Grav Admin'
+            PAGE_TITLE: '{name} — Grav Admin'
+            REFRESH: Vernieuwen
+            WELCOME_BACK: 'Welkom terug, {name}'
+        APP_SHELL:
+            ADMIN_VERSION: 'Admin v{version}'
+            CLOSE_MENU: 'Menu sluiten'
+            GRAV_VERSION: 'Grav v{version}'
+            MADE_BY: 'Grav werd {code} met {love} door {company}.'
+            MADE_BY_PLAIN: 'Grav werd met liefde geprogrammeerd door Trilby Media'
+            MORE_ACTIONS: 'Meer acties'
+        ARE_YOU_SURE: 'Weet je het zeker?'
+        AUTHOR: Auteur
+        BACKUPS_WIDGET:
+            BACKING_UP: 'Back-up maken…'
+            BACKUP_NOW: Nieuw
+            CREATE_A_NEW_BACKUP_NOW: 'Maak nu een nieuwe back-up'
+            DOWNLOAD_FILE: '{filename} downloaden'
+            NO_BACKUPS_FOUND: 'Geen back-ups gevonden'
+        CACHE_CLEAR_BUTTON:
+            CACHE_OPTIONS: Cache-opties
+            CLEAR_CACHE: 'Cache wissen'
+            FAILED_TO_CLEAR_CACHE: 'Cache wissen mislukt'
+            LABEL: Cache
+        CANCEL: Annuleren
+        CLEAR_SEARCH: 'Zoekopdracht wissen'
+        CLOSE: Sluiten
+        COLLAPSE_ALL: 'Alles samenvouwen'
+        COLLAPSE_SIDEBAR: 'Zijbalk samenvouwen'
+        COMPATIBILITY: Compatibiliteit
+        CONFIG:
+            CLEAR_FILTER: 'Filter wissen'
+            CONFIGURATION_CHANGED_ELSEWHERE_SAVE_TO: 'Configuratie gewijzigd op een ander moment — opslaan om overschrijven of opnieuw laden'
+            CONFIGURATION_RELOADED: 'Configuratie opnieuw geladen'
+            CONFIGURATION_SAVED_SUCCESSFULLY: 'Configuratie succesvol opgeslagen'
+            CONFIGURATION_WAS_MODIFIED_ELSEWHERE: 'Configuratie is op een ander moment gewijzigd. Laad opnieuw om de laatste wijzigingen te zien.'
+            FAILED_TO_SAVE_CONFIGURATION: 'Configuratie opslaan mislukt'
+            FILTER_FIELDS: 'Velden filteren...'
+            LOADING_CONFIGURATION: 'Configuratie laden...'
+            NO_CONFIGURATION_BLUEPRINT_AVAILABLE: 'Geen configuratieschema beschikbaar voor dit bereik.'
+            NO_MATCHES_FOUND: 'Geen overeenkomsten gevonden'
+            PAGE_TITLE: 'Configuratie: {scope} — Grav Admin'
+            RELOAD: 'Opnieuw laden'
+            TITLE: Configuratie
+            TITLE_SCROLLED: 'Configuratie: {scope}'
+            OVERRIDE:
+                DEFAULT_EMPTY: leeg
+                RESET_BUTTON: 'Overschrijvingen opnieuw instellen'
+                RESET_CONFIRM: 'Opnieuw instellen'
+                RESET_DONE: 'Overschrijvingen opnieuw ingesteld'
+                RESET_MESSAGE: 'Dit verwijdert elke overschrijving op {scope} en herstelt de overgenomen waarden. Dit kan niet ongedaan gemaakt worden.'
+                RESET_TITLE: 'Alle overschrijvingen opnieuw instellen?'
+                RESET_TOOLTIP: 'Verwijder elke overschrijving en herstel overgenomen waarden'
+                REVERTED: 'Teruggezet naar de overgenomen waarde'
+                REVERT_FAILED: 'Kon niet terugzetten'
+                REVERT_TOOLTIP: 'Overschrijft standaard ({value}). Klik om terug te zetten.'
+            TWIG_PROFILE:
+                ALL: 'Alle editors'
+                ALL_DESC: "Elke editor kan Twig inschakelen op de pagina's die zij bewerken."
+                CUSTOM: Aangepast
+                CUSTOM_DESC: 'De huidige instellingen komen niet overeen met een benoemd profiel. Pas de geavanceerde schakelaars hieronder aan of kies een profiel om ze opnieuw in te stellen.'
+                HELP: 'Kies wie Twig mag uitvoeren in paginainhoud. Dit stelt de geavanceerde schakelaars hieronder in.'
+                LABEL: 'Twig in inhoud'
+                'OFF': Uit
+                OFF_DESC: 'Twig in paginainhoud is uitgeschakeld. Markup wordt getoond zoals geschreven.'
+                TRUSTED: 'Alleen vertrouwde rollen'
+                TRUSTED_DESC: 'Alleen superusers en bezitters van de "pages twig"-toestemming kunnen Twig op een pagina inschakelen.'
+            VALIDATION_FAILED_FOR_FIELDS: 'Opslaan mislukt — deze velden zijn ongeldig: {fields}'
+            FAILED_TO_LOAD_CONFIGURATION: 'Configuratie laden mislukt.'
+            SCOPE_NOT_FOUND: 'Geen configuratiebereik genaamd {scope} gevonden.'
+            SHADOWED:
+                BANNER_ENV: '{count, plural, one {# instelling hier wordt} other {# instellingen hier worden}} overschreven door de {env}-omgeving, dus wijzigingen aan {count, plural, one {deze} other {deze}} zullen niet van kracht zijn.'
+                BANNER_MIXED: '{count, plural, one {# instelling hier wordt} other {# instellingen hier worden}} overschreven door de {env}-omgeving of door server-omgevingsvariabelen, dus wijzigingen aan {count, plural, one {deze} other {deze}} zullen niet van kracht zijn.'
+                BANNER_SERVER: '{count, plural, one {# instelling hier wordt} other {# instellingen hier worden}} ingesteld door server-omgevingsvariabelen, dus wijzigingen aan {count, plural, one {deze} other {deze}} zullen niet van kracht zijn.'
+                ENABLED_ENV: 'Ingesteld door de {env}-omgeving'
+                ENABLED_EXPLAIN_ENV: 'De {env}-omgeving schakelt deze plugin in of uit in zijn eigen configuratiebestand, dus de schakelaar hier zal niets veranderen aan de werking van de site.'
+                ENABLED_EXPLAIN_SERVER: 'Een GRAV_CONFIG server-omgevingsvariabele schakelt deze plugin in of uit, dus de schakelaar hier zal niets veranderen aan de werking van de site.'
+                ENABLED_SERVER: 'Ingesteld door een server-omgevingsvariabele'
+                EXPLAIN_ENV: 'De {env}-omgeving stelt dit in in zijn eigen configuratiebestand, dus wat je hier opslaat, is niet van toepassing op deze site.'
+                EXPLAIN_SERVER: 'Een GRAV_CONFIG server-omgevingsvariabele stelt dit in, dus wat je hier opslaat, is niet van toepassing.'
+                MARKER_ENV: 'Overschreven door de {env}-omgeving'
+                MARKER_SERVER: 'Ingesteld door een server-omgevingsvariabele'
+                REMOVED: 'Overschrijving verwijderd uit de {env}-omgeving'
+                REMOVE_FAILED: 'Kon de overschrijving niet verwijderen'
+                REMOVE_OVERRIDE: 'Overschrijving verwijderen'
+                SAVED_ENV: 'Opgeslagen, maar {field} wordt overschreven door de {env}-omgeving, dus de site gebruikt nog steeds „{value}”.'
+                SAVED_MANY_ENV: 'Opgeslagen, maar {count} van deze wijzigingen worden overschreven door de {env}-omgeving, dus de site zal ze niet gebruiken.'
+                SAVED_MANY_MIXED: 'Opgeslagen, maar {count} van deze wijzigingen worden overschreven door de {env}-omgeving of door server-omgevingsvariabelen, dus de site zal ze niet gebruiken.'
+                SAVED_MANY_SERVER: 'Opgeslagen, maar {count} van deze wijzigingen zijn ingesteld door server-omgevingsvariabelen, dus de site zal ze niet gebruiken.'
+                SAVED_SERVER: 'Opgeslagen, maar {field} is ingesteld door een server-omgevingsvariabele, dus de site gebruikt nog steeds „{value}”.'
+                SITE_USES: 'Deze site gebruikt'
+                SWITCH_TO: 'Schakel over naar {env}'
+                TOGGLE_ENV: 'Opgeslagen, maar de {env}-omgeving houdt {name} {state, select, off {uitgeschakeld} other {ingeschakeld}}.'
+                TOGGLE_SERVER: 'Opgeslagen, maar een server-omgevingsvariabele houdt {name} {state, select, off {uitgeschakeld} other {ingeschakeld}}.'
+                VALUE_OFF: uit
+                VALUE_ON: aan
+        CONFIG_INFO_PAGE:
+            ENVIRONMENT: Omgeving
+            EXPORT_YAML: 'YAML exporteren'
+            GRAV_VERSION: Grav-versie
+            LOADING_SYSTEM_INFORMATION: 'Systeeminformatie wordt geladen...'
+            PHP_CONFIGURATION: PHP-configuratie
+            PHP_EXTENSIONS: PHP-extensies
+            PHP_VERSION: PHP-versie
+            SERVER: Server
+            SERVER_SOFTWARE: Serversoftware
+        CONFIRM_ACTION: 'Actie bevestigen'
+        CONFIRM_DELETE: '"{title}" op {route} verwijderen?'
+        COPY_BUTTON:
+            COPIED: Gekopieerd!
+            COPY: Kopiëren
+        CUSTOM: Aangepast
+        DASHBOARD:
+            ADD_WIDGET: 'Een widget toevoegen'
+            CUSTOMIZE: Aanpassen
+            CUSTOMIZE_TITLE: 'Dashboard aanpassen'
+            EDIT_HINT: 'Aanpassingsmodus — widgets slepen, vergroten/verkleinen, verbergen en opslaan.'
+            EMPTY: 'Uw dashboard is leeg'
+            EMPTY_HINT: 'Klik op het potloodpictogram hierboven om widgets toe te voegen'
+            HIDE_WIDGET: 'Widget verbergen'
+            LAYOUT_RESET: 'Indeling teruggezet naar standaard'
+            LAYOUT_SAVED: 'Dashboardindeling opgeslagen'
+            PICKER_EMPTY: 'Alle beschikbare widgets staan al op uw dashboard.'
+            PICKER_SUBTITLE: 'Kies een widget om terug toe te voegen aan uw dashboard.'
+            PICKER_TITLE: 'Een widget toevoegen'
+            PRESETS: Voorinstellingen
+            PRESET_COMPACT: Compact
+            PRESET_COMPACT_DESC: 'Alle widgets in de kleinste ondersteunde grootte.'
+            PRESET_DEFAULT: Standaard
+            PRESET_DEFAULT_DESC: 'Door de server aanbevolen layout — wist uw aanpassingen.'
+            PRESET_MINIMAL: Minimaal
+            PRESET_MINIMAL_DESC: "Alleen statistieken en recente pagina's."
+            RESET_LAYOUT: 'Mijn layout herstellen'
+            SAVE_SITE_DEFAULT: 'Opslaan als standaardinstelling voor site'
+            SITE_LAYOUT_SAVED: 'Standaardinstelling site opgeslagen'
+            TITLE: Dashboard
+            WIDGETS:
+                BACKUPS: Back-ups
+                NEWS_FEED: Nieuwsfeed
+                NOTIFICATIONS: Meldingen
+                POPULARITY: Paginaweergaven
+                RECENT_PAGES: "Recente pagina's"
+                STATS: Sitestatistieken
+                SYSTEM_HEALTH: Systeemstatus
+                TOP_PAGES: Topafspeling
+        DASHBOARD_GRID:
+            DRAG_TO_REORDER: 'Sleep om opnieuw in te delen'
+        DELETE: Verwijderen
+        DENIED: Geweigerd
+        DEPENDENCIES: Afhankelijkheden
+        DISABLE: Uitschakelen
+        DISABLED: Uitgeschakeld
+        DISMISS: Sluiten
+        DONE: Klaar
+        DOWNLOAD: Downloaden
+        EDIT_MODE_TOOLBAR:
+            LAYOUT_PRESETS: Lay-outsjablonen
+            SAVE_AS_SITE_DEFAULT_FOR_ALL_USERS: 'Opslaan als standaard voor alle gebruikers'
+        ENABLED: Ingeschakeld
+        ENVIRONMENT_SWITCHER:
+            CREATE: Maken
+            CREATES_PATH: 'Maakt user/env/{name}/config/'
+            CREATE_ENVIRONMENT: 'Omgeving maken…'
+            CREATE_ENV_NAMED: 'Omgeving "{name}" maken…'
+            DEFAULT: Standaard
+            ENV_CREATED: 'Omgeving {name} gemaakt en geselecteerd'
+            FAILED_TO_CREATE: 'Kan omgeving niet maken'
+            HAS_OVERRIDES: 'heeft overschrijvingen'
+            NO_LONGER_EXISTS_PICK_ANOTHER: 'bestaat niet meer. Kies een ander.'
+            SAVE_CONFIG_TO: 'Configuratie opslaan in'
+            SAVING_TO_DEFAULT: 'Opslaan naar standaard (user/config)'
+            SAVING_TO_ENV: 'Opslaan naar omgeving: {name}'
+            SELECTED_ENV: 'Geselecteerde omgeving'
+            SELECT_WHERE_CONFIG_WRITES_ARE_SAVED: 'Selecteer waar configuratiewijzigingen worden opgeslagen'
+            CONFIRM_DELETE: 'verwijder {name}?'
+            CONFIRM_DELETE_WITH_OVERRIDES: 'Verwijder {name} en zijn configuratie instellingen?'
+            DELETE: Verwijder
+            DELETE_ENV_TOOLTIP: 'Verwijder omgeving {name}'
+            ENV_DELETED: 'Omgeving {name} verwijderd.'
+            FAILED_TO_DELETE: 'Het verwijderen van deze omgeving mislukt.'
+            SWITCH_AND_RELOAD: 'Omgeving wisselen en herladen'
+            SWITCH_DISCARDS_UNSAVED: 'Het wisselen van omgeving herlaadt de beheerdersinterface en verwijdert niet-opgeslagen wijzigingen. Doorgaan?'
+            PREFIX: 'Omgeving:'
+        EXPAND_ALL: 'Alles uitvouwen'
+        EXPAND_SIDEBAR: 'Zijbalk uitvouwen'
+        EXPERT_MODE: Expertmodus
+        FIELDS:
+            ADD_ENTRY: 'Item toevoegen'
+            CLEAR_DATE: 'Datum wissen'
+            CRON:
+                AT_MINUTE: 'Op minuut'
+                CRON: 'Cron:'
+                MIN_HR_DOM_MON_DOW: 'min uur dom maa woe'
+                ON_DAY: 'Op dag'
+            CRON_STATUS:
+                ACTIVE_TRIGGERS: 'Actieve triggers'
+                CRON: 'Cron:'
+                FAILED_TO_LOAD_SCHEDULER_STATUS: 'Schedulerstatus kon niet worden geladen'
+                FAILED_TO_RUN_SCHEDULER: 'Scheduler kon niet worden uitgevoerd'
+                HEALTH_STATUS: Gezondheidsstatus
+                JOB_ID: Taak-ID
+                LAST_RUN: 'Laatste uitvoering'
+                LOADING_SCHEDULER_STATUS: 'Schedulerstatus laden...'
+                NOT_CONFIGURED: 'NIET GECONFIGUREERD'
+                NOT_ENABLED: 'NIET INGESCHAKELD'
+                NOT_INSTALLED: 'NIET GEÏNSTALLEERD'
+                NO_SCHEDULED_JOBS_REGISTERED: 'Geen geplande taken geregistreerd.'
+                NO_TRIGGERS_ACTIVE_ENABLE_WEBHOOKS_OR: 'Geen triggers actief! Webhooks inschakelen of cron configureren.'
+                QUEUE_SIZE: 'Wachtrijgrootte:'
+                RUNNING: 'Bezig met uitvoeren...'
+                RUN_ALL: 'Alles uitvoeren'
+                SCHEDULED_JOBS: 'Geplande taken'
+                SCHEDULER_RUN_COMPLETED: 'Scheduleruitvoering voltooid'
+                SCHEDULER_STATUS: Schedulerstatus
+                STATUS: 'Status:'
+                WEBHOOK: 'Webhook:'
+                BY_HAND: handmatig
+                MANUAL_RUN_HELP: '‘Run Pending’ voert de taken uit die hun laatst geplande tijd hebben gemist; dit is wat je wilt op een site zonder cron-entry. Taken die je hier start worden geregistreerd als handmatig en tellen niet mee voor de cron-status hierboven.'
+                NEVER: Nooit
+                PENDING: 'In afwachting'
+                PROCESS_UNAVAILABLE: 'Taken kunnen hier niet worden uitgevoerd op deze host, omdat de PHP-functie proc_open is uitgeschakeld. Ze worden nog steeds uitgevoerd wanneer je scheduler wordt geactiveerd door een cron of een webhook.'
+                RUN_ALL_HELP: 'Voer nu elke ingeschakelde taak uit, ongeacht wat het schema zegt.'
+                RUN_NOW: 'Voer deze taak nu uit'
+                RUN_PENDING: 'Run Pending'
+            CUSTOM_FIELD_WRAPPER:
+                LOADING_CUSTOM_FIELD: 'Aangepast veld laden...'
+            DATE_FORMAT:
+                FORMAT_STRING: 'Opmaakstring:'
+                SELECT_FORMAT: '— Selecteer formaat —'
+                CUSTOM: Aangepast…
+                CUSTOM_PLACEHOLDER: 'bijv. Y-m-d H:i'
+                PREVIEW: 'Voorbeeld:'
+            FILE_PICKER:
+                NO_MATCHING_FILES: 'Geen overeenkomende bestanden'
+                NO_MEDIA_UPLOADED: 'Nog geen mediabestanden geüpload'
+                SELECT_FILE: 'Selecteer een bestand…'
+                SELECT_FILES: 'Selecteer bestanden…'
+            FILE_PICKER_SOON: 'Bestandenkiezer — binnenkort beschikbaar'
+            ICON_PICKER:
+                NO_ICONS_FOUND: 'Geen pictogrammen gevonden'
+                SEARCH_ICONS: 'Pictogrammen zoeken...'
+                SHOWING_FIRST_200_RESULTS_TYPE_TO_NARROW: 'Eerste 200 resultaten weergegeven — typ om in te perken'
+                FAMILY_ALL: Alle
+                FAMILY_BRANDS: Merken
+                FAMILY_REGULAR: Regulier
+                FAMILY_SOLID: Solid
+                SET_MISSING: 'Er is geen pictogrammenset genaamd „{set}” geregistreerd op deze site.'
+            NO_TAXONOMY_TYPES: 'Geen taxonomietypen geconfigureerd'
+            PAGES:
+                FILTER_PAGES: "Pagina's filteren..."
+                ROOT: '/ (root)'
+            PAGE_EXISTS:
+                CHECKING_PAGE: 'Pagina controleren...'
+            PAGE_MEDIA:
+                PAGE_MEDIA_UNAVAILABLE: 'Paginamedia niet beschikbaar'
+            PERMISSIONS:
+                NOT_SET: 'Niet ingesteld'
+                NO_PERMISSIONS_CONFIGURED: 'Geen machtigingen geconfigureerd'
+            REGENERATE_SLUG: 'Automatisch regenereren van paginatitel'
+            TABS:
+                NO_FIELDS_MATCH_YOUR_FILTER: 'Geen velden komen overeen met uw filter'
+            THEME_SELECT:
+                LOADING_THEMES: "Thema's laden..."
+                SELECT_THEME: '— Selecteer thema —'
+            WEBHOOK_EXAMPLES:
+                CHECK_HEALTH_STATUS: 'Gezondheidsstatus controleren:'
+                FORCE_RUN_SPECIFIC_JOB_IGNORES_SCHEDULE: 'Specifieke taak forceren (negeert planning):'
+                GITHUB_ACTIONS_EXAMPLE: 'GitHub Actions-voorbeeld:'
+                HOW_TO_USE_WEBHOOKS: 'Webhooks gebruiken:'
+                TRIGGER_ALL_DUE_JOBS_RESPECTS_SCHEDULE: 'Alle vervallen taken activeren (respecteert planning):'
+            WEBHOOK_STATUS:
+                BIN_GPM_INSTALL_SCHEDULER_WEBHOOK: 'bin/gpm install scheduler-webhook'
+                CHECKING_WEBHOOK_PLUGIN_STATUS: 'Webhookplugin-status controleren...'
+                INSTALL_PLUGIN_NOW: 'Plugin nu installeren'
+                OR_RUN: 'of voer uit:'
+                PLUGIN_IS_INSTALLED_AND_ENABLED: 'plugin is geïnstalleerd en ingeschakeld.'
+                PLUGIN_IS_INSTALLED_ENABLE_WEBHOOK: 'plugin is geïnstalleerd. Schakel Webhook-triggers hieronder in om te activeren.'
+                PLUGIN_IS_REQUIRED_FOR_WEBHOOK: 'plugin is vereist voor webhook-functionaliteit.'
+                WEBHOOK_PLUGIN_REQUIRED: 'Webhook-plugin vereist'
+            FILE:
+                LIMIT_REACHED: 'Dit veld accepteert maximaal {limit} bestand(en).'
+            ADD_ITEM: 'Item toevoegen'
+            SELECTIZE_PLACEHOLDER: 'Typ en druk op Enter...'
+            SELECT_AN_ICON: 'Selecteer een icoon...'
+            SELECT_A_PAGE: 'Selecteer een pagina...'
+            MEDIA:
+                ADD: 'Media toevoegen…'
+                CHANGE: Wijzigen
+                DONE: Klaar
+                MOVE_EARLIER: 'Naar voren verplaatsen'
+                MOVE_LATER: 'Naar achteren verplaatsen'
+                REMOVE: Verwijderen
+                SELECT: 'Selecteer media…'
+                SELECTED_COUNT: '{count, plural, =0 {Niets geselecteerd} one {# geselecteerd} other {# geselecteerd}}'
+                TITLE: 'Selecteer media'
+            SET_DATE_NOW: 'Instellen op nu'
+        FLEX_OBJECTS:
+            ACTIONS: Acties
+            BACK_TO_LIST: 'Terug naar lijst'
+            DELETE_OBJECT: 'Object verwijderen'
+            EXPORT: Exporteren
+            EXPORT_FAILED: 'Exporteren mislukt'
+            FAILED_TO_DELETE_OBJECT: 'Object verwijderen mislukt'
+            FAILED_TO_LOAD_DIRECTORY: 'Map laden mislukt'
+            FAILED_TO_LOAD_OBJECTS: 'Objecten laden mislukt'
+            FAILED_TO_SAVE: 'Opslaan mislukt.'
+            NEW:
+                BACK_TO_LIST: 'Terug naar lijst'
+                CREATE: Maken
+                OBJECT_CREATED: 'Object aangemaakt'
+            OBJECT_CHANGED_ELSEWHERE_SAVE_TO: 'Object gewijzigd elders — opslaan om te overschrijven of opnieuw laden'
+            OBJECT_DELETED: 'Object verwijderd'
+            OBJECT_WAS_MODIFIED_ELSEWHERE_PLEASE: 'Object is elders gewijzigd. Gelieve opnieuw in te laden.'
+            PREVIOUS: Vorige
+            SEARCH: Zoeken...
+            INFO:
+                DIRECTORY: Map
+                ID: ID
+                LOCATION: Locatie
+                SHOW_INFO: 'Toon objectinformatie'
+                STORAGE_KEY: Opslagsleutel
+                TITLE: Objectinformatie
+            ADD: Toevoegen
+        FLOATING_WIDGET_LOADER:
+            CLOSE_WIDGETS_MENU: 'Widgetsmenu sluiten'
+        FORGOT:
+            BACK_TO_SIGN_IN: 'Terug naar aanmelden'
+            CHECK_INBOX: 'Controleer uw inbox op een resetlink.'
+            EMAIL_ADDRESS: E-mailadres
+            ENTER_A_VALID_EMAIL_ADDRESS: 'Voer een geldig e-mailadres in'
+            FORGOT_PASSWORD: 'Wachtwoord vergeten'
+            FORGOT_PASSWORD_GRAV_ADMIN: 'Wachtwoord vergeten — Grav Admin'
+            IF_AN_ACCOUNT_EXISTS_FOR_THAT_EMAIL_A: 'Als er een account voor dat e-mailadres bestaat, is er een resetlink verzonden.'
+            SENDING: Verzenden...
+            SEND_RESET_LINK: 'Verzend resetlink'
+            SUBTITLE: 'Voer je e-mailadres in en we sturen je een resetlink.'
+            UNABLE_TO_CONNECT_TO_SERVER: 'Kan geen verbinding maken met de server.'
+        HOMEPAGE: Startpagina
+        INFO: Info
+        INLINE_ICON_PICKER:
+            NO_ICONS_FOUND: 'Geen pictogrammen gevonden'
+            SEARCH_ICONS: 'Pictogrammen zoeken...'
+            TYPE_TO_NARROW_RESULTS: 'Typ om resultaten in te perken'
+        INSTALL: Installeren
+        INSTALLING: 'Bezig met installeren...'
+        KEYWORDS: Trefwoorden
+        LANG:
+            CREATE_TRANSLATION: '{language}-vertaling maken'
+            CURRENT: huidige
+            DEFAULT: standaard
+            DELETE_TRANSLATION: '{language}-vertaling verwijderen'
+            FALLBACK_NOTICE: 'Geen {language}-vertaling. Standaardinhoud wordt weergegeven.'
+            NOT_TRANSLATED: 'Niet vertaald'
+            SAVE_AS: 'Opslaan als {language}'
+            SWITCH_LANGUAGE: 'Wissel inhoudstaal'
+            SYNC_FROM: 'Opnieuw instellen vanaf {language}'
+            TRANSLATED: Vertaald
+            TRANSLATIONS: Vertalingen
+            TRANSLATION_CREATED: '{language} vertaling aangemaakt'
+        LOADING: 'Bezig met laden...'
+        LOGIN:
+            AUTHENTICATION_CODE: Verificatiecode
+            AUTH_CODE_PROMPT: 'Open uw authenticator-app en voer de 6-cijferige code in voor **{username}**.'
+            BACK_TO_SIGN_IN: 'Terug naar aanmelden'
+            ENTER_A_VALID_6_DIGIT_CODE: 'Voer een geldige 6-cijferige code in'
+            ENVIRONMENT: Omgeving
+            FORGOT_PASSWORD: 'Wachtwoord vergeten?'
+            GRAV_ADMIN: 'Grav Admin'
+            INVALID_USERNAME_OR_PASSWORD: 'Ongeldige gebruikersnaam of wachtwoord'
+            LOGIN_GRAV_ADMIN: 'Aanmelden — Grav Admin'
+            PASSWORD_IS_REQUIRED: 'Wachtwoord is vereist'
+            PLEASE_FILL_IN_ALL_REQUIRED_FIELDS: 'Vul alle verplichte velden in'
+            POWERED_BY_GRAV_CMS: 'Aangedreven door Grav CMS'
+            SERVER_CONFIGURATION: Serverconfiguratie
+            SERVER_URL: Server-URL
+            SIGNED_IN_SUCCESSFULLY: 'Succesvol aangemeld'
+            SIGNING_IN: 'Bezig met aanmelden...'
+            SIGN_IN: Aanmelden
+            SUBTITLE: 'Meld u aan om uw site te beheren'
+            TWOFA_SUBTITLE: 'Voer uw verificatiecode in om door te gaan'
+            UNABLE_TO_CONNECT_TO_SERVER_CHECK_YOUR: 'Kan geen verbinding maken met server. Controleer uw server-URL en probeer opnieuw.'
+            UNABLE_TO_VERIFY_CODE_CHECK_YOUR: 'Kan code niet verifiëren. Controleer uw verbinding en probeer opnieuw.'
+            USERNAME_IS_REQUIRED: 'Gebruikersnaam is vereist'
+            VERIFY: Verifiëren
+            VERIFYING: Verifiëren...
+            CONTINUE_WITH: 'Ga door met {provider}'
+            OR_CONTINUE_WITH: 'Of ga door met'
+            SSO_FAILED: 'Kon niet aanmelden met die provider. Probeer het opnieuw.'
+            CAPTCHA_FAILED_TO_LOAD: 'De uitdaging kon niet worden geladen. Herlaad de pagina en probeer het opnieuw.'
+            CAPTCHA_NOT_COMPLETED: 'Voltooi de uitdaging om door te gaan'
+            CAPTCHA_VERIFIED: 'Geverifieerd dat je een mens bent'
+            CAPTCHA_VERIFYING: 'Controleren of je een mens bent...'
+            INVALID_AUTHENTICATION_CODE: 'Ongeldige authenticatiecode'
+            PASSKEY_CANCELLED: 'Er is geen passkey gebruikt. Probeer het opnieuw wanneer je er klaar voor bent, of meld je aan met je wachtwoord.'
+            PASSKEY_CANCELLED_TWO_STEP: 'Er is geen passkey gebruikt. Probeer het opnieuw wanneer je er klaar voor bent, of voer je code in.'
+            PASSKEY_FAILED: 'Er is iets misgegaan met de passkey. Probeer het alsjeblieft opnieuw.'
+            PASSKEY_NOT_THIS_ACCOUNT: 'Deze passkey hoort niet bij dit account. Probeer een andere, of voer je code in.'
+            PASSKEY_OFF: 'Passkeys zijn uitgeschakeld op deze site. Meld je aan met je wachtwoord.'
+            PASSKEY_OR: of
+            PASSKEY_SIGN_IN: 'Aanmelden met een passkey'
+            PASSKEY_SIGN_IN_FAILED: 'Die passkey heeft je niet aangemeld. Als je deze van je account hebt verwijderd, meld je dan aan met je wachtwoord.'
+            PASSKEY_TOO_MANY_TRIES: 'Te veel passkey-pogingen. Wacht een paar minuten en probeer het opnieuw.'
+            PASSKEY_USE_INSTEAD: 'Gebruik in plaats daarvan je passkey'
+            PASSKEY_WAITING: 'Wachten op je passkey…'
+        MARKDOWN_EDITOR:
+            NOTHING_TO_PREVIEW: 'Niets om voor te bekijken'
+            IMAGE_INSERT:
+                ALT_LABEL: Alt-tekst
+                ALT_PLACEHOLDER: 'Beschrijf de afbeelding'
+                FROM_URL: 'Invoegen van URL'
+                INSERT: Invoegen
+                NO_MEDIA: 'Er zijn nog geen afbeeldingen aan deze pagina toegevoegd.'
+                PAGE_MEDIA: Pagina-media
+                SITE_MEDIA: Site-media
+                TITLE: 'Afbeelding invoegen'
+                URL_LABEL: Afbeeldings-URL
+                URL_PLACEHOLDER: 'https://example.com/image.jpg of media://file.jpg'
+        MEDIA:
+            MANAGE_SITE_WIDE_MEDIA_FILES: 'Beheer mediabestanden voor de hele site'
+            MEDIA_GRAV_ADMIN: 'Media — Grav Admin'
+            MEDIA_INSPECTOR:
+                DIMENSIONS: Afmetingen
+                FAILED_TO_COPY: 'Kopiëren mislukt'
+                FILE_RENAMED: 'Bestand hernoemd'
+                NEXT_FILE: 'Volgende bestand'
+                PREVIOUS_FILE: 'Vorig bestand'
+                RENAME: Hernoemen
+            MEDIA_MANAGER:
+                CREATE: Maken
+                FILES_DELETED: 'Bestanden verwijderd'
+                FOLDER_NAME: Mapnaam
+                NEW_FOLDER: 'Nieuwe map'
+                UPLOAD_FILES: 'Bestanden uploaden'
+                CUSTOM_ORDER: 'Aangepaste volgorde'
+                DROP_FILES_OR_CLICK_UPLOAD: 'Sleep bestanden hierheen of klik op Uploaden om te beginnen'
+                DROP_FILES_TO_UPLOAD: 'Sleep bestanden hierheen om te uploaden'
+                DROP_FILES_TO_UPLOAD_TO_PATH: 'Sleep bestanden hierheen om te uploaden naar **{path}**'
+                FOLDER_IS_EMPTY: 'Deze map is leeg'
+                NO_RESULTS_FOUND: 'Geen resultaten gevonden'
+                ORDER_SAVE_FAILED: 'Kon de nieuwe volgorde niet opslaan'
+                REORDER: 'Sleep om te herordenen'
+                REORDER_DONE: Klaar
+                REORDER_MODE: Herordenen
+                ROOT: Media
+                TRY_A_DIFFERENT_SEARCH_TERM: 'Probeer een andere zoekterm'
+            MEDIA_TOOLBAR:
+                FOLDER: Map
+                GRID_VIEW: Rasterweergave
+                LIST_VIEW: Lijstweergave
+                NEW_FOLDER: 'Nieuwe map'
+                SEARCH_MEDIA: 'Media zoeken...'
+                DELETE_SELECTED: '{count, plural, one {# bestand verwijderen} other {# bestanden verwijderen}}'
+                FILTER_ALL: Alles
+                FILTER_AUDIO: Audio
+                FILTER_DOCS: Documenten
+                FILTER_IMAGES: Afbeeldingen
+                FILTER_VIDEO: Video
+                SEARCHING_FOR: 'Zoeken: „{query}”'
+                SORT_DATE: Datum
+                SORT_NAME: Naam
+                SORT_SIZE: Grootte
+                SORT_TYPE: Type
+            PAGE_MEDIA:
+                DRAG_INTO_EDITOR: 'Sleep in editor'
+                PAGE_MEDIA: Paginamedia
+                DROP_FILES_HERE: 'Sleep bestanden hierheen'
+                DROP_FILES_OR_CLICK_TO_UPLOAD: 'Sleep bestanden hierheen of klik om te uploaden'
+                DROP_OR_CLICK_TO_ADD_MORE: 'Sleep bestanden hierheen of klik om meer toe te voegen'
+                INSERTED: '{filename} ingevoegd'
+                INSERT_AT_CURSOR: 'Invoegen op cursorpositie'
+                REORDER: 'Sleep om te herordenen'
+                REORDER_DONE: Klaar
+                REORDER_HINT: 'Sleep afbeeldingen om de volgorde te bepalen.'
+                REORDER_MODE: Herordenen
+                NOT_ALLOWED: 'Je kunt de media van deze pagina niet wijzigen.'
+                NO_FILES: 'Geen mediabestanden'
+            METADATA:
+                APPLY_TO_N: 'Toepassen op {n} bestanden'
+                BATCH_EDITING: '{n} geselecteerde bestanden bewerken — gewijzigde velden worden op alle bestanden toegepast.'
+                BATCH_PARTIAL: '{saved} bestanden bijgewerkt, {failed} mislukt'
+                BATCH_SAVED: '{n} bestanden bijgewerkt'
+                EDIT: 'Metadata bewerken'
+                EMPTY: 'Er zijn geen bewerkbare metadatavelden geconfigureerd.'
+                LOAD_FAILED: 'Kon metadata niet laden'
+                RESET: Herstellen
+                SAVED: 'Metadata opgeslagen'
+                SAVE_FAILED: 'Kon metadata niet opslaan'
+                SAVING: Opslaan...
+                STORED: 'Opgeslagen metadata'
+                TAGS_PLACEHOLDER: 'Tag toevoegen...'
+                TITLE: Metadata
+            FILE_DETAILS:
+                MARKDOWN: Markdown
+                MEDIA_PATH: Mediapad
+                OPEN: Openen
+                PATH: Pad
+                SIZE: Grootte
+                TITLE: Bestandsdetails
+                TYPE: Type
+                URL: URL
+            PASTE_UPLOAD:
+                FAILED: 'Kon {filename} niet uploaden: {message}'
+                NO_PERMISSION: 'Je hebt geen toestemming om media te uploaden, dus de afbeelding is niet toegevoegd.'
+                PAGES_ONLY: 'Plakken of slepen van afbeeldingen werkt alleen in paginacontent. Upload de afbeelding naar de mediabeheerder en voeg hem vanaf daar in.'
+                SAVE_PAGE_FIRST: 'Sla de pagina eerst op, en plak of sleep daarna afbeeldingen in de pagina.'
+                UNSUPPORTED_TYPE: '{filename} kan hier niet worden toegevoegd. Plak of sleep een PNG, JPEG, GIF, WebP, AVIF of SVG afbeelding.'
+                UPLOADED: '{count, plural, one {Afbeelding toegevoegd aan de paginamedia} other {# afbeeldingen toegevoegd aan de paginamedia}}'
+                UPLOADING: '{count, plural, one {Afbeelding uploaden…} other {# afbeeldingen uploaden…}}'
+        NAV:
+            CONFIGURATION: Configuratie
+            DASHBOARD: Dashboard
+            MEDIA: Media
+            PAGES: "Pagina's"
+            PLUGINS: Plugins
+            SETTINGS: Instellingen
+            SYSTEM: Systeem
+            THEMES: "Thema's"
+            TOOLS: Hulpmiddelen
+            USERS: Gebruikers
+            UPDATES_AVAILABLE: '{count} update(s) beschikbaar'
+            TRANSLATIONS: Vertalingen
+        NEWS_FEED_WIDGET:
+            NO_FEED_ITEMS: 'Geen feeditems'
+        NORMAL_MODE: 'Normale modus'
+        NOTIFICATIONS_WIDGET:
+            NO_NOTIFICATIONS: 'Geen meldingen'
+        NO_CHANGES: 'Geen wijzigingen om op te slaan'
+        PAGES:
+            ADD_FOLDER: 'Map toevoegen'
+            ADD_MENU: 'Menu toevoegen'
+            ADD_MODULE: 'Module toevoegen'
+            ADD_PAGE: 'Pagina toevoegen'
+            DELETED: '"{title}" verwijderd'
+            DELETE_FAILED: 'Pagina kon niet worden verwijderd'
+            DELETE_PAGE: 'Pagina verwijderen'
+            DRAFT: Concept
+            EDIT:
+                CONNECTING_TO_COLLAB: 'Verbinding maken met samenwerkingssessie…'
+                COPY_PAGE: 'Pagina kopiëren'
+                CREATE_LANGUAGE: 'Maak {language}'
+                DELETE_PAGE: 'Pagina verwijderen'
+                EDIT_PAGE: 'Pagina bewerken'
+                FAILED_TO_CREATE_TRANSLATION: 'Kon vertaling niet maken'
+                FAILED_TO_SYNC_TRANSLATION: 'Kon vertaling niet synchroniseren'
+                FALLBACK: (fallback)
+                FALLBACK_NOTICE: 'Er bestaat geen {active} vertaling. Bekijkt {effective} fallback. Gebruik "Opslaan als {active}" om een vertaling te maken die je kunt bewerken.'
+                FOLDER_NAME: Mapnaam
+                INVALID_YAML_FRONTMATTER: 'Ongeldige YAML frontmatter'
+                INVALID_YAML_FRONTMATTER_FIX_SYNTAX: 'Ongeldige YAML frontmatter — repareer de syntaxis voor het opslaan'
+                LOADING_PAGE: 'Pagina laden...'
+                NOT_TRANSLATED: 'Niet vertaald:'
+                OPEN_IN_NEW_TAB: 'Openen in nieuw tabblad'
+                PAGE_CHANGED_ELSEWHERE_SAVE_TO: 'Pagina ergens anders gewijzigd — opslaan om te overschrijven of vernieuwen'
+                PAGE_COPIED: 'Pagina gekopieerd'
+                PAGE_DELETED: 'Pagina verwijderd'
+                PAGE_PREVIEW: Paginavoorbeeld
+                PAGE_SAVED_AND_MOVED: 'Pagina opgeslagen en verplaatst'
+                PREVIEW_PAGE: 'Pagina voorvertonen'
+                PUBLISH_ON: 'Publiceren op'
+                RESET_CONTENT_FROM: 'Inhoud herstellen van:'
+                RESET_FROM: 'Herstellen van {language}'
+                RESET_TRANSLATION: 'Vertaling herstellen'
+                SAVE_AS_LANGUAGE: 'Opslaan als {language}'
+                THE_FOLDER_NAME_ON_DISK_URL_SLUG: 'De mapnaam op schijf (URL slug)'
+                TOGGLE_PAGE_NAVIGATOR: 'Paginanavigator in-/uitschakelen'
+                UNPUBLISH_ON: 'Publicatie opheffen op'
+                WRITE_YOUR_MARKDOWN_CONTENT_HERE: 'Schrijf hier uw markdown-inhoud...'
+                SAVED_BY_PEER: 'Gebruiker {user} heeft deze pagina opgeslagen'
+                SAVED_BY_PEER_ANON: 'Een andere gebruiker heeft deze pagina opgeslagen'
+                FALLBACK_NOTICE_UNRESOLVED: 'De server gaf de {effective} versie van deze pagina terug in plaats van {active}, en gaf niet aan dat {active} ontbreekt. Opslaan is hier uitgeschakeld zodat het {effective} bestand niet wordt overschreven. Als dit bij elke pagina gebeurt, geeft de webserver waarschijnlijk geen query-strings door aan Grav.'
+                PREVIEW_SHOWING_HOST_PAGE: 'getoond in de bovenliggende pagina'
+                TEMPLATE_MISSING_NOTICE: 'Het template **{template}** voor deze module is niet gevonden in het thema, waardoor de pagina waar deze bij hoort een „template not found” foutmelding geeft. Kies een template onder **Pagina-template** op het tabblad Geavanceerd, of voeg het template toe aan het thema.'
+                COLLAB_UNSAVED_DIFFERS_FROM_FILE: 'Deze pagina heeft onopgeslagen wijzigingen van een gedeelde bewerksessie die niet overeenkomen met het paginabestand, dat wellicht buiten de admin om is bewerkt. De editor toont de onopgeslagen wijzigingen; opslaan vervangt de versie in het bestand.'
+                PAGE_WAS_MODIFIED_ELSEWHERE_PLEASE: 'Pagina is elders aangepast. Gelieve te herladen.'
+                READ_ONLY_NOTICE: 'Je kunt deze pagina bekijken maar niet bewerken.'
+            EDIT_PAGE: 'Pagina bewerken'
+            FRONTMATTER: Frontmatter
+            HEADER_MODIFIED: Gewijzigd
+            HEADER_PARENT: Parent
+            HEADER_STATUS: Status
+            HEADER_TEMPLATE: Template
+            HEADER_TITLE: Titel
+            INFO_DATE: Datum
+            INFO_LANGUAGE: Taal
+            INFO_MODIFIED: Gewijzigd
+            INFO_ORDER: Volgorde
+            INFO_PUBLISHED: Gepubliceerd
+            INFO_PUBLISH_ON: 'Publiceren op'
+            INFO_ROUTABLE: Routeerbaar
+            INFO_ROUTE: Route
+            INFO_SLUG: Slug
+            INFO_TEMPLATE: Sjabloon
+            INFO_UNPUBLISH_ON: 'Publicatie intrekken op'
+            INFO_VISIBLE: 'Zichtbaar in navigatie'
+            LOADING: "Pagina's laden..."
+            MODE_EXPERT: Expert
+            MODE_NORMAL: Normaal
+            MOVED: '"{title}" verplaatst'
+            MOVE_FAILED: 'Pagina kon niet worden verplaatst'
+            NEW:
+                ADD_PAGE_GRAV_ADMIN: 'Pagina toevoegen — Grav Admin'
+                CONTINUE: Doorgaan
+                CONTROLS_WHETHER_THIS_PAGE_APPEARS_IN: "Bepaalt of deze pagina in navigatiemenu's verschijnt"
+                FAILED_TO_CREATE: 'Pagina kon niet worden gemaakt'
+                FAILED_TO_LOAD_PAGE_TEMPLATES: 'Paginasjablonen konden niet worden geladen'
+                FILTER_PAGES: "Pagina's filteren..."
+                FOLDER_CREATED: 'Map "{title}" gemaakt'
+                FOLDER_DETAILS: Mapdetails
+                FOLDER_NAME: Mapnaam
+                LOADING_TEMPLATES: 'Sjablonen laden...'
+                MODULE_CREATED: 'Module "{title}" gemaakt'
+                MY_NEW_PAGE: 'Mijn nieuwe pagina'
+                ORDERING: Volgorde
+                ORDERING_HELP_FOLDER: 'Voegt een numeriek voorvoegsel toe dat de positie van deze map onder haar gelijken bepaalt.'
+                ORDERING_HELP_MODULE: 'Voegt een numeriek voorvoegsel toe dat de positie van deze module in zijn modulaire bovenliggende element bepaalt.'
+                ORDERING_NONE: Geen
+                PAGE_CREATED: 'Pagina "{title}" gemaakt'
+                PAGE_DETAILS: Paginadetails
+                PAGE_TEMPLATE: Paginasjabloon
+                PAGE_TITLE: Paginatitel
+                PARENT_PAGE: 'Bovenliggende pagina'
+                ROOT: '<root> /'
+                URL_SAFE_FOLDER_NAME_FOR_THIS_PAGE: 'URL-veilige mapnaam voor deze pagina'
+                VISIBLE: Zichtbaar
+                CHILD_TYPE_HINT: 'De bovenliggende pagina suggereert „{template}” voor zijn kinderen. Je kunt nog steeds een ander template kiezen.'
+                STATUS_HELP: 'Concepten worden opgeslagen maar zijn niet zichtbaar op de site totdat je ze publiceert'
+                MODULE_NEEDS_PARENT: 'Een module hoort in een modulaire pagina, kies dus de pagina waar deze bij hoort.'
+                PICK_MODULAR_PAGE: 'Kies een modulaire pagina'
+            NO_PAGES: "Geen pagina's gevonden"
+            NO_SEARCH_RESULTS: "Geen pagina's komen overeen met uw zoekopdracht"
+            PAGES_GRAV_ADMIN: "Pagina's — Grav Admin"
+            PAGES_MILLER_VIEW:
+                DRAFT_UNPUBLISHED: 'Concept (niet gepubliceerd)'
+                FOLDER_ORDER: Mapvolgorde
+                HAS_CHILDREN: 'Heeft onderliggende items'
+                SUMMARY: Samenvatting
+                VISIBLE: Zichtbaar
+                DROP_HERE: 'Hier neerzetten'
+            PAGES_TREE_VIEW:
+                FAILED_TO_REORGANIZE_PAGES: "Pagina's opnieuw organiseren mislukt"
+                NO_PAGES_MATCH: 'Geen pagina''s komen overeen met "{query}"'
+                SEARCHING: Zoeken…
+            PAGE_COUNT: "{n, plural, one{# pagina} other{# pagina's}}"
+            PAGE_INFO: Paginagegevens
+            PUBLISHED: Gepubliceerd
+            RAW_HEADER: 'Ruwe paginakop (JSON)'
+            REORDERED: '"{title}" opnieuw geordend'
+            REORDER_FAILED: 'Opnieuw ordenen mislukt'
+            REORDER_MOVE: 'Opnieuw ordenen / Verplaatsen'
+            REORDER_SAME_PARENT: "Pagina's kunnen alleen opnieuw worden geordend onder dezelfde bovenliggende pagina. Gebruik de boomweergave voor verplaatsingen tussen bovenliggende pagina's."
+            SAVED: 'Pagina succesvol opgeslagen'
+            SAVE_FAILED: 'Pagina opslaan mislukt'
+            SEARCH_PLACEHOLDER: "Pagina's zoeken..."
+            SORT_DATE_NEWEST: 'Datum (nieuwste)'
+            SORT_NEWEST: Nieuwste
+            SORT_OLDEST: Oudste
+            SORT_ORDER: Volgorde
+            SORT_TITLE_AZ: 'Titel A-Z'
+            SORT_TITLE_ZA: 'Titel Z-A'
+            SUBTITLE: 'Beheer uw site-inhoud en -structuur'
+            TITLE: "Pagina's"
+            VIEW_COLUMNS: Kolommen
+            VIEW_LIST: Lijst
+            VIEW_TREE: Structuur
+            CHUNK_SIZE: blok
+            CHUNK_SIZE_HELP: 'Aantal rijen dat per scroll wordt opgehaald. Hogere waarde laadt de eerste keer trager, maar vermindert het aantal vervolgverzoeken.'
+            LOADED_OF: '{n, plural, one {# geladen} other {# geladen}} van {total}'
+            LOADING_CHUNK: 'Rijen {from}–{to} worden geladen'
+            NO_MATCH: 'Geen resultaten gevonden voor uw zoekopdracht'
+            PUBLISH: Publiceren
+            REORDER_DONE: Klaar
+            REORDER_EXIT_TITLE: 'Herschikkingsmodus verlaten'
+            REORDER_LOADING: 'Volledige lijst wordt nog geladen — probeer het straks nog eens'
+            REORDER_LOADING_ALL: 'Elk blok wordt geladen, zodat de hele lijst kan worden herschikt…'
+            REORDER_START_TITLE: "Pagina's herschikken"
+            STATS_PUBLISHED: '{n} gepubliceerd'
+            STATS_TOTAL: '{n} totaal'
+            STATS_UNPUBLISHED: '{n} gepubliceerd'
+            UNPUBLISH: 'Niet publiceren'
+            TWIG_BANNER:
+                LEAK_GATE_OFF: 'Deze pagina bevat Twig-markup, maar Twig in inhoud is site-breed uitgeschakeld, waardoor het als platte tekst aan bezoekers wordt getoond.'
+                LEAK_PAGE_OFF: 'Deze pagina bevat Twig-markup, maar Twig is uitgeschakeld voor deze pagina, waardoor het als platte tekst aan bezoekers wordt getoond.'
+                RECENT_BLOCKS: '{n, plural, one {# Twig-constructie op deze pagina is onlangs geblokkeerd} other {# Twig-constructies op deze pagina zijn onlangs geblokkeerd}}.'
+                VIEW_REPORT: 'Bekijk rapport'
+            FILTER:
+                ALL: Alles
+                ALL_TEMPLATES: 'Alle sjablonen'
+                BUTTON: Filter
+                CLEAR: Wissen
+                'NO': Nee
+                PUBLISHED: Gepubliceerd
+                ROUTABLE: Routeerbaar
+                TEMPLATE: Sjabloon
+                TITLE: "Filter pagina's"
+                VISIBLE: Zichtbaar
+                'YES': Ja
+            VALIDATION_FAILED_FOR_FIELDS: 'Opslaan mislukt — deze velden zijn ongeldig: {fields}'
+            COLUMN_EMPTY: Leeg
+            SEARCH_MATCH_COUNT: "{n, plural, one {# resultaat} other {# resultaten}} op alle pagina's"
+            SEARCH_SHOWING: '{shown} van {total} resultaten getoond'
+            SEARCH_SHOW_MORE: 'Toon meer'
+            STATUS:
+                EXPIRED: Verlopen
+                EXPIRED_ON: 'Ongepubliceerd sinds {date}'
+                SCHEDULED: Gepland
+                SCHEDULED_FOR: 'Publicatie gepland op {date}'
+                TOGGLE_TITLE: '{action} ({status})'
+            ANCESTOR_ONLY_HINT: "Je kunt deze pagina niet openen. Hij staat in de lijst zodat je de pagina's erin kunt bereiken."
+            ANCESTOR_ONLY_LABEL: "{title}: je kunt deze pagina niet openen, alleen de pagina's erin"
+            ANCESTOR_ONLY_PARENT: 'Je kunt de bovenliggende pagina niet openen'
+            DELETE_CANNOT_UNDO: 'Dit kan niet ongedaan worden gemaakt.'
+            DELETE_LAST_LANGUAGE: "Dit is de enige taal van de pagina, dus de volledige paginamap wordt verwijderd, inclusief de media en eventuele onderliggende pagina's."
+            DELETE_RECOVERABLE: 'Je kunt het herstellen vanuit de Prullenbak.'
+            DELETE_TRANSLATION_CONFIRM: 'De {language} vertaling van „{title}” verwijderen? {n, plural, one{De andere taal blijft behouden.} other{De andere # talen blijven behouden.}}'
+            DELETE_TRANSLATION_TITLE: 'Vertaling verwijderen'
+            DELETE_UNDONE: 'Pagina hersteld'
+            DELETE_UNDONE_NAMED: '„{name}” hersteld'
+            DELETE_UNDO_FAILED: 'Kon het verwijderen niet ongedaan maken: {detail}'
+            DROP_INSIDE: 'Sleep een pagina hierheen om deze naar {title} te verplaatsen'
+            LOAD_CHILDREN_FAILED: "Kon de pagina's in deze map niet laden."
+            MODULES:
+                ADD: 'Module toevoegen'
+                EMPTY: 'Nog geen modules.'
+                HELP: 'De onderdelen waaruit deze pagina is opgebouwd, in de volgorde waarin de pagina ze toont. Sleep een module om deze te verplaatsen, of focus de hendel en druk op Alt+Omhoog of Alt+Omlaag. Klik op het statusicoon om de module te publiceren of de publicatie ongedaan te maken.'
+                LOAD_FAILED: 'De modules konden niet worden geladen.'
+                MOVE: 'Verplaats „{title}”'
+                TITLE: Modules
+            MOVE_UNNUMBERED_KEEPS_NAME_ORDER: '{title} heeft geen volgnummer, dus blijft gesorteerd op naam'
+            PAGE_TITLE_HINT: 'Titel: {title}'
+            SHOW_DROP_INSIDE: "Pagina's verplaatsen naar {title}"
+            TRANSLATION_DELETED: '{language} vertaling verwijderd'
+            TRANSLATION_DELETED_OF: '{language}-vertaling van „{name}” verwijderd'
+            TRANSLATION_RESTORED: '{language}-vertaling hersteld'
+        PASSWORD: Wachtwoord
+        PASSWORD_FIELD:
+            PASSWORD_REQUIREMENTS: Wachtwoordvereisten
+            PASSWORD_STRENGTH: Wachtwoordsterkte
+            REQUIREMENTS: Vereisten
+        PERMISSIONS_FIELD:
+            FAILED_TO_LOAD_PERMISSIONS: 'Machtigingen kunnen niet worden geladen'
+            NOT_SET: 'Niet ingesteld'
+            ADMIN_LEGACY: 'Beheer (oude versie)'
+            INHERITED_ALLOWED: 'Toegestaan via groep: {groups}'
+            INHERITED_DENIED: 'Geweigerd via groep: {groups}'
+            LEGEND_DIRECT: 'Direct ingesteld'
+            LEGEND_INHERITED: 'Overgenomen van een groep'
+            LEGEND_INTRO: 'Vage schakelaars zijn afkomstig van groepslidmaatschap en worden getoond ter referentie. Stel er een in om er een directe toestemming voor deze gebruiker van te maken.'
+            LEGEND_OVERRIDE: 'Overschrijft een groep'
+            LEGEND_SUPER: 'Verleend door super admin'
+            OVERRIDES_GROUP: 'Uw directe instelling overschrijft de groep: {groups}'
+            LOCKED_NOTE: "Je kunt alleen machtigingen verlenen die je eigen account heeft. De machtigingen die je niet kunt verlenen, hebben een grijs 'Toestaan'-selectievakje, maar je kunt ze nog steeds weigeren of wissen."
+            NOT_GRANTABLE: 'Je kunt deze machtiging niet verlenen omdat je eigen account deze niet heeft'
+        PLUGIN:
+            BACK_TO_DASHBOARD: 'Terug naar Dashboard'
+            NO_CONTENT_AVAILABLE_FOR_THIS_PLUGIN: 'Geen inhoud beschikbaar voor deze pluginpagina.'
+        PLUGINS:
+            BACK_TO_PLUGINS: 'Terug naar Plugins'
+            CHANGELOG: Changelog
+            CHECK_UPDATES: 'Controleer op updates'
+            CONFIGURATION_WAS_MODIFIED_ELSEWHERE: 'Configuratie is elders gewijzigd. Gelieve te herladen.'
+            CONFIGURE: Configureer
+            ENABLE_PLUGIN: 'Plugin inschakelen'
+            FAILED_TO_CHECK_FOR_UPDATES: 'Controleren op updates is mislukt'
+            FAILED_TO_LOAD_PLUGINS: 'Plugins laden mislukt'
+            FAILED_TO_SAVE_CONFIGURATION: 'Configuratie opslaan mislukt.'
+            NO_CONFIGURATION_OPTIONS_AVAILABLE_FOR: 'Geen configuratieopties beschikbaar voor deze plugin.'
+            PAGE_TITLE: '{name} — Plugins — Grav Admin'
+            PLUGINS_GRAV_ADMIN: 'Plugins — Grav Admin'
+            PLUGIN_CHANGED_ELSEWHERE_SAVE_TO: 'Plugin gewijzigd elders — opslaan om te overschrijven of opnieuw laden'
+            PLUGIN_MUST_BE_ENABLED_TO_CONFIGURE: 'Plugin moet zijn ingeschakeld om te configureren.'
+            REMOVE_PLUGIN: 'Plugin verwijderen'
+            SEARCH_PLUGINS: 'Plugins zoeken...'
+            SELECT_A_PLUGIN_TO_VIEW_DETAILS: 'Selecteer een plugin om details weer te geven'
+            SYMLINKED: 'Symbolische koppeling'
+            REMOVE_CONFIRM_MESSAGE: '{name} verwijderen? Hiermee wordt de plug-in verwijderd en worden de bijbehorende bestanden gewist. De instellingen blijven behouden.'
+            REMOVE_CONFIRM_TITLE: 'Plug-in verwijderen?'
+            TITLE: Plug-ins
+            UPDATE_ALL: 'Alles bijwerken'
+            UPDATE_ALL_CONFIRM_MESSAGE: '{n, plural, one{# plugin wordt bijgewerkt:} other{# plugins worden bijgewerkt:}}'
+            UPDATE_ALL_CONFIRM_TITLE: 'Plugins bijwerken?'
+            UPDATE_CONFIRM_MESSAGE: '{name} bijwerken naar v{version}?'
+            UPDATE_CONFIRM_TITLE: 'Plugin bijwerken?'
+        PLUGIN_PAGE_COMPONENT:
+            LOADING_PLUGIN_PAGE: 'Pluginpagina laden...'
+        PLUGIN_WIDGET_LOADER:
+            WIDGET_FAILED_TO_LOAD: 'Widget kon niet worden geladen'
+        POPULARITY_WIDGET:
+            LAST_14_DAYS: 'Afgelopen 14 dagen'
+            THIS_MONTH: 'Deze maand'
+            THIS_WEEK: 'Deze week'
+            CHART_LABEL: 'Paginaweergaven per dag voor de laatste 14 dagen'
+            TODAY: Vandaag
+            VIEWS: '{count, plural, one {# weergave} other {# weergaven}}'
+            CHART_RANGE_LABEL: 'Paginaweergaven, {range}'
+            LAST_12_MONTHS: 'Laatste 12 maanden'
+            LAST_30_DAYS: 'Laatste 30 dagen'
+            LAST_7_DAYS: 'Laatste 7 dagen'
+            LAST_90_DAYS: 'Laatste 90 dagen'
+            LOAD_FAILED: 'Kon dit tijdsbestek niet laden'
+            PREVIOUS_PERIOD: '{count, plural, one {# weergave} other {# weergaven}} in de vorige periode'
+            SHORT_12M: 12M
+            SHORT_14D: 14D
+            SHORT_30D: 30D
+            SHORT_7D: 7D
+            SHORT_90D: 90D
+            SO_FAR: 'tot nu toe'
+            TIME_FRAME: Tijdsbestek
+            VS_PREVIOUS: 'vergeleken met de vorige periode'
+        PREMIUM: Premium
+        PREVIEW: Voorbeeld
+        REAUTH_MODAL:
+            PLEASE_RE_ENTER_YOUR_PASSWORD_TO: 'Voer uw wachtwoord opnieuw in om door te gaan. Uw werk is behouden gebleven.'
+            SESSION_EXPIRED: 'Sessie verlopen'
+            SIGN_IN_AGAIN_TO_CONTINUE: 'Meld je opnieuw aan om door te gaan. Je werk is behouden.'
+        RECENT_PAGES_WIDGET:
+            VIEW_ALL: 'Alles weergeven'
+        REMOVE: Verwijderen
+        RESET:
+            BACK_TO_SIGN_IN: 'Terug naar aanmelden'
+            CONFIRM_PASSWORD: 'Wachtwoord bevestigen'
+            INVALID_LINK: 'Ongeldige resetkoppeling.'
+            NEW_PASSWORD_FOR: 'Kies een nieuw wachtwoord voor **{username}**.'
+            PASSWORDS_DO_NOT_MATCH: 'Wachtwoorden komen niet overeen'
+            PASSWORD_RESET_SUCCESSFULLY_PLEASE_SIGN: 'Wachtwoord succesvol opnieuw ingesteld. Meld u alstublieft aan.'
+            RESETTING: 'Opnieuw instellen...'
+            RESET_PASSWORD: 'Wachtwoord opnieuw instellen'
+            RESET_PASSWORD_GRAV_ADMIN: 'Wachtwoord opnieuw instellen — Grav Admin'
+            THIS_RESET_LINK_IS_MISSING_REQUIRED: "Deze resetlink bevat niet alle vereiste parameters. Vraag een nieuwe aan via de pagina 'Wachtwoord vergeten'."
+            UNABLE_TO_CONNECT_TO_SERVER: 'Kan niet verbinding maken met server.'
+        SAVE: Opslaan
+        SAVING: Opslaan...
+        SEARCH: Zoeken
+        SETTINGS:
+            1_SECOND: '1 seconde'
+            2_SECONDS: '2 seconden'
+            ACCENT_COLOR: Accentkleur
+            ADD_LINK: 'Link toevoegen'
+            ADMIN_INTERFACE_LANGUAGE: 'Taal admininterface'
+            ADMIN_LANGUAGE: Beheeradministrator-taal
+            ADMIN_LANGUAGE_DESC: "Taal voor labels, menu's en berichten ({count} strings geladen)"
+            ADMIN_PREFERENCES_AND_APPEARANCE: 'Beheerdervoorkeuren en -uiterlijk'
+            APPEARANCE: Uiterlijk
+            AUTHENTICATED_AS: 'Geverifieerd als'
+            AUTOMATICALLY_SAVE_WHEN_YOU_LEAVE_A: 'Automatisch opslaan wanneer u een veld verlaat'
+            AUTO_SAVE: 'Automatisch opslaan'
+            AUTO_SAVE_AND_UNDO_BEHAVIOR_FOR_FORM: 'Gedrag voor automatisch opslaan en ongedaan maken voor formuliereditoren'
+            BRANDING: Branding
+            BRANDING_DESC: 'Logo en brandingtext die overal in de admin worden weergegeven.'
+            CHOOSE_BETWEEN_LIGHT_AND_DARK_APPEARANCE: 'Kies tussen lichte en donkere weergave'
+            CHOOSE_HOW_THE_LOGO_IS_DISPLAYED: 'Kies hoe het logo wordt weergegeven'
+            COLLAB_DESCRIPTION: 'Live editing voor meerdere gebruikers met aanwezigheid. Vereist de `sync`-plugin op de server. Experimenteel.'
+            COLOR_MODE: Kleurmodus
+            CONNECTION: Verbinding
+            CUSTOMIZE_THE_LOGO_SHOWN_IN_THE_SIDEBAR: 'Pas het logo aan dat in de zijbalk en inlogpagina wordt weergegeven'
+            CUSTOMIZE_THE_LOOK_AND_FEEL_OF_THE_ADMIN: 'Pas het uiterlijk van de beheerinterface aan'
+            CUSTOM_IMAGE: 'Aangepaste afbeelding'
+            CUSTOM_SHORTCUTS_SHOWN_IN_THE_TOP: 'Aangepaste snelkoppelingen weergegeven in de bovenste menubalk'
+            CUSTOM_TEXT: 'Aangepaste tekst'
+            DARK: Donker
+            DARK_LOGO: 'Donker logo'
+            DARK_LOGO_REMOVED: 'Donker logo verwijderd.'
+            DARK_LOGO_UPLOADED: 'Donker logo geüpload.'
+            DARK_MODE_LOGO: 'Dark Mode Logo'
+            DEFAULT_APPEARANCE: Standaardweergave
+            DEFAULT_COLOR_APPEARANCE_DESC: 'Standaard kleurweergave voor nieuwe gebruikers.'
+            DEFAULT_FORM_EDITOR_DENSITY: 'Standaard formuliereditordichtheid.'
+            DEFAULT_INTERFACE_LANGUAGE_DESC: 'Standaardinterfacetaal voor nieuwe gebruikers.'
+            DEFAULT_LANGUAGE: Standaardtaal
+            DEFAULT_PAGES: "Standaardpagina's"
+            DEFAULT_PRIMARY_COLOR_DESC: 'Standaardprimaire kleur voor knoppen, koppelingen en highlights.'
+            DEFAULT_SETTINGS_FOR_THE_PAGE_BROWSER: 'Standaardinstellingen voor de paginabrowser'
+            DEFAULT_TEXT_SIZE_DESC: 'Standaardtekstgrootte voor de admin-UI.'
+            DEFAULT_TYPEFACE_DESC: 'Standaardlettertype voor de admin UI.'
+            DEFAULT_VIEW: Standaardweergave
+            DEUTSCH: Deutsch
+            EDITING: Bewerking
+            EDITOR_HEADING: Editor
+            EDITOR_MODE: Editor-modus
+            ENGLISH: English
+            ENVIRONMENT: Omgeving
+            ESPA_OL: Español
+            EXTERNAL: Extern
+            FAILED_TO_REMOVE_LOGO: 'Kon logo niet verwijderen.'
+            FAILED_TO_RESET_PREFERENCES: 'Kon voorkeuren niet opnieuw instellen.'
+            FAILED_TO_SAVE_LOGO_MODE: 'Kon logo-modus niet opslaan.'
+            FAILED_TO_SAVE_LOGO_TEXT: 'Kon logo-tekst niet opslaan.'
+            FAILED_TO_SAVE_SITE_DEFAULTS: 'Kon standaardinstellingen van site niet opslaan.'
+            FOLLOW_OS: 'Volg OS'
+            FONT: Lettertype
+            FONT_SIZE: Lettergrootte
+            FONT_SIZE_LARGE: Groot
+            FONT_SIZE_NORMAL: Normaal
+            FONT_SIZE_SMALL: Klein
+            FONT_SIZE_XLARGE: X-Groot
+            FRAN_AIS: Français
+            GRAV_LOGO: 'Grav Logo'
+            GROUP_RAPID_FIELD_CHANGES_INTO_A_SINGLE: 'Snelle veldwijzigingen in één ongedaan maken-stap groeperen'
+            HOW_PAGES_ARE_DISPLAYED_BY_DEFAULT: "Hoe pagina's standaard worden weergegeven"
+            HUE: Tint
+            ITALIANO: Italiano
+            ITEMS_PER_PAGE: 'Items per pagina'
+            LANGUAGE_CHANGED: 'Taal gewijzigd naar {language}'
+            LIGHT: Licht
+            LIGHT_LOGO: 'Licht logo'
+            LIGHT_LOGO_REMOVED: 'Licht logo verwijderd.'
+            LIGHT_LOGO_UPLOADED: 'Licht logo geüpload.'
+            LIGHT_MODE_LOGO: 'Licht modus logo'
+            LOGO_TEXT: 'Logo tekst'
+            LOGO_TYPE: 'Logo type'
+            LOGO_UPLOAD_FAILED: 'Logo uploaden mislukt.'
+            MENUBAR_LINKS: Menubalkoppelingen
+            NEDERLANDS: Nederlands
+            NONE_1_FIELD_1_UNDO: 'Geen (1 veld = 1 ongedaan maken)'
+            NUMBER_OF_PAGES_SHOWN_IN_LIST_VIEW: "Aantal pagina's weergegeven in lijstweergave"
+            'OFF': Uit
+            'ON': Aan
+            PLUGIN_ON_THE_SERVER_EXPERIMENTAL: 'plugin op de server. Experimenteel.'
+            PORTUGU_S: Português
+            PREFERENCES_RESET_RELOAD_TO_APPLY: 'Voorkeuren gereset. Herlaad om toe te passen.'
+            PRIMARY_COLOR_USED_FOR_BUTTONS_LINKS: 'Primaire kleur gebruikt voor knoppen, koppelingen en markeringen'
+            REAL_TIME_COLLABORATION: 'Realtime samenwerking'
+            REMOVE_LINK: 'Koppeling verwijderen'
+            RESET: Herstellen
+            RESET_ALL_PREFERENCES: 'Alle voorkeuren herstellen'
+            RESET_PREFERENCES: 'Voorkeuren herstellen'
+            RESET_PREFERENCES_MSG: 'Alle persoonlijke instellingen verwijderen en naar de standaardinstellingen van de site terugkeren?'
+            RESET_TO_SITE_DEFAULTS: 'Mijn voorkeuren terugzetten naar standaardinstellingen van de site'
+            REVERT_CHANGES: 'Wijzigingen ongedaan maken'
+            SATURATION: Verzadiging
+            SAVED_AUTOMATICALLY: 'Automatisch opgeslagen'
+            SAVE_SITE_DEFAULTS: 'Standaardinstellingen van de site opslaan'
+            SERVER_CONNECTION_DETAILS: Serververbindingsgegevens
+            SERVER_URL: Server-URL
+            SETTINGS_GRAV_ADMIN: 'Instellingen — Grav Admin'
+            SHOW_AN_UNDO_BUTTON_IN_THE_EDITOR: 'Een knop ongedaan maken weergeven in de editorwerkbalk'
+            SITE_DEFAULTS: 'Standaardinstellingen van de site'
+            SITE_DEFAULTS_DESCRIPTION: "Onderstaande instellingen gelden voor elke admin-gebruiker als basis. Items van categorie B (uiterlijk, pagina's, taal, editor) kunnen worden overschreven in de eigen voorkeuren van elke gebruiker. Items van categorie A (bewerking, menubalk) zijn sitebreed en kunnen niet worden overschreven."
+            SITE_DEFAULTS_SAVED: 'Standaardinstellingen van de site opgeslagen. Alle gebruikers zien deze bij de volgende herlezing.'
+            SITE_SETTINGS_DESC: 'Standaardvoorkeuren voor nieuwe gebruikers en sitebreed gedrag. Wijzigingen worden toegepast bij de volgende herlezing voor betrokken gebruikers.'
+            SITE_SETTINGS_HEADING: Site-instellingen
+            SITE_WIDE_ONLY: 'Alleen sitebreed'
+            TEXT_SIZE_USED_THROUGHOUT_THE_ADMIN: 'Tekstgrootte gebruikt in de gehele admin'
+            THE_FIRST_LETTER_BECOMES_THE_ICON: 'De eerste letter wordt het pictogram'
+            TOOLBAR_UNDO_BUTTON: 'Werkbalk ongedaan maken knop'
+            TYPEFACE_USED_THROUGHOUT_THE_ADMIN: 'Lettertype gebruikt in de gehele admin'
+            UNDO_BATCH_WINDOW: 'Venster ongedaan maken batch'
+            USED_ON_DARK_BACKGROUNDS: 'Gebruikt op donkere achtergronden'
+            USED_ON_LIGHT_BACKGROUNDS: 'Gebruikt op lichte achtergronden'
+            USERS_MAY_OVERRIDE: 'Gebruikers kunnen dit overschrijven'
+            OTHER_LIST_VIEWS: 'Andere lijstweergaven'
+            OTHER_LIST_VIEWS_DESC: 'Standaardindeling voor de lijsten met gebruikers, plug-ins en thema’s'
+            EDITOR_HEIGHT: Editorhoogte
+            EDITOR_HEIGHT_AUTO: Auto
+            EDITOR_HEIGHT_DESC: 'Laat de editor meegroeien met je inhoud, of beperk deze tot een vaste hoogte met een eigen scrollbalk.'
+            EDITOR_HEIGHT_FIXED: Vast
+            EDITOR_SECTION_DESC: 'Hoe de Markdown-editor zich gedraagt tijdens het schrijven.'
+            STICKY_TOOLBAR: 'Vaste werkbalk'
+            STICKY_TOOLBAR_DESC: 'Houd de werkbalk voor opmaak en de knop Voorbeeld in beeld terwijl je scrolt.'
+            ADMIN_TITLE: 'Admin titel'
+            ADMIN_TITLE_DESC: 'Wordt getoond in het browsertabblad en als de aanmeldingskop, tenzij er een aangepast logo is ingesteld (aangezien het logo de site al benoemt). Laat leeg voor „Grav Admin”.'
+            FAILED_TO_SAVE_BRANDING: 'Opslaan van branding mislukt.'
+            FAVICON: Favicon
+            FAVICON_DESC: 'Aangepast icoon voor browsertabbladen (SVG, PNG, WebP of ICO). Laat leeg voor het gegenereerde icoon.'
+            FAVICON_REMOVED: 'Favicon verwijderd.'
+            FAVICON_UPLOADED: 'Favicon geüpload.'
+            LOGIN_SUBTITLE: 'Ondertitel inlogscherm'
+            LOGIN_SUBTITLE_DESC: 'Optionele regel die onder de koptekst bij het inloggen wordt getoond.'
+            SHOW_POWERED_BY: 'Toon „Powered by Grav”'
+            SHOW_POWERED_BY_DESC: 'Toon de regel „Powered by Grav CMS” op de inlog- en configuratieschermen.'
+            EDITOR_KEYMAP: Sneltoetsen
+            EDITOR_KEYMAP_DEFAULT: Standaard
+            EDITOR_KEYMAP_DESC: 'Gebruik Vim-sneltoetsen in de Markdown- en code-editors. Standaard behoudt de standaard bewerking.'
+            EDITOR_KEYMAP_VIM: Vim
+            COPY_COLOR: 'Kopieer deze kleur'
+            CURRENT_COLOR: Kleur
+            DARK_SHADE: 'Donkere tint'
+            DARK_SHADE_DESC: 'Hoe de donkere modus eruitziet. Dit is alleen van toepassing wanneer de donkere modus is ingeschakeld.'
+            DARK_SHADE_GRAPHITE: Grafiet
+            DARK_SHADE_MIDNIGHT: Middernacht
+            DARK_SHADE_ZINC: Onyx
+            DEFAULT_DARK_SHADE_DESC: 'Standaard donkere tint voor nieuwe gebruikers. Dit is alleen van toepassing wanneer de donkere modus is ingeschakeld.'
+            DEFAULT_HELP_TEXT_DESC: 'Standaardlocatie voor hulptekst bij velden voor nieuwe gebruikers, onder het label of in een tooltip.'
+            HELP_MODE_INLINE: 'Onder het label'
+            HELP_MODE_TOOLTIP: 'In een tooltip'
+            HELP_TEXT: Hulptekst
+            HELP_TEXT_DESC: 'Waar de korte uitleg voor elk veld komt te staan. Bij een tooltip: zweef met de muis over het info-icoon naast een label, of tik erop op een telefoon, om de tekst te lezen.'
+            LOGO_HEIGHT_CUSTOM: Aangepast
+            LOGO_HEIGHT_DEFAULT: Standaard
+            SIDEBAR_LOGO_HEIGHT: 'Hoogte zijbalklogo'
+            SIDEBAR_LOGO_HEIGHT_DESC: 'Hoe groot je logo wordt weergegeven bovenaan de zijbalk.'
+            SHOW_CREDIT: 'Toon Trilby Media credit'
+            SHOW_CREDIT_DESC: 'Toon de regel „Grav was coded with love by Trilby Media” onderaan de zijbalk.'
+        SETUP:
+            3_64_CHARACTERS_LETTERS_NUMBERS_HYPHENS: '3-64 tekens: letters, nummers, koppeltekens, underscores'
+            ADMINISTRATOR_ACCOUNT_CREATED_WELCOME: 'Beheerdersaccount aangemaakt — welkom bij Grav'
+            CHECKING_SERVER: 'Server controleren…'
+            CONFIRM_PASSWORD: 'Wachtwoord bevestigen'
+            CREATE_ADMINISTRATOR: 'Administrator maken'
+            CREATE_YOUR_ADMINISTRATOR_ACCOUNT_TO: 'Maak uw beheerdersaccount aan om aan de slag te gaan'
+            CREATING_ACCOUNT: 'Account wordt aangemaakt...'
+            ENTER_A_VALID_EMAIL_ADDRESS: 'Voer een geldig e-mailadres in'
+            ENVIRONMENT: Omgeving
+            FULL_NAME: 'Volledige naam'
+            OPTIONAL: (optioneel)
+            PASSWORDS_DO_NOT_MATCH: 'Wachtwoorden komen niet overeen'
+            PLEASE_FIX_THE_ERRORS_ABOVE_AND_TRY: 'Los de bovenstaande fouten op en probeer opnieuw'
+            POWERED_BY_GRAV_CMS: 'Aangestuurd door Grav CMS'
+            SERVER_CONFIGURATION: Serverconfiguratie
+            SERVER_URL: Server-URL
+            SETUP_GRAV_ADMIN: 'Instellen — Grav Admin'
+            SETUP_HAS_ALREADY_BEEN_COMPLETED_PLEASE: 'De installatie is al voltooid. Log in.'
+            UNABLE_TO_CONNECT_TO_SERVER_CHECK_YOUR: 'Kan geen verbinding maken met de server. Controleer uw server-URL en probeer opnieuw.'
+            WELCOME_TO_GRAV: 'Welkom bij Grav'
+        SIGN_OUT: Afmelden
+        STATS_WIDGET:
+            ACTIVE_COUNT: '({n} actief)'
+            ACTIVE_THEME: 'Actief thema'
+            UPDATE_COUNT: '{n, plural, one{# update} other{# updates}}'
+        SYNC:
+            EDITOR_LOCK_NOTICE:
+                BUILTIN_MARKDOWN_EDITOR: 'de ingebouwde markdown-editor'
+                LOCKED: 'Alleen-lezen — {owner} bewerkt met **{editor}**. Gemengde editortypen kunnen niet samen bewerken; [wijzig uw editorvoorkeur]({href}) om live samen te werken.'
+                SWITCH_YOUR_EDITOR_PREFERENCE: 'wijzig uw editorvoorkeur'
+                TO_COLLABORATE_LIVE: 'om live samen te werken.'
+                LOCKED_EXPERT: 'Alleen-lezen: {owner} bewerkt met **{editor}**, wat niet kan samenwerken met de markdown-editor in de Expert-modus. Schakel terug naar de Normale modus om live samen te werken.'
+        SYSTEM:
+            COMING_SOON: 'Binnenkort beschikbaar'
+            SYSTEM_GRAV_ADMIN: 'Systeem — Grav Admin'
+        SYSTEM_HEALTH_WIDGET:
+            BYTES_FREE: '{size} vrij'
+            BYTES_USED: '{size} gebruikt'
+            CACHE: Cache
+            DISK: Schijf
+            EVERYTHING_UP_TO_DATE: 'Alles is up-to-date'
+            GRAV_IS_INSTALLED_VIA_SYMLINK_UPGRADE: 'Grav is geïnstalleerd via symlink — upgrade handmatig.'
+            GRAV_UPDATE_AVAILABLE: 'Grav-update beschikbaar'
+            MORE_COUNT: '+ {n} meer…'
+            PACKAGES_OUTDATED: '{n, plural, one{# pakket verouderd} other{# pakketten verouderd}}'
+            PERCENT_USED: '{percent}% gebruikt'
+            SERVER: Server
+            UPDATES: Updates
+            UPDATES_AVAILABLE_COUNT: '{n} beschikbaar'
+            UPDATE_ALL: 'Alles bijwerken'
+            UPGRADE_GRAV: 'Grav upgraden'
+            UPDATE_ALL_CONFIRM_MESSAGE: '{n, plural, one{# pakket wordt bijgewerkt:} other{# pakketten worden bijgewerkt:}}'
+            UPDATE_ALL_CONFIRM_TITLE: 'Alle pakketten bijwerken?'
+        THEMES:
+            ACTIVE_THEME: 'Actief thema'
+            BACK_TO_THEMES: "Terug naar thema's"
+            CHANGELOG: Wijzigingenlogboek
+            CHECK_UPDATES: 'Updates controleren'
+            CLICK_TO_VIEW_FULL_SIZE: 'Klik om volledige grootte weer te geven'
+            CONFIGURATION_WAS_MODIFIED_ELSEWHERE: 'Configuratie is elders gewijzigd. Laad alstublieft opnieuw.'
+            CONFIGURE: Configureren
+            FAILED_TO_CHECK_FOR_UPDATES: 'Controleren op updates is mislukt'
+            FAILED_TO_LOAD_THEMES: "Thema's laden is mislukt"
+            FAILED_TO_SAVE_CONFIGURATION: 'Configuratie opslaan is mislukt.'
+            NO_CONFIGURATION_OPTIONS_AVAILABLE_FOR: 'Geen configuratieopties beschikbaar voor dit thema.'
+            PAGE_TITLE: "{name} — Thema's — Grav Admin"
+            REMOVE_THEME: 'Thema verwijderen'
+            SEARCH_THEMES: "Thema's zoeken..."
+            SELECT_A_THEME_TO_VIEW_DETAILS: 'Selecteer een thema om details weer te geven'
+            SYMLINKED: Gesymlinkt
+            THEMES_GRAV_ADMIN: "Thema's — Grav Admin"
+            ACTIVATE: Activeren
+            ACTIVATE_CONFIRM_MESSAGE: 'Het thema van de actieve site wijzigen in {name}? De weergave op de frontend zal onmiddellijk dit thema gebruiken.'
+            ACTIVATE_CONFIRM_TITLE: 'Thema activeren?'
+            ACTIVATE_THEME: 'Activeer {name}'
+            DELETE_ACTIVE_WARNING: 'Momenteel actief. Wissel eerst van thema voordat je het verwijdert.'
+            REMOVE_ACTIVE_CONFIRM_MESSAGE: 'Thema {name} is het momenteel actief. Als je dit verwijdert, heeft de site geen thema meer totdat er een ander wordt geactiveerd. Doorgaan?'
+            REMOVE_CONFIRM_MESSAGE: '{name} verwijderen? Hiermee wordt het thema verwijderd en worden de bijbehorende bestanden gewist.'
+            REMOVE_CONFIRM_TITLE: 'Thema verwijderen?'
+            TITLE: "Thema's"
+            UPDATE_ALL: 'Alles bijwerken'
+            UPDATE_ALL_CONFIRM_MESSAGE: "{n, plural, one{# thema wordt bijgewerkt:} other{# thema's worden bijgewerkt:}}"
+            UPDATE_ALL_CONFIRM_TITLE: "Thema's bijwerken?"
+            UPDATE_CONFIRM_MESSAGE: '{name} bijwerken naar v{version}?'
+            UPDATE_CONFIRM_TITLE: 'Thema bijwerken?'
+        TIME:
+            DAYS_AGO: '{n}d geleden'
+            HOURS_AGO: '{n}u geleden'
+            JUST_NOW: zojuist
+            MINUTES_AGO: '{n}m geleden'
+        TOGGLE_DARK_MODE: 'Donkere modus aan/uit'
+        TOGGLE_MENU: 'Menu aan/uit'
+        TOOLS:
+            BACKUPS:
+                ACTION: Actie
+                BACKUP_CREATED_SUCCESSFULLY: 'Back-up succesvol gemaakt'
+                BACKUP_DATE: Backup-datum
+                BACKUP_DELETED: 'Back-up verwijderd'
+                BACKUP_HISTORY: Back-upgeschiedenis
+                BACKUP_NOW: 'Nu een backup maken'
+                BACKUP_STATISTICS: Backup-statistieken
+                CREATING: 'Bezig met maken...'
+                DELETE_BACKUP: 'Backup verwijderen'
+                FAILED_TO_CREATE_BACKUP: 'Kan backup niet maken'
+                FAILED_TO_DELETE_BACKUP: 'Kan backup niet verwijderen'
+                FAILED_TO_LOAD_BACKUPS: 'Kan backups niet laden'
+                LOADING_BACKUPS: 'Backups worden geladen...'
+                NEWEST_BACKUP: 'Nieuwste backup'
+                NO_BACKUPS_FOUND_CREATE_ONE_TO_GET: 'Geen backups gevonden. Maak een backup om te beginnen.'
+                NUMBER_OF_BACKUPS: 'Aantal backups'
+                NUMBER_OF_PROFILES: 'Aantal profielen'
+                OLDEST_BACKUP: 'Oudste backup'
+            BACKUPS_SCHEDULER_LOGS_AND_DIAGNOSTICS: 'Backups, scheduler, logs en diagnostiek'
+            DIRECT_INSTALL:
+                DROP_A_ZIP_FILE_HERE_OR_CLICK_TO_BROWSE: 'Sleep een .zip-bestand hier of klik om te bladeren'
+                INSTALL_FROM_FILE: 'Installeren vanuit bestand'
+                INSTALL_FROM_URL: 'Installeren vanuit URL'
+                ONLY_ZIP_FILES_ARE_SUPPORTED: 'Alleen .zip-bestanden worden ondersteund'
+                PACKAGE_INSTALLED_SUCCESSFULLY: 'Pakket succesvol geïnstalleerd'
+                SUPPORTS_GRAV_PLUGIN_AND_THEME_PACKAGES: 'Ondersteunt Grav-plugin- en thema-pakketten'
+            LOGS:
+                100_LINES: '100 regels'
+                200_LINES: '200 regels'
+                25_LINES: '25 regels'
+                50_LINES: '50 regels'
+                ALL_LEVELS: 'Alle niveaus'
+                CRITICAL: Kritiek
+                EMERGENCY: Noodtoestand
+                FAILED_TO_LOAD_LOGS: 'Logboeken konden niet worden geladen'
+                FAILED_TO_LOAD_LOG_FILES: 'Logbestanden konden niet worden geladen'
+                LOADING_LOGS: 'Logbestanden laden...'
+                LOG_FILE: Logbestand
+                MESSAGE: Bericht
+                NOTICE: Opmerking
+                REFRESH: Vernieuwen
+                SEARCH_MESSAGES: 'Berichten zoeken...'
+                WARNING: Waarschuwing
+                CLEAR_LOG: 'Logboek wissen'
+                CLEAR_LOG_CONFIRM: 'Alle vermeldingen in {file} permanent verwijderen? Dit kan niet ongedaan worden gemaakt en hiermee gaat elk overzicht van wat er voorheen is misgegaan verloren.'
+                FAILED_TO_CLEAR_LOG: 'Logboek wissen mislukt'
+                LOG_CLEARED: '{file} gewist'
+            REPORTS:
+                CONTENT_FIELD: 'content: {field}'
+                FAILED_TO_LOAD_REPORTS: 'Rapporten konden niet worden geladen'
+                LOADING_REPORTS: 'Rapporten laden...'
+                NO_REPORTS_AVAILABLE: 'Geen rapporten beschikbaar.'
+                TWIG_CONTENT:
+                    ADDED_TO_ALLOWLIST: "''{token}'' toegevoegd aan {key}"
+                    ADD_FAILED: 'Kon de allowlist niet bijwerken'
+                    ADD_TO_ALLOWLIST: 'Toevoegen aan allowlist'
+                    CLEARED_EVENTS: 'Recente blokkades gewist'
+                    CLEAR_EVENTS: 'Blokkades wissen'
+                    CLEAR_FAILED: 'Kon blokkades niet wissen'
+                    EVENT_GATE_BLOCKED: 'Gate heeft Twig in de inhoud van deze pagina geblokkeerd'
+                    EVENT_SANDBOX_FILTER: 'Sandbox heeft filter geblokkeerd'
+                    EVENT_SANDBOX_FUNCTION: 'Sandbox heeft functie geblokkeerd'
+                    EVENT_SANDBOX_METHOD: 'Sandbox heeft methode geblokkeerd'
+                    EVENT_SANDBOX_PROPERTY: 'Sandbox heeft eigenschap geblokkeerd'
+                    EVENT_SANDBOX_TAG: 'Sandbox geblokkeerde tag'
+                    FRONTMATTER_REQUEST_GATED: 'Frontmatter Twig is aangevraagd (pages.frontmatter.process_twig), maar Twig in content is globaal uitgeschakeld, dus het zal niet worden uitgevoerd. Kies hierboven een profiel om het in te schakelen.'
+                    GATE_OFF: 'Twig in content uitgeschakeld'
+                    GATE_ON: 'Twig in content ingeschakeld'
+                    GLOBAL_REQUEST_GATED: "system.pages.process.twig staat aan, maar Twig in content is globaal uitgeschakeld, dus die pagina's worden als onbewerkte tekst weergegeven. Kies hierboven een profiel om het in te schakelen, of verwijder de globale vlag."
+                    LEAK_GATE_OFF: 'De site-beveiliging staat uit, dus de Twig-markup van deze pagina wordt als onbewerkte tekst aan bezoekers getoond.'
+                    LEAK_PAGE_OFF: 'Twig is uitgeschakeld voor deze pagina, dus de Twig-markup wordt als onbewerkte tekst aan bezoekers getoond.'
+                    OPEN_SECURITY_SETTINGS: 'Open beveiligingsinstellingen'
+                    SANDBOX_OFF: 'Sandbox uit'
+                    SANDBOX_ON: 'Sandbox aan'
+                    SCAN_CLEAN: 'Geen inhoud gebruikt Twig buiten de huidige toegestane lijsten.'
+                    SCAN_CONTENT: 'Inhoud scannen'
+                    SCAN_FAILED: 'Inhoudsscan mislukt'
+                    SCAN_FILTERS: 'Geblokkeerde filters in inhoud'
+                    SCAN_FUNCTIONS: 'Geblokkeerde functies in inhoud'
+                    SCAN_INTRO: 'Scan alle pagina-inhoud op Twig die de sandbox zou blokkeren.'
+                    SCAN_TAGS: 'Geblokkeerde tags in inhoud'
+                    SECTION_EVENTS: 'Recente blokkades'
+                    SECTION_LEAKS: "Pagina's die onbewerkte Twig lekken"
+                    POLICY_ADDED: '+{count} toegevoegd'
+                    POLICY_ALL_DEFAULTS: 'Alle standaarden, ongewijzigd'
+                    POLICY_CLASS_COUNT: '{count, plural, one {# klasse} other {# klassen}}'
+                    POLICY_DENIED: '−{count} geweigerd'
+                    POLICY_EFFECTIVE_COUNT: '{count} effectief'
+                    POLICY_FAILED: 'Kon het sandbox-beleid niet laden'
+                    POLICY_FILTERS: Filters
+                    POLICY_FUNCTIONS: Functies
+                    POLICY_HIDE: 'Verberg effectief beleid'
+                    POLICY_INTRO: 'De sandbox-basislijn wordt meegeleverd in de code; je configuratie verruimt of verstrakt deze alleen.'
+                    POLICY_METHODS: Methoden
+                    POLICY_PROPERTIES: Eigenschappen
+                    POLICY_TAGS: Tags
+                    POLICY_VIEW: 'Toon effectief beleid'
+                    IN_PARTIAL: 'Geblokkeerd binnen het ingesloten sjabloon'
+                    TROUBLESHOOTING_LINK: 'Hoe Twig in inhoud te herstellen'
+                    TRUSTED_PARTIAL: "Vertrouwde {template}. Pagina's die dit bevatten, renderen het zoals jouw thema dat doet."
+                    TRUST_FAILED: 'Kon het gedeeltelijke bestand niet vertrouwen'
+                    TRUST_PARTIAL: 'Vertrouw dit gedeeltelijke bestand'
+            REPORT_COMPONENT_WRAPPER:
+                LOADING_REPORT_COMPONENT: 'Rapportcomponent laden...'
+            SCHEDULER:
+                CRONTAB_INSTRUCTIONS: 'Om de functionaliteit van de Scheduler in te schakelen, moet u de **Grav Scheduler** toevoegen aan het crontab-bestand van uw systeem voor de **{user}** gebruiker. Voer de bovenstaande opdracht uit via de terminal om deze automatisch toe te voegen. Nadat u hebt opgeslagen, vernieuwt u deze pagina om de status te zien.'
+                FAILED_TO_LOAD_SCHEDULER_CONFIGURATION: 'Scheduler-configuratie kon niet worden geladen.'
+                FAILED_TO_SAVE: 'Opslaan mislukt'
+                GRAV_SCHEDULER: 'Grav Scheduler'
+                INFO_BANNER: 'De scheduler kan zowel systeem-crontab als webhook-triggers gebruiken om opdrachten uit te voeren. Webhooks worden aanbevolen voor cloudomgevingen. Alleen geavanceerde gebruikers moeten aangepaste taken configureren. Onjuiste configuratie of misbruik kan leiden tot beveiligingsproblemen.'
+                LOADING_SCHEDULER: 'Scheduler laden...'
+                NOT_ENABLED_FOR_USER: 'Niet ingeschakeld voor gebruiker:'
+                SCHEDULER_CONFIGURATION_SAVED: 'Scheduler-configuratie opgeslagen'
+                SECURITY_WARNING: 'Alleen geavanceerde gebruikers moeten aangepaste scheduler-taken configureren. Onjuiste configuratie kan prestatieproblemen of beveiligingsproblemen veroorzaken.'
+                WEBHOOK_ALTERNATIVE: 'U kunt ook de **scheduler-webhook** plugin installeren voor webhook-gebaseerde cron-activering, wat aanbevolen wordt voor cloudomgevingen waar systeemcrontab-toegang niet beschikbaar is.'
+                CRON_UNDETERMINED: 'Grav kan de crontab van deze server niet inspecteren, dus het kan niet bevestigen hoe de scheduler wordt geactiveerd.'
+                ENVIRONMENT_MISMATCH: 'De scheduler werd voor het laatst uitgevoerd in de **{last}**-omgeving, maar deze site gebruikt **{current}**, die zijn eigen configuratie heeft in user/env/{current}/config. Aangepaste taken en instellingen die alleen daar zijn gedefinieerd, worden nooit uitgevoerd via die trigger. Update de bin/grav scheduler-regel in je crontab naar het onderstaande commando (het geeft --env={current} door), of exporteer GRAV_ENVIRONMENT={current} voordat deze wordt uitgevoerd.'
+                LAST_MANUAL_RUN: 'Laatst handmatig uitgevoerd'
+                LAST_TRIGGERED: 'Laatst geactiveerd'
+                PROCESS_UNAVAILABLE: "Deze host heeft PHP's proc_open-functie uitgeschakeld, dus taken kunnen niet vanuit het admin-paneel worden gestart. Ze worden nog steeds uitgevoerd wanneer je scheduler wordt geactiveerd door cron of een webhook."
+                STATUS_UNAVAILABLE: 'De status van de scheduler kon niet worden gelezen op deze host. Je taken staan hieronder nog steeds vermeld en kunnen zoals gewoonlijk worden bewerkt.'
+            SYSTEM_INFO:
+                DISK_FREE_OF: '{free} vrij van {total}'
+                DISK_USAGE: Schijfgebruik
+                DRIVER: Stuurprogramma
+                FAILED_TO_LOAD_SYSTEM_INFO: 'Systeeminformatie kon niet worden geladen'
+                GRAV_VERSION: Grav-versie
+                LOADING_SYSTEM_INFO: 'Systeeminformatie laden...'
+                MAX_EXECUTION: 'Max uitvoeringstijd'
+                MAX_POST: 'Max POST'
+                MAX_UPLOAD: 'Max upload'
+                MEMORY_LIMIT: Geheugenlimiet
+                PHP_SAPI: 'PHP SAPI'
+                PHP_VERSION: PHP-versie
+            TOOLS_GRAV_ADMIN: 'Tools — Grav Admin'
+            AUDIT:
+                ACTOR: Actor
+                ALL_EVENTS: 'Alle gebeurtenissen'
+                ALL_SEVERITIES: 'Alle ernstniveaus'
+                AUTH_METHOD: Auth-methode
+                CHANGES: Wijzigingen
+                COVERAGE_DETAILED: Gedetailleerd
+                DESCRIPTION: 'Een overzicht van API-activiteit: inlogpogingen, wijzigingen in content, gebruikers, configuratie en pakketten. Admin Next loopt via de API, dus dit omvat zowel de beheeromgeving als externe API-clients.'
+                DETAILS: Details
+                EVENT: Gebeurtenis
+                EVENT_CODE: Gebeurteniscode
+                FAILED_TO_LOAD: 'Kon auditlogboek niet laden'
+                FROM: Van
+                IP: IP
+                LOADING: 'Auditlogboek laden...'
+                NO_ENTRIES: 'Geen audit-items gevonden.'
+                REFRESH: Vernieuwen
+                SEARCH_PLACEHOLDER: 'Zoek op actor, doel, gebeurtenis, IP...'
+                SEVERITY: Ernst
+                SHOWING: Toont
+                TARGET: Doel
+                TO: Tot
+                USER_AGENT: User-agent
+                WHEN: Wanneer
+        TOP_BANNER:
+            PREVIOUS: Vorige
+            SITE_NOTIFICATION: Sitemelding
+        TOP_PAGES_WIDGET:
+            NO_VIEW_DATA_YET: 'Nog geen weergavegegevens'
+        TOP_PROGRESS_BAR:
+            WORKING: Bezig
+        TWO_FACTOR_FIELD:
+            2FA_DISABLED: '2FA uitgeschakeld'
+            2FA_ENABLED: '2FA ingeschakeld'
+            2FA_IS_ENABLED: '2FA is ingeschakeld'
+            2FA_QR_CODE: '2FA QR-code'
+            ADD_AN_EXTRA_LAYER_OF_SECURITY_BY: 'Voeg een extra beveiligingslaag toe door bij aanmelden een eenmalige code vereist te stellen.'
+            A_ONE_TIME_CODE_IS_REQUIRED_WHENEVER: 'Een eenmalige code is vereist wanneer dit account zich aanmeldt.'
+            A_SECRET_IS_ALREADY_GENERATED_BUT_NOT: 'Een geheim is al gegenereerd maar wordt niet weergegeven om veiligheidsredenen.'
+            CONFIRM_DISABLE: 'Uitschakeling bevestigen'
+            ENABLE_2FA: '2FA inschakelen'
+            ENTER_THE_6_DIGIT_CODE_FROM_YOUR: 'Voer de 6-cijferige code van uw authenticator in'
+            ENTER_YOUR_CURRENT_6_DIGIT_CODE_TO: 'Voer uw huidige 6-cijferige code in om te bevestigen'
+            FAILED_TO_GENERATE_2FA_SECRET: 'Kon 2FA-geheim niet genereren'
+            FINISH_ENABLING_2FA: '2FA-activering voltooien'
+            FORCE_DISABLE: 'Geforceerd uitschakelen'
+            FORCE_DISABLE_PROMPT: '2FA geforceerd uitschakelen voor **{username}**? Gebruik dit alleen voor herstelling van verloren apparaten.'
+            REGENERATE_AND_SHOW_QR: 'Opnieuw genereren en QR-code weergeven'
+            SCAN_THE_QR_CODE_WITH_YOUR: 'Scan de QR-code met uw authenticator-app'
+            SCAN_THE_QR_CODE_WITH_YOUR_2: 'Scan de QR-code met uw authenticator-app en voer vervolgens de 6-cijferige code in om te verifiëren en te activeren.'
+            SECRET_FOR_MANUAL_ENTRY: 'Geheim (voor handmatige invoer):'
+            TWO_FACTOR_AUTHENTICATION_IS_OFF: 'Twee-factor authenticatie is uit'
+            VERIFICATION_CODE: Verificatiecode
+            VERIFY_ENABLE: 'Verifiëren & Inschakelen'
+            CURRENT_CODE_WRONG: 'Die code is niet correct.'
+            ENTER_CODE_TO_REGENERATE: 'Voer je huidige 6-cijferige code in om een nieuw geheim aan te maken. 2FA blijft uitgeschakeld totdat je de nieuwe QR-code scant en een code daarvan verifieert.'
+            REGENERATE: 'Opnieuw genereren'
+            TOO_MANY_CODES: 'Te veel verkeerde codes. Probeer het over een paar minuten opnieuw.'
+        UNSAVED_CHANGES: 'Niet-opgeslagen wijzigingen'
+        UNSAVED_INDICATOR:
+            SAVING_CHANGES: 'Wijzigingen opslaan…'
+            SAVING_CHANGES_2: 'Wijzigingen opslaan'
+            UNSAVED_CHANGES_CLICK_SAVE_TO_PERSIST: 'Niet-opgeslagen wijzigingen — klik Opslaan om ze op te slaan'
+            YOU_HAVE_UNSAVED_CHANGES: 'U hebt niet-opgeslagen wijzigingen'
+        UPDATE_AVAILABLE_VERSION: 'Update beschikbaar: v{version}'
+        UPDATE_TO_VERSION: 'Bijwerken naar v{version}'
+        UPLOAD: Uploaden
+        USERNAME: Gebruikersnaam
+        USERS:
+            2_FACTOR_AUTHENTICATION: '2-Factor Authenticatie'
+            ADD_USER: 'Gebruiker Toevoegen'
+            BACK_TO_USERS: 'Terug naar Gebruikers'
+            CREATED: Gemaakt
+            DELETE_USER: 'Gebruiker Verwijderen'
+            FAILED_TO_LOAD_USERS: 'Kon gebruikers niet laden'
+            FAILED_TO_SAVE_USER: 'Kon gebruiker niet opslaan.'
+            NEW:
+                ACCOUNT: Account
+                CREATE: Maken
+                FULL_NAME: 'Volledige Naam'
+                LOWERCASE_3_64_CHARS: 'kleine letters, 3-64 tekens'
+                NEW_USER: 'Nieuwe Gebruiker'
+                NEW_USER_GRAV_ADMIN: 'Nieuwe Gebruiker — Grav Admin'
+                PERMISSIONS: Machtigingen
+            PAGE_TITLE: '{name} — Gebruikers — Grav Admin'
+            PERMISSIONS: Machtigingen
+            SEARCH_USERS: 'Zoek gebruikers...'
+            SELECT_A_USER_TO_VIEW_DETAILS: 'Selecteer een gebruiker om details weer te geven'
+            STATUS: Status
+            STATUS_HELP: 'Uitgeschakelde accounts kunnen niet inloggen of de API gebruiken.'
+            SUPER_ADMIN: 'Super Admin'
+            USERS_GRAV_ADMIN: 'Gebruikers — Grav Admin'
+            USER_CHANGED_ELSEWHERE_SAVE_TO: 'Gebruiker is elders gewijzigd — opslaan om te overschrijven of herlaad'
+            USER_WAS_MODIFIED_ELSEWHERE_PLEASE: 'Gebruiker is elders gewijzigd. Laad alstublieft opnieuw.'
+            YOU_CANNOT_DELETE_YOUR_OWN_ACCOUNT: 'U kunt uw eigen account niet verwijderen.'
+            CONFIRM_DELETE_USER: "Gebruiker ''{username}'' verwijderen? Dit kan niet ongedaan worden gemaakt."
+            TITLE: Gebruikers
+            EMAIL_CHANGE_CANCELLED: 'E-mailwijziging geannuleerd.'
+            EMAIL_CHANGE_CANCEL_FAILED: 'Het annuleren van de e-mailwijziging is mislukt.'
+            EMAIL_CHANGE_RESEND: 'Opnieuw verzenden'
+            EMAIL_CHANGE_RESEND_FAILED: 'Het opnieuw verzenden van de bevestigingslink is mislukt.'
+            EMAIL_CHANGE_SENT: 'We hebben een bevestigingslink gestuurd naar {email}. Het e-mailadres wordt gewijzigd zodra de link is geopend.'
+            EMAIL_CHANGE_WAITING: 'Wachten op bevestiging: {email}'
+            EMAIL_CONFIRM:
+                MESSAGE: 'Voer je huidige wachtwoord in om je e-mailadres te wijzigen naar {email}.'
+                NOT_SAVED: 'Je nieuwe e-mailadres, {email}, is nog niet opgeslagen. Bevestig het met je huidige wachtwoord.'
+                TITLE: 'Bevestig dat jij het bent'
+            PASSWORD:
+                CHANGE: 'Wachtwoord wijzigen'
+                CHANGED_OTHER: 'Het wachtwoord voor {name} is gewijzigd.'
+                CHANGED_OWN: 'Je wachtwoord is gewijzigd. Andere browsers en apps die zijn ingelogd op je account zijn uitgelogd.'
+                CONFIRM: 'Bevestig nieuw wachtwoord'
+                CURRENT: 'Huidig wachtwoord'
+                CURRENT_REQUIRED: 'Voer je huidige wachtwoord in.'
+                CURRENT_WRONG: 'Je huidige wachtwoord is niet correct.'
+                FAILED: 'Het wijzigen van het wachtwoord is mislukt.'
+                MISMATCH: 'De wachtwoorden komen niet overeen.'
+                NEW: 'Nieuw wachtwoord'
+                NEW_REQUIRED: 'Voer een nieuw wachtwoord in.'
+                NOT_ALLOWED: 'Je hebt geen toestemming om dit wachtwoord te wijzigen.'
+                NO_PASSWORD_HELP: 'Je account heeft nog geen wachtwoord omdat je inlogt via een andere dienst. Stel er een in om ook met je gebruikersnaam en wachtwoord in te kunnen loggen.'
+                OTHER_HELP: 'Stel een nieuw wachtwoord in voor {name}. Zij worden uitgelogd bij elke browser en app, en loggen opnieuw in met het nieuwe wachtwoord.'
+                OWN_HELP: 'Voer je huidige wachtwoord in en daarna twee keer het nieuwe. Je blijft hier ingelogd, en elke andere browser en app die op je account is ingelogd, wordt uitgelogd.'
+                POLICY: 'Het nieuwe wachtwoord voldoet niet aan de vereisten.'
+                SET: 'Wachtwoord instellen'
+                TITLE: Wachtwoord
+                TOO_MANY: 'Te veel foutieve wachtwoorden. Probeer het over een paar minuten opnieuw.'
+        USER_AVATAR_CARD:
+            AVATAR_REMOVED: 'Avatar verwijderd'
+            AVATAR_UPDATED: 'Avatar bijgewerkt'
+            FAILED_TO_REMOVE_AVATAR: 'Avatar kon niet worden verwijderd'
+            FAILED_TO_UPLOAD_AVATAR: 'Avatar kon niet worden geüpload'
+            UPLOAD_AVATAR: 'Avatar uploaden'
+        VERSION: Versie
+        VIEW_SITE_BUTTON:
+            OPEN_SITE_FRONTEND_IN_A_NEW_TAB: 'Website-voorkant in een nieuw tabblad openen'
+            VIEW_SITE: 'Website weergeven'
+        WIDGET_HOST:
+            UNKNOWN_WIDGET: 'Onbekende widget: {id}'
+        ACCOUNTS_CONFIG:
+            FAILED_TO_LOAD: 'Laden van accounts configuratie mislukt'
+            FAILED_TO_SAVE: 'Opslaan van de accountconfiguratie is mislukt'
+            MODIFIED_ELSEWHERE: 'Configuratie is elders gewijzigd. Laad de pagina opnieuw.'
+            NO_FIELDS: 'Er zijn geen configuratieopties beschikbaar.'
+            PAGE_TITLE: 'Accounts configuratie — Grav Admin'
+            SAVED: 'Configuratie opgeslagen'
+            TITLE: 'Accounts configuratie'
+            SUBTITLE: 'Standaardinstellingen voor gebruikersaccounts en registratie'
+        EDIT: Bewerken
+        GROUPS:
+            ADD_GROUP: 'Groep toevoegen'
+            BACK_TO_GROUPS: 'Terug naar overzicht groepen'
+            CONFIRM_DELETE_GROUP: "Groep ''{name}'' verwijderen? Dit kan niet ongedaan worden gemaakt."
+            CREATE: Aanmaken
+            DELETE_GROUP: 'Groep verwijderen'
+            DESCRIPTION: Omschrijving
+            DISPLAY_NAME: 'Toon naam'
+            FAILED_TO_CREATE_GROUP: 'Aanmaken groep is mislukt'
+            FAILED_TO_LOAD_GROUP: "Laden van groep ''{name}'' is mislukt"
+            FAILED_TO_LOAD_GROUPS: 'Laden van groepen is mislukt'
+            FAILED_TO_SAVE_GROUP: 'Bewaren groep is mislukt'
+            GROUPS: Groepen
+            GROUPS_GRAV_ADMIN: 'Groepen — Grav Admin'
+            GROUP_COUNT_ONE: '{n} groep'
+            GROUP_COUNT_OTHER: '{n} groepen'
+            GROUP_CREATED: "Groep ''{name}'' aangemaakt"
+            GROUP_DELETED: "Groep ''{name}'' verwijderd"
+            GROUP_DELETE_FAILED: "Kan groep ''{name}'' niet verwijderen"
+            GROUP_MODIFIED_ELSEWHERE: 'Groep is elders gewijzigd. Laad de pagina opnieuw.'
+            GROUP_NAME: 'Naam groep'
+            GROUP_NAME_HELP: '1–200 tekens, bestaande uit letters, cijfers, koppeltekens of onderstrepingstekens. Wordt gebruikt als opslagcode.'
+            GROUP_NAME_PLACEHOLDER: 'bijv. redacteuren'
+            GROUP_PAGE_TITLE: '{name} — Groepen — Grav Admin'
+            GROUP_SAVED: "Groep ''{name}'' opgeslagen"
+            NEW_GROUP: 'Nieuwe groep'
+            NEW_GROUP_GRAV_ADMIN: 'Nieuw groep — Grav Admin'
+            NO_GROUPS: 'Geen groepen gevonden'
+            NO_GROUPS_MATCH_SEARCH: 'Geen groepen gevonden die aan je zoekopdracht voldoen'
+            SEARCH_GROUPS: 'Groepen zoeken...'
+            SELECT_A_GROUP_TO_VIEW_DETAILS: 'Kies een groep om de details te bekijken'
+        INVITATIONS:
+            ACCEPT_FAILED: 'Je account kon niet worden aangemaakt.'
+            ACCEPT_HEADING: 'Uitnodiging accepteren'
+            ACCEPT_SUBHEADING: 'Stel uw account in om aan de slag te gaan.'
+            ACCEPT_SUCCESS: 'Account gemaakt. Welkom!'
+            ACCEPT_TITLE: 'Uitnodiging accepteren — Grav Admin'
+            CHECKING_INVITE: 'Uw uitnodiging wordt gecontroleerd...'
+            CHOOSE_PASSWORD: 'Kies een wachtwoord'
+            CONFIRM_REVOKE: 'Intrekken van de uitnodiging voor {email}? De koppeling werkt niet meer.'
+            COPIED: Gekopieerd
+            COPY: Kopiëren
+            COPY_FAILED: 'Kon de koppeling niet kopiëren.'
+            CREATED_NO_EMAIL_TOAST: 'Uitnodiging gemaakt. E-mail is niet geconfigureerd, dus deel de koppeling handmatig.'
+            CREATE_ACCOUNT: 'Account maken'
+            CREATING_ACCOUNT: 'Account wordt gemaakt...'
+            EMAIL: E-mail
+            EMAIL_SENT_TO: 'Een uitnodigingse-mail is naar {email} verzonden.'
+            EXPIRED: Verlopen
+            EXPIRED_INVITE: 'Deze uitnodiging is verlopen.'
+            EXPIRED_INVITE_BODY: 'Deze uitnodiging is verlopen. Vraag een beheerder om een nieuwe uit te sturen.'
+            EXPIRES_AFTER: 'Uitnodiging verloopt na'
+            EXPIRES_IN_DAYS: '{count, plural, one {Verloopt over # dag} other {Verloopt over # dagen}}'
+            EXPIRES_IN_HOURS: '{count, plural, one {Verloopt over # uur} other {Verloopt over # uur}}'
+            EXPIRY_14_DAYS: '14 dagen'
+            EXPIRY_1_DAY: '1 dag'
+            EXPIRY_30_DAYS: '30 dagen'
+            EXPIRY_3_DAYS: '3 dagen'
+            EXPIRY_7_DAYS: '7 dagen'
+            FULL_NAME_OPTIONAL: 'Volledige naam (optioneel)'
+            GROUPS: Groepen
+            GROUPS_HINT: 'Groepen waaraan de uitgenodigde gebruiker wordt toegevoegd.'
+            INVALID_INVITE: 'Deze uitnodiging is niet geldig.'
+            INVALID_INVITE_BODY: 'Deze uitnodigingslink is ongeldig of is al gebruikt.'
+            INVITE: Uitnodigen
+            INVITED_BY: 'Uitgenodigd door {name}'
+            INVITE_ANOTHER: 'Nog iemand uitnodigen'
+            INVITE_LINK: Uitnodigingslink
+            INVITE_READY: 'Uitnodiging gereed'
+            INVITE_USER: 'Gebruiker uitnodigen'
+            LOADING_GROUPS: 'Groepen laden...'
+            LOAD_FAILED: 'Uitnodigingen laden is mislukt.'
+            MESSAGE_OPTIONAL: 'Persoonlijk bericht (optioneel)'
+            NONE_PENDING: 'Geen uitnodigingen in afwachting'
+            NONE_PENDING_HINT: 'Nodig iemand uit om lid te worden en hun uitnodiging in afwachting verschijnt hier.'
+            NO_GROUPS: 'Nog geen groepen gedefinieerd.'
+            PASSWORD_POLICY: 'Wachtwoord voldoet niet aan het vereiste beleid'
+            PENDING_COUNT: '{count, plural, =0 {Geen uitnodigingen in afwachting} one {# uitnodiging in afwachting} other {# uitnodigingen in afwachting}}'
+            PERMISSIONS: Machtigingen
+            PERMISSIONS_HINT: 'Machtigingen die de uitgenodigde gebruiker zal ontvangen. Ze kunnen zichzelf niet meer machtigingen toekennen dan u hier instelt.'
+            RECIPIENT: Ontvanger
+            RECIPIENT_HINT: 'Ze zullen hun eigen gebruikersnaam en wachtwoord kiezen wanneer ze accepteren.'
+            RESEND: 'Opnieuw verzenden'
+            RESEND_FAILED: 'Opnieuw verzenden uitnodiging is mislukt.'
+            RESENT_TOAST: 'Uitnodiging opnieuw verzonden naar {email}.'
+            REVOKE: Intrekken
+            REVOKED_TOAST: 'Uitnodiging ingetrokken'
+            REVOKE_FAILED: 'Intrekken van de uitnodiging is mislukt.'
+            REVOKE_TITLE: 'Uitnodiging intrekken'
+            SEND_FAILED: 'Verzenden van de uitnodiging is mislukt.'
+            SEND_INVITE: 'Uitnodiging verzenden'
+            SENT_TOAST: 'Uitnodiging verzonden naar {email}.'
+            TITLE_OPTIONAL: 'Titel (optioneel)'
+            USERNAME_INVALID: 'De gebruikersnaam moet uit 3 tot 64 tekens bestaan.'
+            USERNAME_TAKEN: 'Die gebruikersnaam is al in gebruik.'
+            VIEW_PENDING: 'Toon in behandeling'
+        PAGINATION:
+            PAGE_OF: 'Pagina {current} van {total}'
+        PLUGINS_TABLE:
+            NAME: Naam
+            NO_PLUGINS: 'Geen plugins geïnstalleerd'
+            PROTECTED_PLUGIN: 'Deze plug-in kan niet worden uitgeschakeld vanuit Admin-Next zonder dat je jezelf buitensluit'
+            VERSION: Versie
+        THEMES_TABLE:
+            NO_THEMES: "Geen thema's geïnstalleerd"
+        USERS_NAV:
+            CONFIGURATION: Configuratie
+            GROUPS: Groepen
+            INVITATIONS: Uitnodigingen
+            USERS: Gebruikers
+        USERS_TABLE:
+            ACTIONS: Acties
+            CARDS: Kaart
+            DELETE: Verwijderen
+            DISABLED: Uitgeschakeld
+            EDIT: Bewerken
+            EMAIL: E-mail
+            ENABLED: Ingeschakeld
+            FULL_NAME: 'Volledige naam'
+            NO_USERS: 'Geen gebruikers gevonden'
+            STATUS: Status
+            TABLE: Tabel
+            USERNAME: Gebruikersnaam
+            PERMISSIONS: Machtigingen
+            'OFF': Uit
+            'ON': Aan
+        2FA_ENABLED: '2FA ingeschakeld'
+        2FA_SECRET: 2FA-geheim
+        2FA_SECRET_HELP: 'Scan deze QR-code in uw [Authenticator-app](https://learn.getgrav.org/admin-panel/2fa#apps). Het is ook een goed idee om het geheim op een veilige plaats op te slaan, voor het geval u uw app opnieuw moet installeren. Controleer de [Grav-documentatie](https://learn.getgrav.org/admin-panel/2fa) voor meer informatie'
+        2FA_TITLE: 'Verificatie met twee factoren'
+        ABSOLUTE_URLS: "Absolute URL's"
+        ABSOLUTE_URLS_HELP: "Absolute of relatieve URL's voor `base_url`"
+        ACCESS: Toegang
+        ACCESS_LEVELS: Toegangsniveaus
+        ACCOUNT: Account
+        ACCOUNTS: Accounts
+        ACCOUNTS_CONFIGURATION: Accountconfiguratie
+        ACCOUNTS_STORAGE: Accountopslag
+        ACCOUNTS_STORAGE_HELP: 'Het opslagmechanisme dat voor het Flex Object Account-type moet worden gebruikt. Files is de traditionele aanpak waarbij accounts in een YAML-bestand in een enkele map worden opgeslagen, terwijl Folder een nieuwe map voor elk account maakt'
+        ACCOUNTS_TYPE: Accountstype
+        ACCOUNTS_TYPE_HELP: 'Flex Object-systeem voor het opslaan van gebruikersaccounts'
+        ACTIVE_LANGUAGE_IN_SESSION: 'Actieve taal in sessie'
+        ACTIVE_LANGUAGE_IN_SESSION_HELP: 'Sla de actieve taal op in de sessie'
+        ADD: Toevoegen
+        ADD_ACCOUNT: 'Account toevoegen'
+        ADMIN_CHILDREN_DISPLAY_ORDER: 'Sorteervolgorde kinderen'
+        ADMIN_CHILDREN_DISPLAY_ORDER_HELP: "De volgorde waarin onderliggende pagina's van deze pagina moeten worden weergegeven in de weergave „Pagina's\" van de Admin-plugin"
+        ADMIN_SPECIFIC_OVERRIDES: 'Admin-specifieke overschrijvingen'
+        ADVANCED: Geavanceerd
+        ALLOW_URL_TAXONOMY_FILTERS: URL-taxonomiefilters
+        ALLOW_URL_TAXONOMY_FILTERS_HELP: "Op pagina's gebaseerde verzamelingen stellen u in staat om via `/taxonomy:value` te filteren."
+        ALLOW_WEBSERVER_GZIP: 'WebServer Gzip toestaan'
+        ALLOW_WEBSERVER_GZIP_HELP: "Standaard uitgeschakeld. Wanneer ingeschakeld, zal WebServer-geconfigureerde Gzip/Deflate-compressie werken, maar de HTTP-verbinding wordt niet gesloten voordat de onShutDown()-event plaats vindt, wat resulteert in langzamer laden van pagina's"
+        APPEND_URL_EXT: 'URL-extensie toevoegen'
+        APPEND_URL_EXT_HELP: 'Voegt een aangepaste extensie toe aan de URL van de pagina. Let op: dit betekent dat Grav zal zoeken naar `<template>.<extension>.twig` sjabloon'
+        ASCENDING: Oplopend
+        ASSETS: Middelen
+        AUTO: Automatisch
+        AUTOESCAPE_VARIABLES: 'Variabelen automatisch escapen'
+        AUTOESCAPE_VARIABLES_HELP: 'Escapet automatisch alle variabelen. Dit zal uw site hoogstwaarschijnlijk breken'
+        AUTO_LINE_BREAKS: 'Automatische regelbreaks'
+        AUTO_LINE_BREAKS_HELP: 'Ondersteuning voor automatische regelbreaks in markdown inschakelen'
+        AUTO_URL_LINKS: 'Automatische URL-koppelingen'
+        AUTO_URL_LINKS_HELP: "Schakel automatische conversie van URL's naar HTML-hyperlinks in"
+        AVATAR: Avatargenerator
+        AVATAR_HASH: 'OPMERKING: Optionele aangepaste avatar „hash"-tekenreeks'
+        AVATAR_HELP: 'Multiavatar is een lokaal gegenereerde avatar. Gravatar is een externe service die uw e-mailadres gebruikt om op afstand een vooraf geconfigureerde avatar op te halen'
+        BACK: Terug
+        BACKUPS: Back-ups
+        BACKUPS_HISTORY: Back-upgeschiedenis
+        BACKUPS_MAX_COUNT: 'Maximaal aantal back-ups'
+        BACKUPS_MAX_RETENTION_TIME: 'Maximale retentietijd'
+        BACKUPS_MAX_RETENTION_TIME_APPEND: 'in dagen'
+        BACKUPS_MAX_SPACE: 'Maximale back-upruimte'
+        BACKUPS_PROFILES: Back-upprofielen
+        BACKUPS_PROFILE_ENVIRONMENT: Omgeving
+        BACKUPS_PROFILE_ENVIRONMENT_HELP: 'Grav-omgevingscontext waarin de geplande back-up wordt uitgevoerd.'
+        BACKUPS_PROFILE_EXCLUDE_FILES: 'Bestanden uitsluiten'
+        BACKUPS_PROFILE_EXCLUDE_FILES_HELP: 'Specifieke bestanden of mappen om uit te sluiten, één per regel'
+        BACKUPS_PROFILE_EXCLUDE_PATHS: 'Paden uitsluiten'
+        BACKUPS_PROFILE_EXCLUDE_PATHS_HELP: 'Absolute paden om uit te sluiten, één per regel'
+        BACKUPS_PROFILE_NAME: Back-upnaam
+        BACKUPS_PROFILE_ROOT_FOLDER: Basismap
+        BACKUPS_PROFILE_ROOT_FOLDER_HELP: 'Kan een absoluut pad of een stream zijn'
+        BACKUPS_PROFILE_SCHEDULE: 'Geplande taak inschakelen'
+        BACKUPS_PROFILE_SCHEDULE_AT: 'Geplande taak uitvoeren'
+        BACKUPS_PURGE_CONFIG: 'Configuratie back-uppurging'
+        BACKUPS_STORAGE_PURGE_TRIGGER: 'Trigger voor back-upopslagruimtepurging'
+        BODY_CLASSES: Body-klassen
+        CACHE_ALL: 'Alle afbeeldingen in cache opslaan'
+        CACHE_ALL_HELP: "Voer alle afbeeldingen door Grav's cachesysteem, zelfs als ze geen mediamanipulaties hebben"
+        CACHE_CHECK_INTERVAL: Cache-controle-interval
+        CACHE_CHECK_INTERVAL_HELP: 'Seconden om de eerder berekende bestandssysteemhash opnieuw te gebruiken voordat opnieuw wordt gecontroleerd. Nul houdt bestaande controles per verzoek aan.'
+        CACHE_CHECK_METHOD: Cachemethodepunten
+        CACHE_CHECK_METHOD_HELP: 'Selecteer de methode die Grav gebruikt om te controleren of paginabestanden zijn gewijzigd.'
+        CACHE_CLEAR_JOB: 'Geplande wismaanal uitvoeren'
+        CACHE_CLEAR_JOB_HELP: 'Met de planner kunt u de Grav Cache periodiek wissen'
+        CACHE_CONTROL: 'HTTP Cache-Control'
+        CACHE_CONTROL_HELP: 'Ingesteld op een geldige cache-control-waarde zoals `no-cache, no-store, must-revalidate`'
+        CACHE_DRIVER: Cachedriver
+        CACHE_DRIVER_HELP: "Kies welke cachedriver Grav moet gebruiken. 'Automatisch detecteren' probeert de beste voor u te vinden"
+        CACHE_JOB_TYPE: 'Cachetype taak'
+        CACHE_JOB_TYPE_HELP: "Wis cache met de 'standaard' mappen of met 'alle' mappen"
+        CACHE_PERMS: Cachemachtigingen
+        CACHE_PERMS_HELP: 'Standaardmachtigingen voor cachemap. Meestal 0755 of 0775 afhankelijk van de instellingen'
+        CACHE_PREFIX: Cacheprefix
+        CACHE_PREFIX_HELP: 'Een identifier voor onderdeel van de Grav-sleutel. Wijzig alleen als je weet wat je doet.'
+        CACHE_PREFIX_PLACEHOLDER: 'Afgeleid van basis-URL (overschrijven door willekeurige tekenreeks in te voeren)'
+        CACHE_PURGE_AGE: Cache-verloopperiode
+        CACHE_PURGE_AGE_HELP: 'Wis alle cache-items ouder dan deze periode (in seconden)'
+        CACHE_PURGE_JOB: 'Geplande verwijderingstaak uitvoeren'
+        CACHE_PURGE_JOB_HELP: 'Met de planner kunt u regelmatig oude Doctrine-bestandscachemappen opschonen met deze taak'
+        CACHING: 'In cache opslaan'
+        CACHING_HELP: 'Globale AAN/UIT-schakelaar om Grav-caching in of uit te schakelen'
+        CHARACTERS: tekens
+        CLEAR_IMAGES_BY_DEFAULT: 'Afbeeldingscache standaard wissen'
+        CLEAR_IMAGES_BY_DEFAULT_HELP: 'Standaard worden verwerkte afbeeldingen voor alle cachewisningen verwijderd, dit kan worden uitgeschakeld'
+        CLI_COMPATIBILITY: CLI-compatibiliteit
+        CLI_COMPATIBILITY_HELP: "Zorgt ervoor dat alleen niet-vluchtige cachestuurprogramma's worden gebruikt (bestand, redis, memcache, enz.)"
+        COLLECTIONS: Verzamelingen
+        COMMAND: Opdracht
+        CONFIGURATION: Configuratie
+        CONTENT: Inhoud
+        CONTENT_EDITOR: Inhoudseditor
+        CONTENT_EDITOR_HELP: 'Aangepaste editors kunnen worden geprefereerd voor het bewerken van inhoud'
+        CONTENT_FALLBACK_LANGUAGE_HELP: 'Geef de taalcode op die u wilt aanpassen.'
+        CONTENT_LANGUAGE_FALLBACK: Fallback-talen
+        CONTENT_LANGUAGE_FALLBACKS: 'Fallback van inhoudstaal'
+        CONTENT_LANGUAGE_FALLBACKS_HELP: 'Standaard toont Grav inhoud in de standaardtaal als de inhoud niet is vertaald. Gebruik deze instelling om dit gedrag per taal te overschrijven.'
+        CONTENT_LANGUAGE_FALLBACK_HELP: 'Voer een lijst met taalcodes in. Let op: als u de standaardtaalcode weglaat, wordt deze niet gebruikt.'
+        COPY: Kopiëren
+        CREATE: Maken
+        CSS_ASSETS: CSS-assets
+        CSS_MINIFY: 'CSS minify'
+        CSS_MINIFY_HELP: 'Minimaliseer de CSS tijdens pipelining'
+        CSS_MINIFY_WINDOWS_OVERRIDE: 'CSS minify Windows-override'
+        CSS_MINIFY_WINDOWS_OVERRIDE_HELP: 'Minimaliseer override voor Windows-platforms. Standaard onwaar vanwege ThreadStackSize'
+        CSS_PIPELINE: CSS-pipeline
+        CSS_PIPELINE_BEFORE_EXCLUDES: 'CSS-pipeline eerst renderen'
+        CSS_PIPELINE_BEFORE_EXCLUDES_HELP: 'Render de CSS-pipeline vóór andere CSS-verwijzingen die niet zijn opgenomen'
+        CSS_PIPELINE_HELP: 'De CSS-pipeline is de unificatie van meerdere CSS-resources in één bestand'
+        CSS_PIPELINE_INCLUDE_EXTERNALS: 'Externe inhoud opnemen in CSS-pipeline'
+        CSS_PIPELINE_INCLUDE_EXTERNALS_HELP: "Externe URL's hebben soms relatieve bestandsverwijzingen en mogen niet in een pipeline worden opgenomen"
+        CSS_REWRITE: 'CSS herschrijven'
+        CSS_REWRITE_HELP: "Herschrijf alle relatieve CSS-URL's tijdens pipelining"
+        CURL: cURL
+        CUSTOM_BASE_URL: 'Aangepast basis-URL'
+        CUSTOM_BASE_URL_HELP: 'Gebruik dit als u het sitedomein wilt herschrijven of een ander submap wilt gebruiken dan die door Grav wordt gebruikt. Voorbeeld: http://localhost'
+        CUSTOM_REDIRECTS: 'Aangepaste omleidingen'
+        CUSTOM_REDIRECTS_HELP: "routes om naar andere pagina's om te leiden. Standaard Regex-vervanging is geldig"
+        CUSTOM_REDIRECTS_PLACEHOLDER_KEY: /your/alias
+        CUSTOM_REDIRECTS_PLACEHOLDER_VALUE: /your/redirect
+        CUSTOM_ROUTES: 'Aangepaste Routes'
+        CUSTOM_ROUTES_HELP: "routes om als alias naar andere pagina's in te stellen. Standaard Regex-vervanging is geldig"
+        CUSTOM_ROUTES_PLACEHOLDER_KEY: /your/alias
+        CUSTOM_ROUTES_PLACEHOLDER_VALUE: /your/route
+        DATE: Datum
+        DATE_BASED_PUBLISHING: 'Publiceren op basis van datum'
+        DATE_BASED_PUBLISHING_HELP: 'Automatisch (un)publish van berichten op basis van hun datum'
+        DATE_HELP: 'De datumvariabele stelt u in staat om specifiek een datum in te stellen die aan deze pagina is gekoppeld.'
+        DEBUGGER: Debugger
+        DEBUGGER_CENSORED: 'Censureer Gevoelige Gegevens'
+        DEBUGGER_CENSORED_HELP: 'Alleen Clockwork Provider: Indien Ja, censureer mogelijk gevoelige informatie (POST-parameters, cookies, bestanden, configuratie en meeste array-/objectgegevens in logberichten)'
+        DEBUGGER_CLOCKWORK: 'Clockwork Browser Extension'
+        DEBUGGER_DEBUGBAR: 'PHP Debug Bar'
+        DEBUGGER_HELP: 'Schakel de Grav-debugger in en volgende instellingen'
+        DEBUGGER_PROVIDER: Debugger-provider
+        DEBUGGER_PROVIDER_HELP: 'De standaardwaarde is PHP Debug Bar, maar de Clockwork-browserextensie biedt een minder storende benadering'
+        DEFAULT: Standaard
+        DEFAULTS: Standaardinstellingen
+        DEFAULT_AUTHOR: Standaardauteur
+        DEFAULT_AUTHOR_HELP: "Een standaard auteursnaam, vaak gebruikt in thema's of paginainhoud"
+        DEFAULT_CHILD_TYPE: 'Standaard onderliggend type'
+        DEFAULT_DATE_FORMAT: 'Datumnotatie van pagina'
+        DEFAULT_DATE_FORMAT_HELP: "Datumnotatie van pagina's gebruikt door Grav. Standaard probeert Grav uw datumnotatie automatisch te herkennen, maar u kunt een notatie opgeven met behulp van de datumsyntaxis van PHP (bijv.: Y-m-d H:i)"
+        DEFAULT_DATE_FORMAT_PLACEHOLDER: 'Automatisch herkennen'
+        DEFAULT_EMAIL: 'Standaard e-mail'
+        DEFAULT_EMAIL_HELP: "Een standaard e-mailadres om in thema's of pagina's te gebruiken"
+        DEFAULT_IMAGE_QUALITY: 'Standaard afbeeldingskwaliteit'
+        DEFAULT_IMAGE_QUALITY_HELP: 'Standaard afbeeldingskwaliteit voor gebruik bij hersteekproeven of caching van afbeeldingen (85%)'
+        DEFAULT_LANG: 'Standaardtaal overschrijven'
+        DEFAULT_LANG_HELP: 'Standaard is de eerste ondersteunde taal. Dit kan worden overschreven door deze optie in te stellen, maar het moet een van de ondersteunde talen zijn'
+        DEFAULT_ORDERING: 'Standaard sorteervolgorde'
+        DEFAULT_ORDERING_DATE: 'Datum - gebaseerd op datumveld in header'
+        DEFAULT_ORDERING_DEFAULT: 'Standaard - gebaseerd op mapnaam'
+        DEFAULT_ORDERING_FOLDER: 'Map - gebaseerd op mapnaam zonder voorvoegsel'
+        DEFAULT_ORDERING_HELP: "Pagina's in een lijst worden in deze volgorde weergegeven, tenzij dit wordt overschreven"
+        DEFAULT_ORDERING_TITLE: 'Titel - gebaseerd op titelveld in header'
+        DEFAULT_ORDER_DIRECTION: 'Standaard sorteerrichting'
+        DEFAULT_ORDER_DIRECTION_HELP: "De richting van pagina's in een lijst"
+        DEFAULT_PAGE_COUNT: 'Standaard paginatelling'
+        DEFAULT_PAGE_COUNT_HELP: 'Standaard maximale paginatelling in een lijst'
+        DEFAULT_THEME: Standaardthema
+        DEFAULT_THEME_HELP: 'Stel het standaardthema voor Grav in om te gebruiken (standaard is Antimatter)'
+        DELIMITER: Scheidingsteken
+        DELIMITER_HELP: "Het samenvattingsscheidingsteken (standaard '===')"
+        DESCENDING: Aflopend
+        DESCRIPTION: Beschrijving
+        DETAILS: Details
+        DETECT_CHANGES: 'Wijzigingen detecteren'
+        DETECT_CHANGES_HELP: 'Twig zal de Twig-cache automatisch opnieuw compileren als wijzigingen in Twig-sjablonen worden gedetecteerd'
+        DISPLAY_ERRORS: 'Fouten weergeven'
+        DISPLAY_ERRORS_HELP: 'Volledige backtrace-stijlfoutpagina weergeven'
+        DISPLAY_NAME: Weergavenaam
+        DISPLAY_TEMPLATE: 'Template weergeven'
+        EMAIL: E-mailadres
+        EMAIL_VALIDATION_MESSAGE: 'Moet een geldig e-mailadres zijn'
+        ENABLED_HELP: 'Paginasamenvatting inschakelen (de samenvatting retourneert hetzelfde als de paginainhoud)'
+        ENABLED_SRI_ON_ASSETS: 'SRI op middelen inschakelen'
+        ENABLED_SRI_ON_ASSETS_HELP: 'SRI voor middelen inschakelen'
+        ENABLED_TIMESTAMPS_ON_ASSETS: 'Tijdstempels op middelen inschakelen'
+        ENABLED_TIMESTAMPS_ON_ASSETS_HELP: 'Tijdstempels voor middelen inschakelen'
+        ENABLE_AUTO_METADATA: 'Automatische metagegevens uit Exif'
+        ENABLE_AUTO_METADATA_HELP: 'Metagegevensbestanden voor afbeeldingen met exif-informatie automatisch genereren'
+        ENABLE_MEDIA_TIMESTAMP: 'Tijdstempels op media inschakelen'
+        ENABLE_MEDIA_TIMESTAMP_HELP: 'Voegt een tijdstempel op basis van wijzigingsdatum toe aan elk media-item'
+        ERROR_FULL_BACKTRACE: 'Volledige backtracefout'
+        ERROR_HANDLER: Foutafhandeling
+        ERROR_SIMPLE: 'Eenvoudige fout'
+        ERROR_SYSTEM: Systeemfout
+        ESCAPE_MARKUP: 'Markering omzetten'
+        ESCAPE_MARKUP_HELP: 'Markeringstags omzetten in HTML-entiteiten'
+        ETAG: ETag
+        ETAG_HELP: 'Stelt de etag-header in om te helpen bepalen wanneer een pagina is gewijzigd'
+        EVENTS: Gebeurtenissen
+        EVENTS_HELP: 'Specifieke gebeurtenissen in- of uitschakelen. Het uitschakelen hiervan kan plugins breken'
+        EXPERIMENTAL: Experimenteel
+        EXPIRES: Vervalt
+        EXPIRES_HELP: 'Stelt de expires header in. De waarde is in seconden.'
+        EXTERNAL: 'Externe pagina'
+        EXTERNAL_URL: 'Externe URL'
+        EXTRA_ARGUMENTS: 'Extra argumenten'
+        FALLBACK_TYPES: 'Toegestane fallback-typen'
+        FALLBACK_TYPES_HELP: 'Toegestane bestandstypes die kunnen worden gevonden bij toegang via paginaroute. Standaard ingesteld op elk ondersteund mediatype.'
+        FILE: Bestand
+        FILE_EXTENSION: Bestandsextensie
+        FILE_STREAMS: Bestandsstromen
+        FLEX: 'Flex-object (EXPERIMENTEEL)'
+        FLEX_ADMIN_EVENT_COMPAT: Admin-gebeurteniscompatibiliteit
+        FLEX_ADMIN_EVENT_COMPAT_HELP: 'Stelt onAdminSave en onAdminAfterSave-gebeurtenissen in voor plugins.'
+        FLEX_CACHING: Flex-caching
+        FLEX_INDEX_CACHE_ENABLED: 'Indexcaching inschakelen'
+        FLEX_INDEX_CACHE_LIFETIME: 'Levensduur indexcache (seconden)'
+        FLEX_OBJECT_CACHE_ENABLED: 'Objectcaching inschakelen'
+        FLEX_OBJECT_CACHE_LIFETIME: 'Levensduur objectcache (seconden)'
+        FLEX_RENDER_CACHE_ENABLED: 'Render-caching inschakelen'
+        FLEX_RENDER_CACHE_LIFETIME: 'Levensduur rendercache (seconden)'
+        FOLDER: Map
+        FOLDER_NAME: Mapnaam
+        FOLDER_NUMERIC_PREFIX: 'Numeriek voorvoegsel van map'
+        FOLDER_NUMERIC_PREFIX_HELP: 'Numeriek voorvoegsel dat handmatige ordening biedt en zichtbaarheid impliceert'
+        FOPEN: fopen
+        FORCE_LOWERCASE_URLS: 'URLs in kleine letters forceren'
+        FORCE_LOWERCASE_URLS_HELP: 'Standaard zet Grav alle slugs en routes om naar kleine letters. Als dit op onwaar is ingesteld, kunnen slugs en routes met hoofdletters gebruikt worden'
+        FORCE_SSL: 'SSL forceren'
+        FORCE_SSL_HELP: 'Forceer SSL wereldwijd. Als dit ingeschakeld is en de site via HTTP wordt bereikt, stuurt Grav een omleiding naar de HTTPS-pagina'
+        FORMAT: Formaat
+        FORMAT_HELP: 'kort = gebruik het eerste voorkomen van scheidingsteken of grootte; lang = samenvattingsscheidingsteken wordt genegeerd'
+        FRONTMATTER_IGNORE_FIELDS: 'Frontmatter-velden negeren'
+        FRONTMATTER_IGNORE_FIELDS_HELP: "Bepaalde frontmatter-velden kunnen Twig bevatten maar mogen niet verwerkt worden, zoals 'forms'"
+        FRONTMATTER_PROCESS_TWIG: 'Frontmatter Twig verwerken'
+        FRONTMATTER_PROCESS_TWIG_HELP: "Als dit ingeschakeld is, kunt u Twig-configuratievariabelen gebruiken in de frontmatter van pagina's"
+        FULL_NAME: 'Volledige naam'
+        GENERAL_CONFIG: 'Algemene Asset-configuratie'
+        GPM_METHOD: 'Methode voor extern ophalen'
+        GPM_METHOD_HELP: 'Als dit is ingesteld op Automatisch, zal Grav bepalen of fopen beschikbaar is en deze gebruiken, anders terugvallen op cURL. Schakel de instelling om om het gebruik van het ene of het ander te forceren.'
+        GPM_OFFICIAL_ONLY: 'Alleen officiële GPM'
+        GPM_OFFICIAL_ONLY_HELP: 'Sta alleen directe installaties toe van de officiële GPM-opslagplaats'
+        GPM_RELEASES: GPM-releases
+        GPM_RELEASES_HELP: 'Kies „Testen" om beta- of testversies te installeren'
+        GPM_SECTION: GPM-sectie
+        GROUPS_HELP: 'Lijst met groepen waarvan de gebruiker lid is'
+        GROUP_NAME: Groepsnaam
+        GZIP_COMPRESSION: Gzip-compressie
+        GZIP_COMPRESSION_HELP: 'Schakel GZip-compressie van de Grav-pagina in voor betere prestaties'
+        HIDE_EMPTY_FOLDERS: 'Lege mappen verbergen'
+        HIDE_EMPTY_FOLDERS_HELP: 'Als map geen .md-bestand heeft, moet deze ook in navigatie verborgen zijn en niet routeerbaar zijn'
+        HIDE_HOME_IN_URLS: "Thuisroute verbergen in URL's"
+        HIDE_HOME_IN_URLS_HELP: "Zorgt ervoor dat de standaardroutes voor pagina's onder home niet verwijzen naar de normale route van home"
+        HOME_PAGE: Startpagina
+        HOME_PAGE_HELP: 'De pagina die Grav als standaardbestemmingspagina gebruikt'
+        HTTP_ACCEPT_LANGUAGE: 'Taal instellen op basis van browser'
+        HTTP_ACCEPT_LANGUAGE_HELP: 'U kunt ervoor kiezen de taal in te stellen op basis van de `http_accept_language`-headertag in de browser'
+        HTTP_CF_CONNECTING_IP_ENABLED: 'HTTP_CF_CONNECTING_IP Ingeschakeld'
+        HTTP_CF_CONNECTING_IP_HELP: 'Vertrouw de <code>CF-Connecting-IP</code>-requestheader bij het bepalen van het client-IP-adres. Schakel in wanneer de site echt achter Cloudflare staat; anders kunnen clients hun IP vervalsen. Voor volledige veiligheid kunt u ook oorsprongstoegang beperken tot Cloudflare IP-bereiken op de webserver.'
+        HTTP_CLIENT_IP_ENABLED: 'HTTP_CLIENT_IP Ingeschakeld'
+        HTTP_CLIENT_IP_HELP: 'Vertrouw de <code>Client-IP</code>-requestheader bij het bepalen van het client-IP-adres. Zeldzaam; meestal alleen ingesteld door specifieke load balancers. Zet uit tenzij u weet dat uw proxy deze header instelt en overschrijft.'
+        HTTP_CONNECTIONS: HTTP-verbindingen
+        HTTP_CONNECTIONS_HELP: 'Het aantal gelijktijdige HTTP-verbindingen tijdens multiplexed requests'
+        HTTP_HEADERS: HTTP-headers
+        HTTP_SECTION: HTTP-sectie
+        HTTP_X_FORWARDED_HOST_ENABLED: 'HTTP_X_FORWARDED_HOST Ingeschakeld'
+        HTTP_X_FORWARDED_HOST_HELP: 'Vertrouw de <code>X-Forwarded-Host</code>-requestheader. Schakel alleen in wanneer de site echt achter een reverse proxy staat die deze header instelt en overschrijft; anders kunnen clients de host waarmee Grav communiceren vervalsen.'
+        HTTP_X_FORWARDED_IP_ENABLED: 'HTTP_X_FORWARDED IP Ingeschakeld'
+        HTTP_X_FORWARDED_IP_HELP: 'Vertrouw <code>X-Forwarded-For</code> / <code>X-Forwarded</code> / <code>Forwarded</code> headers bij het bepalen van het client-IP-adres. Schakel alleen in wanneer de site echt achter een reverse proxy staat die deze headers instelt en overschrijft; anders kunnen clients hun IP vervalsen en snelheidsbeperking, IP-verboden en auditlogboeken omzeilen.'
+        HTTP_X_FORWARDED_PORT_ENABLED: 'HTTP_X_FORWARDED_PORT Ingeschakeld'
+        HTTP_X_FORWARDED_PORT_HELP: 'Vertrouw de <code>X-Forwarded-Port</code>-requestheader. Schakel alleen in wanneer de site echt achter een reverse proxy staat die deze header instelt en overschrijft.'
+        HTTP_X_FORWARDED_PROTO_ENABLED: 'HTTP_X_FORWARDED_PROTO Ingeschakeld'
+        HTTP_X_FORWARDED_PROTO_HELP: 'Vertrouw de <code>X-Forwarded-Proto</code>-requestheader (meestal gebruikt voor het detecteren van HTTPS achter een TLS-beëindigende proxy). Schakel alleen in wanneer de site echt achter een reverse proxy staat die deze header instelt en overschrijft.'
+        ICON: Pictogram
+        ID: ID
+        IGNORE_FILES: 'Bestanden negeren'
+        IGNORE_FILES_HELP: "Specifieke bestanden die moeten worden genegeerd bij het verwerken van pagina's"
+        IGNORE_FOLDERS: 'Mappen negeren'
+        IGNORE_FOLDERS_HELP: "Specifieke mappen die moeten worden genegeerd bij het verwerken van pagina's"
+        IGNORE_HIDDEN: 'Verborgen negeren'
+        IGNORE_HIDDEN_HELP: 'Alle bestanden en mappen die met een PUNT beginnen negeren'
+        IMAGES_AUTO_FIX_ORIENTATION: 'Oriëntatie automatisch corrigeren'
+        IMAGES_AUTO_FIX_ORIENTATION_HELP: 'Afbeeldingsoriëntatie automatisch corrigeren op basis van Exif-gegevens'
+        IMAGES_CLS_ASPECT_RATIO: 'Aspect Ratio inschakelen'
+        IMAGES_CLS_ASPECT_RATIO_HELP: 'Optionele CSS-variabele die wordt toegepast via een style-attribuut, wat kan worden gebruikt in CSS voor aangepaste styling'
+        IMAGES_CLS_AUTO_SIZES: 'Auto Sizes inschakelen'
+        IMAGES_CLS_AUTO_SIZES_HELP: 'Automatisch width- en height-attributen aan afbeeldingen toevoegen om CLS aan te pakken'
+        IMAGES_CLS_RETINA_SCALE: Retina-schaalfactor
+        IMAGES_CLS_RETINA_SCALE_HELP: 'De berekende grootte wordt gedeeld door de schaalfactor om een afbeelding met hogere resolutie op een kleinere pixelgrootte weer te geven voor een beter beheer van HiDPI-resoluties'
+        IMAGES_CLS_TITLE: 'Cumulatieve lay-outvershuiving (CLS)'
+        IMAGES_DEBUG: 'Watermerk voor foutopsporing van afbeeldingen'
+        IMAGES_DEBUG_HELP: 'Een overlay over afbeeldingen weergeven die de pixeldiepte van de afbeelding aangeeft bij het werken met retina, bijvoorbeeld'
+        IMAGES_DECODING: 'Gedrag van afbeeldingsdecodering'
+        IMAGES_DECODING_HELP: 'Het decoding-attribuut stelt een browser in staat om decodering van afbeeldingen buiten het zichtbare gebied uit te stellen totdat gebruikers er dichtbij schuiven. decoding ondersteunt drie waarden: auto, sync, async'
+        IMAGES_FETCHPRIORITY: 'Eigenschap Image Fetchpriority'
+        IMAGES_FETCHPRIORITY_HELP: 'De fetchpriority-eigenschap in HTML is een attribuut dat de prioriteit voor het laden van bepaalde bronnen, zoals afbeeldingen of iframes, aangeeft om de prestaties te optimaliseren. Mogelijke waarden zijn high, low of auto.'
+        IMAGES_LOADING: 'Gedrag van afbeeldingsladen'
+        IMAGES_LOADING_HELP: 'Het loading-attribuut stelt een browser in staat om het laden van afbeeldingen en iframes buiten het zichtbare gebied uit te stellen totdat gebruikers er dichtbij schuiven. loading ondersteunt drie waarden: auto, lazy, eager'
+        IMAGES_MAX_PIXELS: 'Maximale afbeeldingspixels'
+        IMAGES_MAX_PIXELS_HELP: 'Totale-pixelplafond (breedte × hoogte) voor op URL gebaseerde formaatwijzigingsbewerkingen. Aanvragen boven deze limiet worden geweigerd. Stel in op 0 om de controle uit te schakelen.'
+        IMAGES_SEOFRIENDLY: 'SEO-vriendelijke afbeeldingsnamen'
+        IMAGES_SEOFRIENDLY_HELP: 'Wanneer ingeschakeld, wordt eerst de naam van de afbeelding weergegeven, gevolgd door een kleinere hash ter weerspiegeling van verwerkte bewerkingen'
+        IMAGES_URL_ACTIONS: 'Op URL gebaseerde afbeeldingsacties toestaan'
+        IMAGES_URL_ACTIONS_HELP: 'Afbeeldingtransformaties via URL-queryparameters toestaan (bijv. `image.jpg?resize=600,400`). Standaard uitgeschakeld; normale Twig- en Markdown-afbeeldingsgrootteverandering wordt niet beïnvloed.'
+        IMAGE_ADAPTER: Afbeeldingsadapter
+        IMAGE_ADAPTER_HELP: "De afbeeldingsadapter die moet worden gebruikt voor afbeeldingsbewerking. 'GD' is de standaardinstelling, 'Imagick' is een alternatief"
+        IMAGE_OPTIONS: Afbeeldingsopties
+        INCLUDE_DEFAULT_LANG: 'Standaardtaal opnemen'
+        INCLUDE_DEFAULT_LANG_FILE_EXTENSION: 'Standaardtaal in bestandsextensie opnemen'
+        INCLUDE_DEFAULT_LANG_HELP: "Dit voegt alle URL's in de standaardtaal vooraf in met de standaardtaal. Bijvoorbeeld `/en/blog/my-post`"
+        INCLUDE_DEFAULT_LANG_HELP_FILE_EXTENSION: 'Indien ingeschakeld, wordt de standaardtaal vooraf ingesteld in de bestandsextensie (bijv. `.en.md`). Schakel dit uit om de standaardtaal met de extensie `.md` te behouden.'
+        INLINE_TYPES: 'Inlinesoorten terugval'
+        INLINE_TYPES_HELP: 'Een lijst met bestandstypen die inline moeten worden weergegeven in plaats van te worden gedownload'
+        INTL_ENABLED: Intl-module-integratie
+        INTL_ENABLED_HELP: 'Gebruik de Intl PHP-module en collate om UTF8-gebaseerde verzamelingen te sorteren'
+        ITEMS: Items
+        JAVASCRIPT_MINIFY: 'JavaScript verkleinen'
+        JAVASCRIPT_MINIFY_HELP: 'De JS tijdens pipelining verkleinen'
+        JAVASCRIPT_MODULE_PIPELINE: JavaScript-modulepijplijn
+        JAVASCRIPT_MODULE_PIPELINE_BEFORE_EXCLUDES: 'JS-modulepijplijn eerst weergeven'
+        JAVASCRIPT_MODULE_PIPELINE_BEFORE_EXCLUDES_HELP: 'Geef de JS-pijplijn weer vóór alle andere JS-verwijzingen die niet zijn opgenomen'
+        JAVASCRIPT_MODULE_PIPELINE_HELP: 'De JS-modulepijplijn is de unificatie van meerdere JS-bronnen in één bestand'
+        JAVASCRIPT_MODULE_PIPELINE_INCLUDE_EXTERNALS: 'Externe bestanden opnemen in JS-modulepijplijn'
+        JAVASCRIPT_MODULE_PIPELINE_INCLUDE_EXTERNALS_HELP: "Externe URL's hebben soms relatieve bestandsverwijzingen en mogen niet in de pijplijn worden opgenomen"
+        JAVASCRIPT_PIPELINE: JavaScript-pijplijn
+        JAVASCRIPT_PIPELINE_BEFORE_EXCLUDES: 'JS pipeline eerst renderen'
+        JAVASCRIPT_PIPELINE_BEFORE_EXCLUDES_HELP: 'Render de JS pipeline voor alle andere JS-referenties die niet zijn opgenomen'
+        JAVASCRIPT_PIPELINE_HELP: 'De JS pipeline is de unificatie van meerdere JS-bronnen in één bestand'
+        JAVASCRIPT_PIPELINE_INCLUDE_EXTERNALS: "Externe URL's in JS pipeline opnemen"
+        JAVASCRIPT_PIPELINE_INCLUDE_EXTERNALS_HELP: "Externe URL's hebben soms relatieve bestandsverwijzingen en mogen niet in de pipeline worden opgenomen"
+        JS_ASSETS: 'JavaScript Assets'
+        JS_MODULE_ASSETS: 'JavaScript Module Assets'
+        LANGUAGE: Taal
+        LANGUAGES: Talen
+        LANGUAGE_DEBUG: 'Debug taal'
+        LANGUAGE_DEBUG_HELP: 'Schakel debugging van talen in die het Twig-filter |t gebruiken door een span eromheen toe te voegen die kan worden opgemaakt om problemen op te sporen'
+        LANGUAGE_HELP: 'Stel de favoriete taal in'
+        LANGUAGE_TRANSLATIONS: Vertalingen
+        LANGUAGE_TRANSLATIONS_HELP: 'Indien onwaar, worden vertaalsleutels gebruikt in plaats van vertaalde tekenreeksen. Deze functie kan worden gebruikt om slechte vertalingen op te lossen of hardcoded Engelse tekenreeksen te vinden.'
+        LAST_MODIFIED: 'Laatst gewijzigd'
+        LAST_MODIFIED_HELP: 'Stelt de header „Last-Modified" in die kan helpen om proxy en browsercache te optimaliseren'
+        LIFETIME: Levensduur
+        LIFETIME_HELP: 'Stelt de cachelevensduur in seconden in. 0 = oneindig'
+        LIST: Lijst
+        LOG_ERRORS: 'Fouten vastleggen'
+        LOG_ERRORS_HELP: 'Fouten vastleggen in de /logs map'
+        LOG_HANDLER: Loghandler
+        LOG_HANDLER_HELP: 'Waar logs moeten worden weergegeven'
+        LONG: Lang
+        LONG_DATE_FORMAT: 'Lange datumweergaveindeling'
+        LONG_DATE_FORMAT_HELP: "Stel de lange datumnotatie in die door thema's kan worden gebruikt"
+        MARKDOWN: Markdown
+        MARKDOWN_EXTRA: 'Markdown extra'
+        MARKDOWN_EXTRA_HELP: 'Standaardondersteuning voor Markdown Extra inschakelen - https://michelf.ca/projects/php-markdown/extra/'
+        MEDIA_TYPES: Mediatypen
+        MEMCACHED_PORT: Memcached-poort
+        MEMCACHED_PORT_HELP: 'De Memcached-serverpoort'
+        MEMCACHED_SERVER: Memcached-server
+        MEMCACHED_SERVER_HELP: 'Het adres van de Memcached-server'
+        MENU: Menu
+        MENU_HELP: 'De tekenreeks die in een menu moet worden gebruikt. Indien niet ingesteld, wordt de titel gebruikt.'
+        METADATA: Metagegevens
+        METADATA_HELP: 'Standaardwaarden voor metagegevens die op elke pagina worden weergegeven, tenzij dit door de pagina wordt overschreven'
+        METADATA_KEY: "Sleutel (bijv. 'Trefwoorden')"
+        METADATA_VALUE: "Waarde (bijv. 'Blog, Grav')"
+        MIME_TYPE: MIME-type
+        MISC_SECTION: 'Sectie Diversen'
+        MODULE: Module
+        MODULE_SETUP: Module-instellingen
+        MOVE: Verplaatsen
+        NAME: Naam
+        NEVER_CACHE_TWIG: 'Nooit Twig in cache opslaan'
+        NEVER_CACHE_TWIG_HELP: "Alleen inhoud in cache opslaan en Twig elke keer verwerken voor pagina's. Negeert de twig_first-instelling."
+        'NO': Nee
+        OPTIONS: Opties
+        ORDER: Volgorde
+        ORDERING: Ordening
+        ORDER_BY: 'Sorteren op'
+        ORDER_DIGITS: Orderingscijfers
+        ORDER_DIGITS_HELP: 'Aantal cijfers gebruikt voor het voorvoegsel van mapnamen voor ordening (bijv. `01.about`, `001.about`).'
+        ORDER_DIR_HELP: '„desc" of „asc" zijn geldige waarden'
+        OVERRIDES: Overschrijvingen
+        OVERRIDE_LOCALE: 'Overschrijf landinstelling'
+        OVERRIDE_LOCALE_HELP: 'Overschrijf de landinstelling in PHP op basis van de huidige taal'
+        PAGE: Pagina
+        PAGES_CONFIGURATION: Paginaconfiguratie
+        PAGES_FALLBACK_ONLY: 'Alleen paginaterugval'
+        PAGES_FALLBACK_ONLY_HELP: 'Alleen terugvallen op het vinden van pagina-inhoud via ondersteunde talen; standaardgedrag is het weergeven van elke gevonden taal als de actieve taal ontbreekt'
+        PAGES_TYPE: 'Paginatype frontend'
+        PAGES_TYPE_HELP: "Deze optie schakelt Flex Object-pagina's in op de front-end. Admin Flex Pages vereist de Flex Objects-plugin"
+        PAGE_ACCESS: Paginatoegang
+        PAGE_ACCESS_HELP: 'Gebruiker met volgende toegangsmachtigingen kan de pagina openen.'
+        PAGE_AUTHORS: Paginaauteurs
+        PAGE_AUTHORS_HELP: 'Leden van Paginaauteurs hebben eigenaarstoegang tot deze pagina, gedefinieerd in de speciale paginagroep „Auteurs".'
+        PAGE_FILE: Paginasjabloon
+        PAGE_FILE_HELP: 'Paginasjabloonbestandsnaam en standaard de weergavesjabloon voor deze pagina'
+        PAGE_GROUPS: Paginagroepen
+        PAGE_GROUPS_HELP: 'Leden van Paginagroepen hebben speciale toegang tot deze pagina.'
+        PAGE_INHERIT_PERMISSIONS: 'Rechten erven'
+        PAGE_INHERIT_PERMISSIONS_HELP: 'ACL van bovenliggende pagina overnemen.'
+        PAGE_MEDIA: 'Pagina Media'
+        PAGE_PERMISSIONS: Paginarechten
+        PAGE_SUMMARY: Paginasamenvatting
+        PAGE_TYPES: Paginatypes
+        PAGE_TYPES_HELP: 'Bepaalt de paginatypes die Grav ondersteunt en de volgorde bepaalt op welk type terugvalt als het verzoek dubbelzinnig is'
+        PAGE_VISIBILITY_REQUIRES_ACCESS: 'Zichtbaarheid van menu vereist toegang'
+        PAGE_VISIBILITY_REQUIRES_ACCESS_HELP: "Stel in op Ja als de pagina alleen in menu's moet worden weergegeven als de gebruiker er toegang toe heeft."
+        PARAMETER_SEPARATOR: Parameterscheider
+        PARAMETER_SEPARATOR_HELP: 'Scheidingsteken voor doorgegeven parameters dat voor Apache op Windows kan worden gewijzigd'
+        PARENT: Parent
+        PASSWORD_VALIDATION_MESSAGE: 'Wachtwoord moet minstens één cijfer en één hoofd- en kleine letter bevatten, en minstens 8 of meer tekens'
+        PERMISSIONS: Rechten
+        PLUGIN_STATUS: Pluginstatus
+        PROCESS: Verwerking
+        PROCESS_HELP: "Bepaal hoe pagina's worden verwerkt. Kan per pagina in plaats van wereldwijd worden ingesteld"
+        PROXY_CERT: 'Pad naar proxycertificaat'
+        PROXY_CERT_HELP: 'Lokaal pad naar map met het pem-bestand van het proxycertificaat'
+        PROXY_URL: Proxy-URL
+        PROXY_URL_HELP: 'Voer de proxy HOST of IP en PORT in'
+        PUBLISH: Publiceren
+        PUBLISHED: Gepubliceerd
+        PUBLISHED_DATE: Publicatiedatum
+        PUBLISHED_DATE_HELP: 'Kan een datum opgeven om publicatie automatisch te activeren.'
+        PUBLISHED_HELP: 'Standaard wordt een pagina gepubliceerd tenzij u expliciet published: false instelt of via een publish_date in de toekomst, of unpublish_date in het verleden'
+        PUBLISHING: Publiceren
+        PWD_REGEX: 'Wachtwoord Regex'
+        PWD_REGEX_HELP: 'Standaard: Wachtwoord moet minimaal één getal en één hoofd- en kleine letter bevatten, en minimaal 8 of meer tekens'
+        PWD_RULES: Wachtwoordregels
+        PWD_RULES_HELP: 'Aangepaste wachtwoordvalidatieregels. Elke regel heeft een ID, een leesbare label en een regex waar het wachtwoord aan moet voldoen.'
+        PWD_RULES_ID: ID
+        PWD_RULES_LABEL: Label
+        PWD_RULES_PATTERN: Regex-patroon
+        READ: Lezen
+        READ_FILE_ALLOWED_EXTENSIONS: 'Toegestane bestandsextensies'
+        READ_FILE_ALLOWED_EXTENSIONS_HELP: 'Bestandsextensies die <code>read_file()</code> zal lezen (geval-ongevoelig, geen voorafgaande punt). Standaardwaarden zijn alleen tekst/content-formaten. Het toevoegen van uitvoerbare of configuratieformaten (<code>php</code>, <code>yaml</code>, <code>env</code>, <code>htaccess</code>, …) is riskant en niet aanbevolen.'
+        READ_FILE_ALLOWED_STREAMS: 'Toegestane streams'
+        READ_FILE_ALLOWED_STREAMS_HELP: "Stream-schema's die <code>read_file()</code> mag oplossen. Standaard: <code>theme</code>, <code>themes</code>, <code>page</code>, <code>user-data</code>. Het toevoegen van brede streams als <code>user</code>, <code>system</code>, <code>config</code>, <code>account</code>, <code>log</code> of <code>cache</code> stelt gevoelige bestanden bloot en wordt sterk afgeraden."
+        READ_FILE_MAX_SIZE: 'Maximale bestandsgrootte (bytes)'
+        READ_FILE_MAX_SIZE_HELP: 'Bestanden groter dan dit geven <code>false</code> terug in plaats van in het geheugen geladen te worden. Standaard is <code>1048576</code> (1 MB). Ingesteld op <code>0</code> om de groottelimiet uit te schakelen.'
+        READ_FILE_SECTION_HELP: "Beperkingen voor de Twig-functie <code>read_file()</code>. Leesbewerkingen worden geforceerd via Grav stream-URI's en geverifieerd door een canonical-realpath containment-controle tegen de opgeloste stream-roots, zodat gecodeerde of symlinked traversal op het bestandssysteemniveau wordt geblokkeerd, ongeacht hoe het pad is geschreven."
+        READ_FILE_SECTION_TITLE: 'Twig read_file()'
+        REDIRECT: Paginaredirectie
+        REDIRECTS_AND_ROUTES: 'Redirects & Routes'
+        REDIRECT_DEFAULT_CODE: 'Standaard redirect-code'
+        REDIRECT_DEFAULT_CODE_HELP: 'De HTTP-statuscode die voor redirects gebruikt moet worden'
+        REDIRECT_DEFAULT_ROUTE: 'Standaardroute omleiden'
+        REDIRECT_DEFAULT_ROUTE_HELP: 'Automatisch naar de standaardroute van een pagina omleiden'
+        REDIRECT_HELP: 'Voer een paginaroute of externe URL in waarnaar deze pagina moet worden omgeleid. Bijvoorbeeld `/some/route` of `http://somesite.com`'
+        REDIRECT_OPTION_301: '301 - Permanent verplaatst'
+        REDIRECT_OPTION_302: '302 - Tijdelijk verplaatst'
+        REDIRECT_OPTION_303: '303 - Zie Elders'
+        REDIRECT_OPTION_DEFAULT_REDIRECT: 'Standaardomleidingscode gebruiken'
+        REDIRECT_OPTION_NO_REDIRECT: 'Geen omleiding'
+        REDIRECT_TRAILING_SLASH: 'Omleiding met trailing slash'
+        REDIRECT_TRAILING_SLASH_HELP: "Een 301-omleiding uitvoeren in plaats van trailing slash URI's transparent af te handelen."
+        REDIS_DATABASE: Redis-database-ID
+        REDIS_DATABASE_HELP: 'De database-ID van de Redis-instantie'
+        REDIS_PASSWORD: Redis-wachtwoord/geheim
+        REDIS_PORT: Redis-poort
+        REDIS_PORT_HELP: 'De poort van de Redis-server'
+        REDIS_SERVER: Redis-server
+        REDIS_SERVER_HELP: 'Het adres van de Redis-server'
+        REDIS_SOCKET: 'Redis socket'
+        REDIS_SOCKET_HELP: 'De Redis socket'
+        REGULAR: Standaard
+        REVERSE_PROXY: 'Reverse Proxy'
+        REVERSE_PROXY_HELP: "Schakel dit in als u zich achter een reverse proxy bevindt en problemen hebt met URL's die onjuiste poorten bevatten"
+        ROOT: Basis
+        ROUTABLE: Routeerbaar
+        ROUTABLE_HELP: 'Als deze pagina bereikbaar is via een URL'
+        ROUTE: Route
+        ROUTE_ALIASES: Route-aliassen
+        ROUTE_CANONICAL: 'Canonieke route'
+        ROUTE_DEFAULT: Standaardroute
+        ROUTE_OVERRIDES: Route-overrides
+        SANITIZE_SVG: 'SVG saneren'
+        SANITIZE_SVG_HELP: 'Verwijdert XSS-code uit SVG'
+        SCHEDULER: Scheduler
+        SCHEDULER_ACTIVE_TRIGGERS: 'Actieve triggers'
+        SCHEDULER_ADVANCED_FEATURES: 'Geavanceerde functies'
+        SCHEDULER_CONCURRENT_WORKERS: 'Gelijktijdige workers'
+        SCHEDULER_CONCURRENT_WORKERS_HELP: 'Aantal taken dat gelijktijdig kan worden uitgevoerd (1 = opeenvolgend).'
+        SCHEDULER_EMAIL: E-mail
+        SCHEDULER_EMAIL_HELP: 'E-mail voor verzending van output. OPMERKING: vereist dat het outputbestand is ingesteld'
+        SCHEDULER_HEALTH_CHECK_CONFIG: 'Gezondheidscontrole configuratie'
+        SCHEDULER_HEALTH_CHECK_ENABLED: 'Gezondheidscontrole inschakelen'
+        SCHEDULER_HEALTH_CHECK_ENABLED_HELP: 'Geef een gezondheidsstatuspunt voor monitoring.'
+        SCHEDULER_HEALTH_CHECK_PATH: Gezondheidscontroleppad
+        SCHEDULER_HEALTH_CHECK_PATH_HELP: 'URL-pad voor het gezondheidscontrole-eindpunt.'
+        SCHEDULER_HEALTH_STATUS: Gezondheidsstatus
+        SCHEDULER_HISTORY: Taakgeschiedenis
+        SCHEDULER_HISTORY_ENABLED: 'Taakgeschiedenis inschakelen'
+        SCHEDULER_HISTORY_ENABLED_HELP: 'Bijhouden van uitvoeringsgeschiedenis voor alle taken.'
+        SCHEDULER_HISTORY_RETENTION: 'Geschiedenisretentie (dagen)'
+        SCHEDULER_HISTORY_RETENTION_HELP: 'Hoe lang taakgeschiedenis wordt bewaard.'
+        SCHEDULER_JOBS: 'Aangepaste schedulertaken'
+        SCHEDULER_OUTPUT: Outputbestand
+        SCHEDULER_OUTPUT_HELP: 'Het pad/bestandsnaam van het outputbestand (vanaf de root van de Grav-installatie)'
+        SCHEDULER_OUTPUT_TYPE: Uitvoertype
+        SCHEDULER_OUTPUT_TYPE_HELP: 'Toevoegen aan hetzelfde bestand bij elke uitvoering, of het bestand bij elke uitvoering overschrijven'
+        SCHEDULER_QUEUE_CONFIG: Wachtrij-configuratie
+        SCHEDULER_QUEUE_MAX_SIZE: 'Maximale wachtrijgrootte'
+        SCHEDULER_QUEUE_MAX_SIZE_HELP: 'Maximum aantal taken dat in de wachtrij kan worden geplaatst.'
+        SCHEDULER_QUEUE_PATH: 'Opslagpad wachtrij'
+        SCHEDULER_QUEUE_PATH_HELP: 'Waar wachtrijdaken worden opgeslagen.'
+        SCHEDULER_RETRY_BACKOFF: 'Strategie voor pogingsuitstel'
+        SCHEDULER_RETRY_BACKOFF_HELP: 'Hoe de vertraging tussen pogingen wordt berekend.'
+        SCHEDULER_RETRY_CONFIG: 'Herconfiguratie van pogingen'
+        SCHEDULER_RETRY_ENABLED: 'Taakherhaling inschakelen'
+        SCHEDULER_RETRY_ENABLED_HELP: 'Automatisch mislukte taken opnieuw proberen.'
+        SCHEDULER_RETRY_MAX_ATTEMPTS: 'Maximum aantal pogingsaanvallen'
+        SCHEDULER_RETRY_MAX_ATTEMPTS_HELP: 'Maximum aantal keren dat een mislukte taak opnieuw moet worden geprobeerd.'
+        SCHEDULER_RUNAT: 'Uitvoeren op'
+        SCHEDULER_RUNAT_HELP: 'Cron-opmaak „op"-syntaxis. OPMERKING: Alle tijden zijn UTC!'
+        SCHEDULER_STATUS: Plannerstatus
+        SCHEDULER_USAGE_EXAMPLES: Gebruiksvoorbeelden
+        SCHEDULER_WEBHOOK_CONFIG: Webhook-configuratie
+        SCHEDULER_WEBHOOK_ENABLED: 'Webhook-triggers inschakelen'
+        SCHEDULER_WEBHOOK_ENABLED_HELP: 'De planner via HTTP-webhook activeren.'
+        SCHEDULER_WEBHOOK_PATH: Webhook-pad
+        SCHEDULER_WEBHOOK_PATH_HELP: 'URL-pad voor het webhook-eindpunt.'
+        SCHEDULER_WEBHOOK_TOKEN: Webhook-beveiligingstoken
+        SCHEDULER_WEBHOOK_TOKEN_HELP: 'Geheim token voor het verifiëren van webhook-aanvragen. Houd dit geheim!'
+        SCHEDULER_WORKER_CONFIG: Werknemersconfiguratie
+        SECURITY: Beveiliging
+        SESSION: Sessie
+        SESSION_DOMAIN: Sessiedomein
+        SESSION_DOMAIN_HELP: 'Alleen gebruiken als u het sitedomein herschrijft, bijvoorbeeld in een Docker-container.'
+        SESSION_ENABLED_HELP: 'Sessieheuning binnen Grav inschakelen'
+        SESSION_HTTPONLY: 'Alleen HTTP'
+        SESSION_HTTPONLY_HELP: 'Indien waar, geeft aan dat cookies alleen via HTTP moeten worden gebruikt en JavaScript-wijziging niet is toegestaan'
+        SESSION_INITIALIZE: 'Sessie initialiseren'
+        SESSION_INITIALIZE_HELP: 'Zorgt ervoor dat Grav een sessie start. Deze functie is nodig om enige gebruikersinteractie te laten werken, zoals aanmelden, formulieren enz. De Admin-plugin wordt niet beïnvloed door deze instelling.'
+        SESSION_NAME_HELP: 'Een identificatie gebruikt om de naam van de sessiecookie te vormen'
+        SESSION_PATH: Sessiepath
+        SESSION_PATH_HELP: 'Alleen gebruiken als u het sitepad herschrijft, bijvoorbeeld in een Docker-container.'
+        SESSION_SAMESITE: 'Het sessie-SameSite-attribuut'
+        SESSION_SAMESITE_HELP: 'Lax|Strict|None. Zie https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite voor meer informatie'
+        SESSION_SECURE: Beveiligd
+        SESSION_SECURE_HELP: 'Indien waar, geeft aan dat communicatie voor deze cookie via een versleutelde verbinding moet lopen. WAARSCHUWING: schakel dit alleen in op sites die uitsluitend via HTTPS draaien'
+        SESSION_SECURE_HTTPS: 'Beveiligd (HTTPS)'
+        SESSION_SECURE_HTTPS_HELP: 'Stel sessiebeveiliging in via HTTPS maar niet via HTTP. Dit heeft geen effect als u de bovenstaande beveiligingsinstelling op waar hebt ingesteld. Stel in op onwaar als uw site tussen HTTP en HTTPS schakelt.'
+        SESSION_SPLIT: 'Sessie splitsen'
+        SESSION_SPLIT_HELP: 'Onafhankelijke gesplitste sessies tussen site en andere plugins (zoals admin)'
+        SESSION_UNIQUENESS: 'Unieke tekenreeks'
+        SESSION_UNIQUENESS_HELP: "MD5-hash van Grav's root-pad, bijvoorbeeld `GRAV_ROOT` (standaard) of gebaseerd op de willekeurige `security.salt`-tekenreeks."
+        SHORT: Kort
+        SHORT_DATE_FORMAT: 'Korte weergavedatumindeling'
+        SHORT_DATE_FORMAT_HELP: "Stel de korte datumindeling in die door thema's kan worden gebruikt"
+        SHUTDOWN_CLOSE_CONNECTION: 'Afsluiten verbinding verbreken'
+        SHUTDOWN_CLOSE_CONNECTION_HELP: 'Sluit de verbinding voordat u onShutdown() aanroept. false voor debugging'
+        SITE: Site
+        SITE_ACCESS: Sitebereik
+        SITE_DEFAULT_LANG: Standaardtaal
+        SITE_DEFAULT_LANG_HELP: 'Standaardtaal die door de HTML-tag van het thema wordt gebruikt'
+        SITE_DEFAULT_LANG_PLACEHOLDER: 'Standaardtaal die door de HTML-tag van het thema wordt gebruikt'
+        SITE_TITLE: Sitetitel
+        SITE_TITLE_HELP: "Standaardtitel voor uw site, vaak gebruikt in thema's"
+        SITE_TITLE_PLACEHOLDER: 'Sitewijde titel'
+        SLUG: Slug
+        SLUG_HELP: 'Met de slug-variabele kunt u het URL-gedeelte van de pagina specifiek instellen'
+        SLUG_VALIDATE_MESSAGE: 'Een slug mag alleen kleine letters, getallen en koppeltekens bevatten'
+        SORTABLE_PAGES: "Sorteerbare pagina's:"
+        SSL_ENABLE_PROXY: 'Proxyserver inschakelen'
+        SSL_VERIFY_HOST: 'Externe verificatie van host'
+        SSL_VERIFY_HOST_HELP: 'Sommige kunnen moeite hebben met het verifiëren van SSL-certificaten'
+        SSL_VERIFY_PEER: 'Externe verificatie van peer'
+        SSL_VERIFY_PEER_HELP: 'Sommige kunnen moeite hebben met het verifiëren van SSL-certificaten'
+        STABLE: Stabiel
+        STRICT_BLUEPRINT_COMPAT: Blauwdruk-compatibiliteit
+        STRICT_BLUEPRINT_COMPAT_HELP: 'Schakelt achterwaarts compatibele strikte ondersteuning voor blauwdrukken in. Indien uitgeschakeld, maakt het nieuwe gedrag dat de formuliervalidatie mislukt als er extra gegevens zijn die niet in de blauwdruk zijn gedefinieerd.'
+        STRICT_TWIG_COMPAT: Twig-compatibiliteit
+        STRICT_TWIG_COMPAT_HELP: 'Schakelt de verouderde Twig autoescape-instelling in. Indien uitgeschakeld, is het |raw-filter vereist om HTML uit te voeren, omdat Twig de uitvoer automatisch escapet.'
+        STRICT_YAML_COMPAT: YAML-compatibiliteit
+        STRICT_YAML_COMPAT_HELP: 'Valt terug op de Symfony 2.4 YAML-parser als de Native of 3.4-parser mislukt'
+        SUMMARY_SIZE: Samenvattingsgrootte
+        SUMMARY_SIZE_HELP: 'Het aantal tekens van een pagina dat als inhoudsoverzicht moet worden gebruikt'
+        SUPPORTED: Ondersteund
+        SUPPORTED_HELP: "Komma-gescheiden lijst met taalcodes van 2 letters (bijvoorbeeld 'en,fr,de')"
+        SYSLOG_FACILITY: Syslog-faciliteit
+        SYSLOG_FACILITY_HELP: 'Syslog-faciliteit voor uitvoer'
+        SYSLOG_TAG: Syslog-tag
+        SYSLOG_TAG_HELP: 'Syslog-tag voor uitvoer'
+        TAXONOMIES: Taxonomieën
+        TAXONOMY: Taxonomie
+        TAXONOMY_TYPES: Taxonomietypen
+        TAXONOMY_TYPES_HELP: "Taxonomietypen moeten hier worden gedefinieerd als u ze in pagina's wilt gebruiken"
+        TESTING: Testen
+        THUMB: Miniatuur
+        TIMEOUT: Time-out
+        TIMEOUT_HELP: 'Stelt de sessietime-out in seconden in'
+        TIMEZONE: Tijdzone
+        TIMEZONE_HELP: 'Overschrijft de standaardtijdzone van de server'
+        TITLE: Titel
+        TOASTS:
+            ACTIVE_THEME_REMOVE_BLOCK: 'Kan het actieve thema niet verwijderen. Schakel eerst over naar een ander thema.'
+            API_KEY_REVOKED: 'API-sleutel „{name}" ingetrokken'
+            BACKUP_CREATED: 'Back-up gemaakt ({size})'
+            CACHE_CLEARED: 'Cache gewist ({scope})'
+            CONFIG_MODIFIED_ELSEWHERE: 'Configuratie is elders gewijzigd — laad opnieuw in om het nieuwste te zien'
+            CONFIG_SAVED: '{name} configuratie opgeslagen'
+            COPIED: '{label} gekopieerd'
+            COPY_FAILED: 'Kopiëren mislukt: {detail}'
+            DEPENDENCY_INSTALLED: 'Plugin {slug} geïnstalleerd (afhankelijkheid)'
+            FILES_DELETE_FAILED: '{n, plural, one{Kon # bestand niet verwijderen} other{Kon # bestanden niet verwijderen}}'
+            FILES_UPLOADED: '{n, plural, one{# bestand geüpload} other{# bestanden geüpload}}'
+            FILE_DELETED: '{name} verwijderd'
+            FILE_DELETE_FAILED: 'Kon {name} niet verwijderen'
+            FOLDER_CREATED: 'Map „{name}" gemaakt'
+            FORM_LABEL:
+                CONFIGURATION: Configuratie
+                FLEX_OBJECT: 'Flex Object'
+                FORM: Formulier
+                PAGE: Pagina
+                PLUGIN: Plugin
+                PLUGIN_PAGE: Plugin-pagina
+                THEME: Thema
+                USER: Gebruiker
+            GPM_REFRESHED: '{n, plural, =0{GPM vernieuwd — geen updates beschikbaar} one{GPM vernieuwd — # update beschikbaar} other{GPM vernieuwd — # updates beschikbaar}}'
+            GRAV_UPGRADED: 'Grav bijgewerkt naar v{version}'
+            INSTALL_FAILED: 'Kon {slug} niet installeren: {detail}'
+            ITEM_COPIED: '„{name}" gekopieerd naar „{target}"'
+            ITEM_DELETED: '„{name}" verwijderd'
+            ITEM_DELETE_FAILED: 'Kon „{name}" niet verwijderen'
+            ITEM_MOVED: '„{name}" verplaatst'
+            ITEM_REORDERED: '„{name}" opnieuw geordend'
+            ITEM_SAVED: '{name} opgeslagen'
+            PACKAGES_UPDATED: '{n, plural, one{# pakket bijgewerkt} other{# pakketten bijgewerkt}}'
+            PACKAGE_REMOVED: '{name} verwijderd'
+            PACKAGE_REMOVE_FAILED: 'Kan {name} niet verwijderen'
+            PACKAGE_UPDATED: '{name} bijgewerkt'
+            PACKAGE_UPDATE_FAILED: 'Kan {name} niet bijwerken: {detail}'
+            PAGE_PUBLISHED: '{name} gepubliceerd'
+            PAGE_PUBLISH_FAILED: 'Kan publicatiestatus niet wijzigen: {detail}'
+            PAGE_UNPUBLISHED: '{name} niet gepubliceerd'
+            PLUGIN_DISABLED: '{name} uitgeschakeld'
+            PLUGIN_DISABLE_FAILED: 'Kan {name} niet uitschakelen: {detail}'
+            PLUGIN_ENABLED: '{name} ingeschakeld'
+            PLUGIN_ENABLE_FAILED: 'Kan {name} niet inschakelen: {detail}'
+            PLUGIN_INSTALLED: 'Plugin {name} geïnstalleerd'
+            PLUGIN_LOCKOUT_BLOCK: '{name} kan niet worden uitgeschakeld vanuit admin-next — dit zou je buitensluiten.'
+            PLUGIN_REMOVED: '{name} verwijderd'
+            PLUGIN_REMOVE_FAILED: 'Kan {name} niet verwijderen: {detail}'
+            PLUGIN_REQUIRED_BLOCK: '{name} kan niet worden verwijderd — het is vereist door admin-next.'
+            SAVED: Opgeslagen
+            SAVED_AS_LANGUAGE: 'Opgeslagen als {language}'
+            SAVE_FAILED: 'Kan niet opslaan'
+            SAVE_FORM_FAILED: 'Kan {form} niet opslaan'
+            THEME_ACTIVATED: '{name} is nu het actieve thema'
+            THEME_ACTIVATE_FAILED: 'Kan {name} niet activeren: {detail}'
+            THEME_INSTALLED: 'Thema {name} geïnstalleerd'
+            THEME_REMOVED: '{name} verwijderd'
+            THEME_REMOVE_BLOCK: '{name} kan niet worden verwijderd.'
+            THEME_REMOVE_FAILED: 'Kon {name} niet verwijderen: {detail}'
+            TOTP_CODE_REQUIRED: 'Voer de 6-cijferige code van uw authenticator in'
+            TRANSLATION_CREATED: '{language}-vertaling gemaakt'
+            TRANSLATION_RESET: '{target} hersteld uit {source}'
+            UPDATE_FAILED: 'Bijwerken mislukt: {detail}'
+            USER_CREATED: 'Gebruiker {username} gemaakt'
+            USER_DELETED: 'Gebruiker {username} verwijderd'
+            USER_DELETE_FAILED: 'Kon gebruiker {username} niet verwijderen'
+            USER_DISABLED: 'Gebruiker {username} uitgeschakeld'
+            USER_ENABLED: 'Gebruiker {username} ingeschakeld'
+            USER_SAVED: 'Gebruiker {username} opgeslagen'
+            USER_STATE_FAILED: 'Kon status niet wijzigen voor {username}: {detail}'
+            DEMO_MODE_BLOCKED: 'Dit is een alleen-lezen demo — wijzigingen zijn uitgeschakeld.'
+            USER_ROW_ACTION_FAILED: 'Actie kon niet worden voltooid: {label}'
+        TRANSLATIONS:
+            ACCEPT: Accepteren
+            ACCEPTED_ALL: '{count, plural, one {# vertaling opgeslagen} other {# vertalingen opgeslagen}}'
+            ACCEPT_ALL: 'Alles accepteren'
+            ALL_SOURCES: 'Alle bronnen'
+            CLEAR_ALL_FILTERS: 'Filters wissen'
+            DESCRIPTION: 'Herschrijf elke string die deze site toont, in elke taal. Wijzigingen worden opgeslagen als overrides in user/languages en raken nooit de eigen bestanden van een plugin of thema aan, dus een update kan ze niet verwijderen.'
+            DISCARD: Negeren
+            DISCARD_ALL: Negeren
+            EDITED: bewerkt
+            EDITING_LANGUAGE: Bewerken
+            EDIT_AS_GRID: 'Terug naar overzicht'
+            EDIT_AS_YAML: 'Bewerken als YAML'
+            EDIT_HINT: 'Enter om op te slaan, Escape om te annuleren, Shift+Enter voor een nieuwe regel. Maak het vak leeg om je override te verwijderen.'
+            FAILED_TO_LOAD: 'Laden van vertalingen mislukt'
+            FAILED_TO_SAVE: 'Opslaan van die wijziging mislukt'
+            FILTERED_BY: 'Toon alleen'
+            FILTER_LANGUAGES: 'Filter talen'
+            IMPORT_ACTION: 'Overrides importeren'
+            IMPORT_ALREADY_DONE: 'Alle {count, plural, one {# override is} other {# overrides zijn}} al aanwezig'
+            IMPORT_BODY: '{count, plural, one {# override staat nog steeds opgeslagen in de Translation Strings plugin. Importeer deze om het hier te beheren.} other {# overrides in {languages, plural, one {# taal} other {# talen}} staan nog steeds opgeslagen in de Translation Strings plugin. Importeer ze om ze hier te beheren.}}'
+            IMPORT_COL_ALREADY: 'Al aanwezig'
+            IMPORT_COL_CONFLICT: Conflicterend
+            IMPORT_COL_LANGUAGE: Taal
+            IMPORT_COL_NEW: Nieuw
+            IMPORT_COL_SHIPPED: 'Gelijk aan origineel'
+            IMPORT_COL_UNKNOWN: Onbekend
+            IMPORT_CONFLICTS: '{count, plural, one {# sleutel is} other {# sleutels zijn}} op beide plaatsen ingesteld met verschillende bewoordingen. De versie van de plugin wint, omdat dat is wat je site vandaag toont.'
+            IMPORT_DISABLE_ACTION: 'Schakel de plugin uit'
+            IMPORT_DISABLE_BLOCKED: 'Importeer eerst de overrides, anders zullen ze van de site verdwijnen.'
+            IMPORT_DISABLE_FAILED: 'Kon de plugin niet uitschakelen'
+            IMPORT_DONE: '{count, plural, one {# overschrijving} other {# overschrijvingen}} geïmporteerd'
+            IMPORT_FAILED: 'Importeren mislukt'
+            IMPORT_HIDE_DETAIL: 'Details verbergen'
+            IMPORT_LEGEND: 'Strings gemarkeerd als „same as original” komen overeen met wat de plugin of het thema al bevat, waardoor ze worden genegeerd in plaats van opgeslagen als overschrijvingen die niets doen.'
+            IMPORT_NO_CONFIG_PERMISSION: 'Je hebt geen toestemming om plugin-instellingen te wijzigen, dus de plugin moet door een beheerder worden uitgeschakeld.'
+            IMPORT_NO_PERMISSION: 'Je hebt geen toestemming om vertalingsoverschrijvingen te schrijven, dus de importfunctie is niet beschikbaar.'
+            IMPORT_PLUGIN_DISABLED: 'Translation Strings uitgeschakeld. Deze editor heeft nu de leiding.'
+            IMPORT_SHOW_DETAIL: 'Toon wat er geïmporteerd zal worden'
+            IMPORT_STILL_ENABLED_BODY: 'Het past zijn strings toe nadat deze editor dat doet, dus het overschrijft nog steeds alles wat je hier wijzigt. Controleer of de site correct wordt weergegeven en schakel het vervolgens uit om de overstap te voltooien. De instellingen blijven behouden, dus dit is omkeerbaar.'
+            IMPORT_STILL_ENABLED_TITLE: 'De Translation Strings-plugin is nog steeds ingeschakeld'
+            IMPORT_TITLE: 'Overschrijvingen wachtend in de Translation Strings-plugin'
+            IMPORT_UNKNOWN_NOTE: '{count, plural, one {# sleutel benoemt een string die door geen enkele plugin, thema of core-bestand wordt geleverd. Deze is bewaard zodat je deze kunt controleren, maar heeft geen effect.} other {# sleutels benoemen strings die door geen enkele plugin, thema of core-bestand worden geleverd. Deze zijn bewaard zodat je ze kunt controleren, maar ze hebben geen effect.}}'
+            IMPORT_UNKNOWN_WARNING: '{count, plural, one {# geïmporteerde sleutel benoemt een string} other {# geïmporteerde sleutels benoemen strings}} die door niets op deze site worden geleverd. Vind ze met het Onbekend-filter.'
+            INACTIVE: inactief
+            INACTIVE_HELP: 'Deze plugin is uitgeschakeld of dit thema is niet het actieve thema, dus de strings worden niet op de site gebruikt.'
+            KEY: Sleutel
+            KIND_PLUGINS: Plugins
+            KIND_SYSTEM: Core
+            KIND_THEMES: "Thema's"
+            KIND_USER: 'Deze site'
+            LANGUAGES: Talen
+            LOADING: 'Vertalingen laden...'
+            NEXT: Volgende
+            NOTHING_TO_TRANSLATE: 'Op deze pagina ontbreken geen vertalingen.'
+            NO_RESULTS: 'Geen strings komen overeen met deze filters.'
+            NO_RESULTS_FILTERED: 'Je kijkt binnen: {filters}'
+            OVERRIDE_REMOVED: 'Overschrijving verwijderd'
+            PICK_A_TARGET_LANGUAGE: 'Voeg eerst een taalkolom toe — er is niets om naar te vertalen.'
+            PREVIOUS: Vorige
+            PROPOSALS_PENDING: '{count, plural, one {# suggestie om te beoordelen} other {# suggesties om te beoordelen}}'
+            REFRESH: Vernieuwen
+            REMOVE_FILTER: 'Dit filter verwijderen'
+            REVERT: Terugdraaien
+            REVERTED_TO_SHIPPED: 'Teruggezet naar de oorspronkelijke tekst'
+            REVERT_HELP: 'Verwijder deze overschrijving en keer terug naar wat de plugin of het thema biedt.'
+            SAVE: Opslaan
+            SAVED_UNKNOWN_KEY: 'Opgeslagen, maar niets bevat {key} — controleer de spelling'
+            SAVING: 'Bezig met opslaan...'
+            SCOPED_TO: 'Alleen {namespace}'
+            SCOPE_WHOLE_FILE: 'Elke overschrijving voor deze taal bewerken'
+            SEARCH_PLACEHOLDER: 'Zoek tekst of sleutel...'
+            SHIPPED_VALUE: 'Oorspronkelijk: {value}'
+            SHOWING: '{from}–{to} van {total} weergeven'
+            SKIPPED_COUNT: '{count, plural, one {# overgeslagen} other {# overgeslagen}}'
+            SKIP_EMPTY: 'De vertaalservice heeft niets geretourneerd voor deze string.'
+            SKIP_ICU: 'Dit bericht verandert met een getal of een keuze, en elke taal heeft zijn eigen set vormen nodig. Schrijf deze met de hand.'
+            SKIP_NOTHING: 'Deze string bevat alleen tijdelijke aanduidingen, dus er zijn geen woorden om te vertalen.'
+            SKIP_NO_SOURCE: 'Er is geen tekst in de brontaal om vanuit te vertalen.'
+            SKIP_PLACEHOLDERS: 'De vertaling kwam terug met gewijzigde tijdelijke aanduidingen, dus deze is genegeerd in plaats van opgeslagen.'
+            SOURCE: bron
+            SOURCE_LANGUAGE: Bron
+            STATE_MISSING: ontbreekt
+            STATE_MISSING_FALLBACK: 'terugvallen op'
+            STATE_OVERRIDDEN: overschreven
+            STATUS_ALL: Alles
+            STATUS_MISSING: Ontbrekend
+            STATUS_OVERRIDDEN: Overschreven
+            STATUS_UNKNOWN: Onbekend
+            SUGGESTED: Voorgesteld
+            SUPERSEDED_ACTION: 'Open vertalingen'
+            SUPERSEDED_BODY: 'De sectie Vertalingen doet alles wat deze plugin doet, en voegt zoeken toe in elke string op de site, dekking per taal, automatische vertaling en een rapport van keys die door niets meer worden aangeleverd. Deze plugin blijft ondersteund op Grav 1.7.'
+            SUPERSEDED_PENDING: '{count, plural, one {# overschrijving is} other {# overschrijvingen zijn}} nog steeds hier opgeslagen en kunnen worden geïmporteerd.'
+            SUPERSEDED_TITLE: 'Ingebouwd in Grav 2.0'
+            TITLE: Vertalingen
+            TRANSLATE_FAILED: 'Vertaling mislukt'
+            TRANSLATE_MISSING: 'Ontbrekende vertalen'
+            TRANSLATE_ROW: 'Stel vertalingen voor voor deze string in elke getoonde taal'
+            TRANSLATE_THIS: 'Stel een vertaling voor voor deze string'
+            TRANSLATE_UNAVAILABLE_FIND_IT: 'Verkrijg de plugin'
+            TRANSLATE_UNAVAILABLE_NOT_CONFIGURED: 'AI Translate heeft nog geen vertalingsprovider ingesteld, dus automatische vertaling is niet beschikbaar.'
+            TRANSLATE_UNAVAILABLE_NOT_ENABLED: 'AI Translate is geïnstalleerd maar uitgeschakeld, dus automatische vertaling is niet beschikbaar.'
+            TRANSLATE_UNAVAILABLE_NOT_INSTALLED: 'AI-aangedreven vertaling van ontbrekende strings is beschikbaar met de AI Translate premium plugin.'
+            TRANSLATE_UNAVAILABLE_OPEN_IT: 'Open de instellingen'
+            TRANSLATING: Vertalen...
+            UNKNOWN_KEYS_SAVED: 'Opgeslagen, maar niets levert deze keys aan'
+            UNKNOWN_KEY_HELP: 'Geen plugin, thema of core-bestand bevat deze sleutel. Het is waarschijnlijk een typefout of een overblijfsel van iets dat niet langer is geïnstalleerd.'
+            YAML_HELP: 'Plak of bewerk overrides direct. Waarden die overeenkomen met wat de plugin of het thema al aanbiedt, worden verwijderd, zodat het bestand alleen echte wijzigingen bevat.'
+            YAML_PLACEHOLDER: |-
+                MIJN_PLUGIN:
+                  EEN_SLEUTEL: Uw tekst hier
+            YAML_SAVED: '{count, plural, =0 {Geen overrides meer in {lang}} one {# override opgeslagen in {lang}} other {# overrides opgeslagen in {lang}}}'
+        TRANSLATIONS_FALLBACK: 'Terugval voor vertalingen'
+        TRANSLATIONS_FALLBACK_HELP: 'Terugvallen op ondersteunde vertalingen als de actieve taal niet bestaat'
+        TWIG_3_COMPATIBILITY: 'Twig 3-compatibiliteit'
+        TWIG_3_COMPATIBILITY_HELP: 'Automatisch herschrijven inschakelen voor verouderde Twig 1/2-syntaxis die niet werkt met Twig 3 (bijvoorbeeld <code>for ... if ...</code> guards).'
+        TWIG_CACHING: Twig-caching
+        TWIG_CACHING_HELP: 'Controleer het Twig-cachemechanisme. Laat dit ingeschakeld voor optimale prestaties.'
+        TWIG_CONTENT: 'Twig in inhoud'
+        TWIG_CONTENT_CONFIG_ACCESS: 'Toegang tot configuratievariabelen in Twig toestaan'
+        TWIG_CONTENT_CONFIG_ACCESS_HELP: 'Of de <code>config</code> Twig-variabele leesbaar is vanuit pagina-inhoud. Wanneer uit (standaard), levert het lezen van <code>config.system.title</code> vanuit een pagina niets op. Wanneer aan, is <code>config</code> beschikbaar maar nog steeds gefilterd door <code>config_denied_paths</code> (zie Twig Sandbox hieronder) zodat referenties en andere gevoelige subbomen verborgen blijven.'
+        TWIG_CONTENT_EDITOR_ENABLED: 'Editors toestaan Twig in inhoud in/uit te schakelen'
+        TWIG_CONTENT_EDITOR_ENABLED_HELP: "Wanneer uit (standaard), is het Twig-selectievakje op het tabblad Geavanceerd van de pagina-editor alleen zichtbaar voor gebruikers met de machtiging <code>admin.pages_twig</code>, en pagina's waarop Twig al is ingeschakeld kunnen alleen door deze gebruikers worden bewerkt. Wanneer aan, kan iedereen met toegang tot pagina's bewerken Twig op afzonderlijke pagina's in/uit schakelen."
+        TWIG_CONTENT_HELP: 'Besturingselementen voor Twig ingebed in pagina-inhoud die door editors zijn gemaakt. Thema-templates op schijf worden niet beïnvloed door deze instellingen; ze zijn alleen van toepassing op Twig die auteurs in paginainhoud of frontmatter plaatsen.'
+        TWIG_CONTENT_PROCESS_ENABLED: 'Twig in inhoud inschakelen'
+        TWIG_CONTENT_PROCESS_ENABLED_HELP: "Pagina's met <code>process: twig: true</code> in hun frontmatter (en de site-brede <code>system.pages.frontmatter.process_twig</code> opt-in) toestaan om Twig daadwerkelijk uit te voeren. <strong>Standaard uitgeschakeld in Grav 2.0.</strong> Het uitgeschakeld laten van deze optie vermindert het oppervlak van aanvallen via sjablooninjectie, maar verbreekt elke pagina die Twig in het hoofdtekst nodig heeft."
+        TWIG_DEBUG: Twig-debug
+        TWIG_DEBUG_HELP: 'Biedt de optie om de Twig Debugger-extensie niet te laden'
+        TWIG_FIRST: 'Twig eerst verwerken'
+        TWIG_FIRST_HELP: 'Als u Twig-paginaverwerking hebt ingeschakeld, kunt u Twig configureren om vóór of na markdown te verwerken'
+        TWIG_SANDBOX: 'Twig Sandbox'
+        TWIG_SANDBOX_ADMIN_HINT: 'Hint-opmerking voor beheerder'
+        TWIG_SANDBOX_ADMIN_HINT_HELP: 'Wanneer de sandbox een expressie blokkeert, voegt u een eenregelige HTML-opmerking toe aan de weergegeven pagina, zodat super-admins die de bron bekijken zien dat iets is gefilterd. Bezoekers en niet-beheerders zien niets.'
+        TWIG_SANDBOX_ALLOWED_FILTERS: 'Toegestane filters'
+        TWIG_SANDBOX_ALLOWED_FILTERS_HELP: 'Twig-filters die pagina-inhoud mag toepassen.'
+        TWIG_SANDBOX_ALLOWED_FUNCTIONS: 'Toegestane functies'
+        TWIG_SANDBOX_ALLOWED_FUNCTIONS_HELP: 'Twig-functies die pagina-inhoud mag aanroepen.'
+        TWIG_SANDBOX_ALLOWED_METHODS: 'Toegestane methoden'
+        TWIG_SANDBOX_ALLOWED_METHODS_HELP: 'Per-klassenlijsten met objectmethoden die pagina-inhoud mag aanroepen.'
+        TWIG_SANDBOX_ALLOWED_PROPERTIES: 'Toegestane eigenschappen'
+        TWIG_SANDBOX_ALLOWED_PROPERTIES_HELP: 'Per-klassenlijsten met objecteigenschappen die pagina-inhoud mag lezen.'
+        TWIG_SANDBOX_ALLOWED_TAGS: 'Toegestane tags'
+        TWIG_SANDBOX_ALLOWED_TAGS_HELP: 'Twig-tags die pagina-inhoud mag gebruiken. Voeg alleen tags toe waarvan u de effecten aan auteurs wilt blootstellen.'
+        TWIG_SANDBOX_CLASS: Klasse
+        TWIG_SANDBOX_ENABLED: 'Twig sandbox inschakelen'
+        TWIG_SANDBOX_ENABLED_HELP: 'Rendert pagina-inhoud die door editors is gemaakt in een op allowlist gebaseerde Twig SecurityPolicy. <strong>Het uitschakelen van deze optie verwijdert de enige bescherming tegen aanvallen via sjablooninjectie via pagina-inhoud</strong>: elk account met redacteurtoegang (of iedereen die het bestandssysteem compromitteert) kan willekeurige PHP via Twig uitvoeren. Schakel alleen uit als een site daadwerkelijk containertoepassing vanuit pagina-inhoud nodig heeft en u vertrouwt volledig op elke auteur.'
+        TWIG_SANDBOX_HELP: 'Allowlist van Twig-tags, filters, functies, methoden en eigenschappen die pagina-inhoudssjablonen mogen gebruiken. Door editors gemaakte inhoud wordt via deze sandbox weergegeven, zodat een gecompromitteerde auteur of sjablooninjectiebug niet in de bredere container kan bereiken.'
+        TWIG_SANDBOX_LOGGING: 'Schendingen registreren'
+        TWIG_SANDBOX_LOGGING_HELP: 'Schrijf alle geblokkeerde expressies naar <code>logs/twig-sandbox.log</code>. Nuttig bij het afstemmen van de allowlist; uitschakelen in productie om logs rustig te houden.'
+        TWIG_SANDBOX_METHODS: Methoden
+        TWIG_SANDBOX_PROPERTIES: Eigenschappen
+        TWIG_TEMPLATING: 'Twig Templating'
+        TYPE: Type
+        UNPUBLISHED_DATE: 'Publicatiedatum ongedaan maken'
+        UNPUBLISHED_DATE_HELP: 'Kan een datum verstrekken om publicatie automatisch ongedaan te maken.'
+        UPDATE: Bijwerken
+        UPLOADS_DANGEROUS_EXTENSIONS: 'Gevaarlijke extensies'
+        UPLOADS_DANGEROUS_EXTENSIONS_HELP: 'Deze extensies blokkeren zodat ze niet kunnen worden geüpload, ongeacht de geaccepteerde MIME-types'
+        UPLOADS_SECURITY: Uploadsbeveiliging
+        USERNAME_HELP: 'Gebruikersnaam moet tussen 3 en 16 tekens lang zijn, inclusief kleine letters, nummers, underscores en koppeltekens. Hoofdletters, spaties en speciale tekens zijn niet toegestaan'
+        USERNAME_REGEX: 'Regex gebruikersnaam'
+        USERNAME_REGEX_HELP: 'Standaard: alleen kleine letters, cijfers, koppeltekens en underscores. 3 - 16 tekens'
+        USERS_FILTER:
+            BACKEND_ACCESS: Backendingang
+            CLEAR: Wissen
+            CLEAR_ALL: 'Filters wissen'
+            FILTER_BY_GROUP: 'Filteren op deze groep'
+            FILTER_BY_PERMISSION: 'Filteren op deze machtiging'
+            GROUP: Groep
+            GROUPS: Groepen
+            LOADING: Laden…
+            NO_MATCHES: 'Geen overeenkomsten'
+            NO_MATCHES_FILTERS: 'Geen gebruikers voldoen aan deze filters'
+            PERMISSION: Machtiging
+            TYPE_TO_FILTER: 'Typ om te filteren…'
+        USER_ACCOUNTS: Gebruikersaccounts
+        USE_GLOBAL: 'Globaal gebruiken'
+        VALIDATION:
+            FIELD_REQUIRED: '{label} is verplicht'
+            FORM_HAS_ERRORS: '{count, plural, one {# veld vereist uw aandacht} other {# velden vereisen uw aandacht}}'
+            REQUIRED_GENERIC: 'Dit veld is verplicht'
+            LIST_KEY_REQUIRED: '{key}: {label} is verplicht'
+            LIST_NEW_ROW_REQUIRED: 'Nieuw item: {label} is verplicht'
+            LIST_ROW_REQUIRED: 'Item {row}: {label} is verplicht'
+        VALID_LINK_ATTRIBUTES: 'Geldige linkattributen'
+        VALID_LINK_ATTRIBUTES_HELP: 'Attributen die automatisch aan het media-HTML-element worden toegevoegd'
+        VARY_ACCEPT_ENCODING: 'Accept-encoding variëren'
+        VARY_ACCEPT_ENCODING_HELP: 'Stelt de `Vary: Accept Encoding`-header in om te helpen met proxy- en CDN-caching'
+        VISIBLE: Zichtbaar
+        VISIBLE_HELP: 'Bepaalt of een pagina zichtbaar is in de navigatie.'
+        WRAPPED_SITE: 'Website ingepakt'
+        WRAPPED_SITE_HELP: "Zodat thema's/plug-ins kunnen zien of Grav door een ander platform is ingepakt"
+        XSS_DANGEROUS_TAGS: 'Gevaarlijke HTML-tags filteren'
+        XSS_DANGEROUS_TAGS_LIST: 'Lijst met gevaarlijke HTML-tags'
+        XSS_HTML_INLINE_STYLES: 'HTML inline-stijlen filteren'
+        XSS_INVALID_PROTOCOLS: 'Ongeldige protocollen filteren'
+        XSS_INVALID_PROTOCOLS_LIST: 'Lijst met ongeldige protocollen'
+        XSS_MOZ_BINDINGS: 'Moz-bindingen filteren'
+        XSS_ON_EVENTS: 'On-events filteren'
+        XSS_SECURITY: 'XSS-beveiliging voor inhoud'
+        XSS_WHITELIST_PERMISSIONS: 'Machtigingen in whitelist'
+        XSS_WHITELIST_PERMISSIONS_HELP: 'Gebruikers met deze machtigingen slaan de XSS-regels over wanneer inhoud wordt opgeslagen'
+        'YES': Ja
+        YUBIKEY_HELP: 'Plaats uw YubiKey in uw computer en klik op de knop om een OTP te genereren. De eerste 12 tekens zijn uw client-ID en worden opgeslagen.'
+        YUBIKEY_ID: YubiKey-ID
+        SECURITY_CHECK:
+            USER_FOLDER_EXPOSED_BODY: 'Bestanden in user/data, user/accounts en user/config kunnen direct via HTTP worden gedownload — inclusief certificaten, sleutels, tokens en databases. Dit betekent meestal dat je webserver de .htaccess-regels van Grav niet toepast.'
+            USER_FOLDER_EXPOSED_LEARN_MORE: 'Hoe beveilig je je webserver'
+            USER_FOLDER_EXPOSED_TITLE: 'Beveiligingsrisico: je gebruikersgegevensmappen zijn bereikbaar via het web'
+            COLLAPSE: Samenvouwen
+            SHOW_DETAILS: 'Toon details'
+            SNOOZE: Sluimeren
+            SNOOZE_HINT: 'Verberg deze waarschuwing voor 24 uur. Deze verschijnt eerder als er andere bestanden worden gevonden.'
+            STORAGE_EXPOSED_ALL: 'Elk testbestand kon worden gedownload, wat betekent dat je webserver de toegangsregels van Grav helemaal niet toepast. Controleer op Apache of AllowOverride toestaat dat de .htaccess van de site effectief is. Voeg op nginx, Caddy of IIS de beveiligingsregels uit de map webserver-configs van Grav toe.'
+            STORAGE_EXPOSED_BODY: 'De webserver heeft testbestanden geserveerd vanuit mappen die privé zouden moeten zijn. De hieronder vermelde bestandstypen kunnen opgeslagen inzendingen, back-ups of tijdelijke bestanden blootstellen. Vraag je host om directe toegang te blokkeren, of verplaats privé-opslag naar buiten de web-root.'
+            STORAGE_EXPOSED_BY_TYPE: 'Sommige bestandstypen werden geblokkeerd in deze mappen, terwijl andere gedownload konden worden. Dit betekent meestal dat er iets voor de regels van Grav staat, zoals nginx dat statische bestanden vóór Apache serveert en antwoordt voor algemene bestandstypen zoals .zip voordat de regels worden gecontroleerd. Blokkeer deze mappen ook in de configuratie van die laag.'
+            STORAGE_EXPOSED_CDN: 'Als de site achter een CDN zoals Cloudflare staat, leeg dan de cache nadat je dit hebt opgelost. Kopieën die daar al zijn opgeslagen, blijven downloadbaar totdat je dat doet.'
+            STORAGE_EXPOSED_COUNT: '{n, plural, one {# bestandstype} other {# bestandstypen}}'
+            STORAGE_EXPOSED_TITLE: 'Bestanden die privé zouden moeten zijn, kunnen vanaf deze site worden gedownload'
+            STORAGE_EXPOSED_TMP: 'Testbestanden in tmp/ konden worden gedownload, terwijl de overige mappen geblokkeerd waren. Je serverregels dateren waarschijnlijk van vóór Grav 2.1.7, de versie die tmp/ toevoegde aan de lijst met geblokkeerde mappen. Voeg tmp toe aan die lijst in je .htaccess, of in je nginx-, Caddy- of IIS-configuratie, zodat deze overeenkomt met de regels die standaard bij Grav worden meegeleverd.'
+        CONFIRM: Bevestigen
+        DEMO:
+            BANNER_COUNTDOWN: 'Volgende reset over {time}'
+            BANNER_LABEL: Demo-modus
+            BANNER_MESSAGE: 'Demo-modus — wijzigingen worden elke {minutes, plural, one{# minuut} other{# minuten}} gereset'
+            BANNER_READONLY: 'Alleen-lezen demo — wijzigingen zijn uitgeschakeld'
+        DOCUMENTATION: Documentatie
+        HTTP_ACCEPT_LANGUAGE_FALLBACK: 'Browser-taal fallbacks'
+        HTTP_ACCEPT_LANGUAGE_FALLBACK_HELP: 'Koppel niet-ondersteunde browser-talen aan ondersteunde talen bij het instellen van de taal vanuit de `http_accept_language` header. Dit voegt geen ondersteunde talen toe of creëert geen taalroutes.'
+        HTTP_ACCEPT_LANGUAGE_FALLBACK_SOURCE_HELP: 'Specificeer een niet-ondersteunde browser-taalcode, bijv. `hr` of `sr-Latn`.'
+        HTTP_ACCEPT_LANGUAGE_FALLBACK_TARGETS: Fallback-talen
+        HTTP_ACCEPT_LANGUAGE_FALLBACK_TARGETS_HELP: 'Voer een lijst met ondersteunde taalcodes in. De eerste ondersteunde taal zal worden gebruikt.'
+        README: README
+        REPORT_ISSUE: 'Meld een probleem'
+        UNSAVED_CHANGES_DIALOG:
+            LEAVE: Verlaten
+            LEAVE_MESSAGE: 'Je hebt niet-opgeslagen wijzigingen. Toch verlaten?'
+            STAY: Blijven
+            SWITCH_LANGUAGE: Wisselen
+            SWITCH_LANGUAGE_MESSAGE: 'Je hebt niet-opgeslagen wijzigingen. Toch van taal wisselen?'
+        API_CLIENT:
+            INVALID_JSON_DETAIL: 'Het antwoord van de server kon niet worden gelezen omdat het geen geldige JSON is. Mogelijk print er iets op de server extra output, zoals een PHP-waarschuwing, naast het API-antwoord. De browserconsole bevat de details.'
+            INVALID_JSON_TITLE: 'Onverwachte reactie van de server'
+            UNEXPECTED_RESPONSE_DETAIL: 'De server antwoordde met gegevens in een formaat dat dit scherm niet verwacht. De browserconsole bevat de details.'
+            UNEXPECTED_RESPONSE_TITLE: 'Onverwachte reactie van de server'
+            SERVER_PAGE_DETAIL: 'Je webserver heeft dit verzoek zelf beantwoord (HTTP {status}) in plaats van het door te sturen naar Grav. Een beveiligingsfilter op de server, zoals mod_security of een hosting-firewall, heeft dit mogelijk geblokkeerd. Je host of het foutenlogboek van de server kan vertellen welke regel is geactiveerd.'
+            SERVER_PAGE_TITLE: 'Geblokkeerd door de webserver'
+        CACHE_MODULES: 'Cache module-output'
+        CACHE_MODULES_HELP: 'Cache de gerenderde output van de modules op deze pagina. Gebruik dit alleen wanneer de modules aan iedere bezoeker dezelfde inhoud tonen. Modules met eigen Twig of een formulier, ingelogde bezoekers en formulierinzendingen worden altijd vers gerenderd. Bij het bewerken van slechts een gedeeltelijke template is een cache-opschoning nodig.'
+        DEBUGGER_FLEX_RENDER_HINTS: 'Flex Render-hints'
+        DEBUGGER_FLEX_RENDER_HINTS_HELP: "Plaats elk gerenderd Flex-object en elke collectie in een HTML-commentaar met de naam ervan, zodat de bron van een blok in de paginamarkup gevonden kan worden. Alleen van toepassing op HTML-pagina's."
+        FRONTMATTER_NATIVE_YAML: 'Snelle frontmatter-parsing'
+        FRONTMATTER_NATIVE_YAML_HELP: "Lees paginadocument-frontmatter met de libyaml PHP-extensie wanneer deze is geïnstalleerd; dit versnelt het opnieuw opbouwen van de paginacache. Het leest sommige waarden anders, dus controleer eerst je pagina's. Een niet-gequote datum blijft tekst in plaats van een timestamp te worden, en niet-gequote yes, no, on en off worden true of false."
+        GRAV_UPGRADE:
+            CONFIRM_MESSAGE: 'Dit zal Grav upgraden van v{current} naar v{target}. De site is mogelijk kortstondig onbereikbaar tijdens de upgrade.'
+            CONFIRM_TITLE: 'Grav core upgraden?'
+            FAILED: 'Grav-upgrade mislukt: {detail}'
+            INCOMPATIBLE_PACKAGE: '{name} {version} is gemarkeerd als compatibel met Grav {compatible}'
+            NO_DETAIL: 'de server gaf geen reden'
+            PREFLIGHT_MESSAGE: "De controles die vóór een upgrade worden uitgevoerd, hebben deze gestopt om deze redenen. Los ze op en probeer het opnieuw, of upgrade toch als je zeker weet dat deze plugins en thema's werken met de nieuwe versie."
+            PREFLIGHT_TITLE: 'Grav kan nog niet upgraden naar v{version}'
+            STILL_BLOCKED: 'Grav-upgrade is nog steeds geblokkeerd: {detail}'
+            UPGRADE_ANYWAY: 'Toch upgraden'
+            UPGRADING: 'Grav aan het upgraden naar v{version}…'
+        HELP: Help
+        HELP_FOR_LABEL: 'Help voor {label}'
+        IMAGES_PROGRESSIVE_JPEG: 'Progressieve JPEGs'
+        IMAGES_PROGRESSIVE_JPEG_HELP: 'Sla verkleinde en gecachte JPEGs op als progressief, zodat ze verschijnen als een wazig totaalbeeld dat scherp wordt in plaats van van boven naar beneden op te bouwen. Meestal ook kleiner. Heeft geen invloed op PNG, WebP of AVIF.'
+        MARKDOWN_OUTPUT: Markdown-uitvoer
+        MARKDOWN_OUTPUT_ABSOLUTE_URLS: "Absolute URL's"
+        MARKDOWN_OUTPUT_ABSOLUTE_URLS_HELP: "Zet root-relatieve links en afbeeldingen om in volledige URL's, zodat ze blijven werken zodra de Markdown de site heeft verlaten."
+        MARKDOWN_OUTPUT_ENABLED: "Pagina's als Markdown aanbieden"
+        MARKDOWN_OUTPUT_ENABLED_HELP: "Elke pagina kan worden opgehaald als Markdown door `.md` toe te voegen aan de URL, of door een `Accept:&nbsp;text/markdown` request header te verzenden. Gemaakt voor AI-agents en andere tekstclients. De pagina wordt gerenderd via het thema, teruggebracht tot de hoofdinhoud en geconverteerd, zodat lijsten, winkels en modulaire pagina's leesbaar zijn zoals ze worden weergegeven."
+        MARKDOWN_OUTPUT_FRONTMATTER: Frontmatter-blok
+        MARKDOWN_OUTPUT_FRONTMATTER_HELP: 'Begin de Markdown met een YAML-blok dat de titel, URL, datum, beschrijving en taxonomie bevat.'
+        MARKDOWN_OUTPUT_LINKS: Navigatiekoppelingen
+        MARKDOWN_OUTPUT_LINKS_HELP: "Beëindig de Markdown met links naar de bovenliggende, aangrenzende en onderliggende pagina's, zodat een agent de site kan doorlopen zonder de Markdown te verlaten."
+        MARKDOWN_OUTPUT_MAX_LINKS: 'Meeste onderliggende links'
+        MARKDOWN_OUTPUT_MAX_LINKS_HELP: "Het maximum aantal onderliggende pagina's dat in het navigatiegedeelte wordt vermeld. Nul vermeldt ze allemaal."
+        MARKDOWN_OUTPUT_TOKEN_HEADER: 'Token-aantal header'
+        MARKDOWN_OUTPUT_TOKEN_HEADER_HELP: "Verzend een `X-Markdown-Tokens` response header met een geschat aantal tokens, dezelfde header die Cloudflare's Markdown for Agents gebruikt."
+        NOTICES:
+            HEADING: '{count, plural, one {Melding} other {Meldingen}}'
+            HIDE: 'Meldingen verbergen'
+            SHOW: 'Meldingen tonen'
+        PAGES_LAZY_INDEX: 'Lazy page index'
+        PAGES_LAZY_INDEX_HELP: "Laad pagina's, routes en taxonomie op aanvraag vanuit een SQLite-index per pagina in plaats van één groot cachebestand. Auto gebruikt dit op sites met 1.000 pagina's of meer. Valt terug op de klassieke cache wanneer er geen database-engine beschikbaar is."
+        RETRY: 'Opnieuw proberen'
+        SESSION_LAZY: 'Start sessies alleen indien nodig'
+        SESSION_LAZY_HELP: 'Bezoekers zonder sessie-cookie krijgen pas een sessie als er iets in wordt opgeslagen, zoals een aanmelding, een formulier of een bericht. Hierdoor kunnen anonieme paginaweergaven worden gecached door een proxy of CDN. Plugins die gegevens opslaan bij elke paginaweergave starten nog steeds een sessie.'
+        UPDATE_CHANGELOG_TITLE: 'Wijzigingen in v{version}'
+        CHANGELOG:
+            BUGFIX: Bugfix
+            IMPROVED: Verbeterd
+            NEW: Nieuw
+            SECURITY: Beveiliging
+        CHANGELOG_NOT_AVAILABLE: 'Changelog niet beschikbaar.'
+        IMAGES_WATERMARK_ALL: 'Alle afbeeldingen van watermerk voorzien'
+        IMAGES_WATERMARK_ALL_HELP: 'Automatisch een watermerk plaatsen op elke afbeelding die de site serveert'
+        IMAGES_WATERMARK_BOTTOM: Onder
+        IMAGES_WATERMARK_CENTER: Midden
+        IMAGES_WATERMARK_IMAGE: Watermerkafbeelding
+        IMAGES_WATERMARK_IMAGE_HELP: 'Pad naar de afbeelding die als watermerk wordt gebruikt, zoals system://images/watermark.png'
+        IMAGES_WATERMARK_LEFT: Links
+        IMAGES_WATERMARK_POSITION_X: 'Horizontale positie'
+        IMAGES_WATERMARK_POSITION_X_HELP: 'Waar het watermerk van links naar rechts wordt geplaatst'
+        IMAGES_WATERMARK_POSITION_Y: 'Verticale positie'
+        IMAGES_WATERMARK_POSITION_Y_HELP: 'Waar het watermerk van boven naar beneden wordt geplaatst'
+        IMAGES_WATERMARK_RIGHT: Rechts
+        IMAGES_WATERMARK_SCALE: Watermarkschaal
+        IMAGES_WATERMARK_SCALE_HELP: 'Grootte van het watermerk als percentage van de afbeelding'
+        IMAGES_WATERMARK_TITLE: Watermerk
+        IMAGES_WATERMARK_TOP: Boven
+        PASSKEYS_FIELD:
+            ADD: 'Een passkey toevoegen'
+            ADDED: 'Passkey toegevoegd ({name}). Hiermee log je vanaf nu automatisch in.'
+            ADDED_ON: 'Toegevoegd op {date}'
+            ADD_FAILED: 'De passkey kon niet worden toegevoegd. Probeer het opnieuw.'
+            ALREADY_SAVED: 'Die wachtwoordbeheerder of dat apparaat bevat al een passkey voor dit account.'
+            CANCELLED: 'Er is geen passkey toegevoegd. Probeer het opnieuw wanneer je er klaar voor bent.'
+            CODE_REQUIRED: 'Voer je huidige 6-cijferige code in.'
+            CODE_WRONG: 'Die code is onjuist.'
+            CONTINUE: Doorgaan
+            CURRENT_CODE: 'Huidige 2FA-code'
+            CURRENT_PASSWORD: 'Huidig wachtwoord'
+            HELP: 'Een passkey laat je inloggen met je vingerafdruk, gezicht of apparaat-pincode, via een wachtwoordbeheerder of een beveiligingssleutel. Het werkt op de site en in Admin, en telt als beide inlogstappen.'
+            HELP_OTHER: 'Passkeys waarmee dit account inlogt. Verwijder er een als het apparaat of de wachtwoordbeheerder die de passkey bevat verloren is geraakt.'
+            LAST_USED: 'laatst gebruikt op {date}'
+            NAME_LABEL: 'Naam van passkey'
+            NAME_REQUIRED: 'Geef de passkey een naam.'
+            NEVER_USED: 'nog niet gebruikt'
+            NONE: 'Nog geen passkeys.'
+            NONE_OTHER: 'Dit account heeft geen passkeys.'
+            PASSWORD_REQUIRED: 'Voer je huidige wachtwoord in.'
+            PASSWORD_WRONG: 'Je huidige wachtwoord is onjuist.'
+            PROOF_CODE_ADD: 'Voer je huidige 6-cijferige 2FA-code in om een passkey toe te voegen.'
+            PROOF_PASSWORD_ADD: 'Voer je huidige wachtwoord in om een passkey toe te voegen.'
+            PROOF_UNAVAILABLE: 'Stel eerst een wachtwoord of 2FA in op je account. Passkeys kunnen niet worden toegevoegd of verwijderd met alleen een ingelogde sessie.'
+            REMOVE: Verwijderen
+            REMOVED: 'Passkey verwijderd ({name}).'
+            REMOVE_CONFIRM: '“{name}” verwijderen? Je kunt hiermee dan niet meer inloggen.'
+            REMOVE_CONFIRM_CODE: '“{name}” verwijderen? Je kunt hiermee dan niet meer inloggen. Voer je huidige 6-cijferige 2FA-code in om te bevestigen.'
+            REMOVE_CONFIRM_OTHER: '“{name}” verwijderen van {username}? Zij kunnen hiermee dan niet meer inloggen.'
+            REMOVE_CONFIRM_PASSWORD: '“{name}” verwijderen? Je kunt hiermee dan niet meer inloggen. Voer je huidige wachtwoord in om te bevestigen.'
+            REMOVE_FAILED: 'De passkey kon niet worden verwijderd.'
+            RENAME: Hernoemen
+            RENAMED: 'Passkey hernoemd.'
+            RENAME_FAILED: 'De passkey kon niet worden hernoemd.'
+            SAVE: Opslaan
+            SYNCED: gesynchroniseerd
+            SYNCED_HELP: 'Bewaard in een wachtwoordmanager die het synchroniseert over al je apparaten.'
+            TITLE: Passkeys
+            TOO_MANY: 'Te veel mislukte pogingen. Probeer het over een paar minuten opnieuw.'
+            UNSUPPORTED: 'Deze browser kan hier geen passkeys gebruiken.'
+            WAITING: 'Wachten op je passkey…'
+        PIPELINE_REMOTE_TIMEOUT: 'Time-out extern asset'
+        PIPELINE_REMOTE_TIMEOUT_HELP: 'Hoe lang er gewacht moet worden op een extern CSS- of JS-bestand (bijvoorbeeld een CDN-stylesheet) bij het bouwen van een pipeline. Als het niet op tijd binnenkomt, wordt de pagina gerenderd zonder die groep te bundelen en wordt het bij het volgende verzoek opnieuw geprobeerd'
+        README_NOT_AVAILABLE: 'README niet beschikbaar.'
+        SIDEBAR_EDIT:
+            CUSTOMIZE: 'Zijbalk aanpassen'
+            DIVIDER: Scheidingslijn
+            HIDE: 'Verberg {label}'
+            HINT: 'Sleep items om ze te verplaatsen, of focus op een hendel en gebruik de pijltjestoetsen. Het oog verbergt een item en de ster kiest de snelkoppelingen van een plugin die eronder getoond worden.'
+            MOVE: 'Verplaats {label}'
+            MOVED: '{label} verplaatst naar positie {position} van {total}'
+            RESET_DONE: 'Je zijbalk volgt weer die van de site'
+            RESTORE_BUILT_IN: 'Originele volgorde'
+            SAVED: 'Zijbalk opgeslagen'
+            SAVE_FAILED: 'Kon de zijbalk niet opslaan'
+            SAVE_FOR_EVERYONE: 'Opslaan voor iedereen'
+            SAVE_FOR_EVERYONE_HINT: 'Maak dit de zijbalk voor elke gebruiker die deze nog niet zelf heeft ingedeeld'
+            SAVE_FOR_EVERYONE_MESSAGE: 'Elke gebruiker die zijn eigen zijbalk nog niet heeft ingedeeld, zal deze volgorde zien. Iedereen kan zijn eigen zijbalk nog steeds aanpassen en het verbergen van een item verandert niets aan waar men toegang toe heeft.'
+            SAVE_FOR_EVERYONE_TITLE: 'Dit de zijbalk voor iedereen maken?'
+            SHOW: 'Toon {label}'
+            SITE_SAVED: 'Zijbalk opgeslagen voor iedereen'
+            STAR: 'Toon {label} in de zijbalk'
+            SUB_ITEMS: 'Snelkoppelingen ({count} van {total} met ster)'
+            UNSTAR: 'Verwijder {label} uit de zijbalk'
+            USE_SITE_DEFAULT: 'Gebruik de zijbalk van de site'
+        UNDO: 'Ongedaan maken'
+        UPDATE_CHANGELOG_EMPTY: 'Geen changelog-vermeldingen nieuwer dan de geïnstalleerde versie.'
+        UPDATE_CHANGELOG_FAILED: 'De changelog kon niet worden geladen.'
+        UPDATE_WHATS_NEW: 'Wat is er nieuw'
