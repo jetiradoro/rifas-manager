@@ -3,6 +3,8 @@ name: Deploy to Hetzner
 on:
   push:
     branches: [ "master" ]
+  workflow_dispatch:
+  
 
 concurrency:
   group: deploy-master
