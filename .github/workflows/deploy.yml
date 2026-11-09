@@ -1,0 +1,28 @@
+name: Deploy to Hetzner
+
+on:
+  push:
+    branches: [ "master" ]
+
+concurrency:
+  group: deploy-master
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ejecutar deploy remoto
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            cd "${{ secrets.APP_DIR }}"
+            git checkout .
+            git pull          
+            docker restart rifas-api
+            docker restart rifas-app
