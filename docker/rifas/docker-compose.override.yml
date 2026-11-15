@@ -1,0 +1,12 @@
+# Solo desarrollo: monta el código fuente. Se carga automáticamente con `docker compose up`.
+# En producción desplegar con: docker compose -f docker-compose.yml up -d --build
+services:
+  rifas-api:
+    volumes:
+      - ../../rifas-api:/app
+      - ./rifas-api/init-container.sh:/docker/init-container.sh:ro
+
+  rifas-app:
+    volumes:
+      - ../../rifas-app:/app
+      - ./rifas-app/init-container.sh:/docker/init-container.sh:ro

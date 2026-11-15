@@ -4,6 +4,7 @@ services:
     build:
       context: ../..
       dockerfile: docker/rifas/rifas-api/Dockerfile
+      target: ${API_TARGET:-dev}
       args:
         USER_ID: ${MAP_UUID}
         GROUP_ID: ${MAP_UUID}
@@ -14,10 +15,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       VIRTUAL_HOST: ${API_VIRTUAL_HOST}
       NPM_CONFIG_CACHE: /tmp/.npm
-    volumes:
-      - ../../rifas-api:/app
-      - ./rifas-api/init-container.sh:/docker/init-container.sh:ro
-    command: bash /docker/init-container.sh
+    init: true
     ports:
       - "8100:80"
     restart: unless-stopped
@@ -29,6 +27,7 @@ services:
     build:
       context: ../..
       dockerfile: docker/rifas/rifas-app/Dockerfile
+      target: ${APP_TARGET:-dev}
       args:
         USER_ID: ${MAP_UUID}
         GROUP_ID: ${MAP_UUID}
@@ -39,10 +38,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       VIRTUAL_HOST: ${APP_VIRTUAL_HOST}
       NPM_CONFIG_CACHE: /tmp/.npm
-    volumes:
-      - ../../rifas-app:/app
-      - ./rifas-app/init-container.sh:/docker/init-container.sh:ro
-    command: bash /docker/init-container.sh
+    init: true
     restart: unless-stopped
     networks:
       - docker-net

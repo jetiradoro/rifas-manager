@@ -27,5 +27,8 @@ jobs:
             git checkout .
             git fetch origin
             git reset --hard origin/master
-            docker restart rifas-api
-            docker restart rifas-app
+            cd docker/rifas
+            # Construye (con caché de capas) y recrea solo los contenedores que cambian.
+            # -f evita cargar docker-compose.override.yml (bind mounts de dev).
+            docker compose -f docker-compose.yml up -d --build --remove-orphans
+            docker image prune -f

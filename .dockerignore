@@ -1,0 +1,8 @@
+.git
+docs
+docker/*
+!docker/rifas
+**/node_modules
+**/dist
+**/.quasar
+**/*.log
