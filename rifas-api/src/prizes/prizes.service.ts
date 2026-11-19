@@ -39,7 +39,7 @@ export class PrizesService {
 
   /**
    * Ejecuta el sorteo de una rifa.
-   * Selecciona aleatoriamente tickets vendidos para cada premio.
+   * Selecciona aleatoriamente tickets pagados para cada premio.
    * @param rifaId Identificador de la rifa
    * @returns Lista de premios generados ordenada (gordo primero)
    */
@@ -63,14 +63,14 @@ export class PrizesService {
     const soldTickets = await this.prisma.ticket.findMany({
       where: {
         rifaId,
-        status: { in: ['reserved', 'paid'] },
+        status: 'paid',
         personId: { not: null },
       },
     });
 
     if (soldTickets.length < rifa.n_prizes) {
       throw new BadRequestException(
-        `No hay suficientes tickets vendidos. Se necesitan al menos ${rifa.n_prizes} tickets vendidos para realizar el sorteo.`,
+        `No hay suficientes tickets pagados. Se necesitan al menos ${rifa.n_prizes} tickets pagados para realizar el sorteo.`,
       );
     }
 
@@ -151,7 +151,7 @@ export class PrizesService {
     const soldTickets = await this.prisma.ticket.findMany({
       where: {
         rifaId,
-        status: { in: ['reserved', 'paid'] },
+        status: 'paid',
         personId: { not: null },
         id: { notIn: alreadyWonTicketIds },
       },
@@ -159,7 +159,7 @@ export class PrizesService {
 
     if (soldTickets.length === 0) {
       throw new BadRequestException(
-        'No hay tickets vendidos disponibles para sortear.',
+        'No hay tickets pagados disponibles para sortear.',
       );
     }
 
@@ -236,10 +236,10 @@ export class PrizesService {
       );
     }
 
-    // Verificar que el ticket tiene persona asignada (está vendido)
-    if (!ticket.personId || !ticket.person) {
+    // Verificar que el ticket está pagado y tiene persona asignada
+    if (ticket.status !== 'paid' || !ticket.personId || !ticket.person) {
       throw new BadRequestException(
-        `El ticket número ${dto.ticketNumber} no está vendido. Solo se pueden asignar premios a tickets vendidos.`,
+        `El ticket número ${dto.ticketNumber} no está pagado. Solo se pueden asignar premios a tickets pagados.`,
       );
     }
 

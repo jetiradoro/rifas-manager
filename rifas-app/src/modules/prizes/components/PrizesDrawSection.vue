@@ -32,9 +32,11 @@
             <div class="text-subtitle2 text-weight-medium q-mb-sm">Sorteo no disponible</div>
             <div class="text-caption text-grey-7">
               {{
-                soldTicketsCount < rifa.n_prizes
-                  ? `Se necesitan al menos ${rifa.n_prizes} tickets vendidos (actualmente: ${soldTicketsCount})`
-                  : 'Todos los premios han sido sorteados'
+                !hasPendingDraws
+                  ? 'Todos los premios han sido sorteados'
+                  : paidTicketsCount === 0
+                    ? 'No hay ningún número pagado. Solo se sortean números pagados.'
+                    : 'No quedan números pagados sin premio para sortear.'
               }}
             </div>
           </q-card-section>
@@ -96,5 +98,5 @@ const {
 } = prizesContext;
 
 const prizesCount = computed(() => prizesStore.prizes.length);
-const soldTicketsCount = computed(() => ticketsStore.soldTicketsCount);
+const paidTicketsCount = computed(() => ticketsStore.paidTicketsCount);
 </script>

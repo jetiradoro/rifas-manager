@@ -26,6 +26,10 @@
       :reserved="reserved"
       :paid="paid"
       :ticket-search="ticketSearch"
+      :person-options="personOptions"
+      :selected-person-id="selectedPersonId"
+      :person-summary="personSummary"
+      @update:person-id="$emit('update:person-id', $event)"
       @update:status-filter="$emit('update:status-filter', $event)"
       @update:ticket-search="$emit('update:ticket-search', $event)"
     />
@@ -53,6 +57,9 @@ withDefaults(
     reserved: number;
     paid: number;
     ticketSearch: string;
+    personOptions: { id: number; label: string; count: number }[];
+    selectedPersonId: number | null;
+    personSummary: { total: number; paid: number; reserved: number } | null;
     actionsDisabled?: boolean;
   }>(),
   { actionsDisabled: false },
@@ -67,5 +74,6 @@ defineEmits<{
   (e: 'release'): void;
   (e: 'update:status-filter', value: string | null): void;
   (e: 'update:ticket-search', value: string): void;
+  (e: 'update:person-id', value: number | null): void;
 }>();
 </script>

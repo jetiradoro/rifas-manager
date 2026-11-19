@@ -125,7 +125,7 @@ describe('PrizesService', () => {
       expect(prismaMock.ticket.findMany).toHaveBeenCalledWith({
         where: {
           rifaId: 1,
-          status: { in: ['reserved', 'paid'] },
+          status: 'paid',
           personId: { not: null },
         },
       });
@@ -164,11 +164,11 @@ describe('PrizesService', () => {
 
       await expect(service.draw(1)).rejects.toThrow(BadRequestException);
       await expect(service.draw(1)).rejects.toThrow(
-        'No hay suficientes tickets vendidos. Se necesitan al menos 5 tickets vendidos para realizar el sorteo.',
+        'No hay suficientes tickets pagados. Se necesitan al menos 5 tickets pagados para realizar el sorteo.',
       );
     });
 
-    it('debería seleccionar solo tickets vendidos (reserved/paid)', async () => {
+    it('debería seleccionar solo tickets pagados', async () => {
       const mockRifa = createMockRifa({ n_prizes: 2 });
       const soldTickets = [
         createMockTicket({
@@ -200,7 +200,7 @@ describe('PrizesService', () => {
       expect(prismaMock.ticket.findMany).toHaveBeenCalledWith({
         where: {
           rifaId: 1,
-          status: { in: ['reserved', 'paid'] },
+          status: 'paid',
           personId: { not: null },
         },
       });

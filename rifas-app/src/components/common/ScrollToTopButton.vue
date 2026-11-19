@@ -1,21 +1,20 @@
 <template>
-  <transition name="fade">
-    <q-page-sticky
-      v-if="isVisible"
-      position="bottom-right"
-      :offset="offsetValue"
-      class="scroll-to-top-sticky"
-    >
+  <transition name="slide-up">
+    <div v-if="isVisible" class="scroll-to-top-wrapper">
       <q-btn
-        round
+        rounded
+        unelevated
+        dense
+        no-caps
         color="primary"
         icon="keyboard_arrow_up"
-        size="lg"
-        padding="sm"
+        label="Inicio"
+        size="sm"
+        class="scroll-to-top-pill"
         aria-label="Volver al inicio"
         @click="scrollToTop"
       />
-    </q-page-sticky>
+    </div>
   </transition>
 </template>
 
@@ -34,7 +33,9 @@ const isVisible = ref(false);
 const scrollTarget = ref<ScrollTarget | null>(null);
 const extraListener = ref<ScrollTarget | null>(null);
 const scrollThreshold = computed(() => props.threshold ?? 200);
-const offsetValue = computed<[number, number]>(() => props.offset ?? [16, 96]);
+const hideDelay = 2500;
+let lastScrollTop = 0;
+let hideTimer: ReturnType<typeof setTimeout> | null = null;
 const animationDuration = 450;
 let frameId: number | null = null;
 
@@ -73,9 +74,30 @@ function easeInOutQuad(t: number) {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 }
 
+/**
+ * Muestra el botón solo al subir con el scroll y lo oculta tras un tiempo de inactividad.
+ */
 function handleScroll() {
   const target = scrollTarget.value ?? window;
-  isVisible.value = getScrollTop(target) > scrollThreshold.value;
+  const current = getScrollTop(target);
+  const scrollingUp = current < lastScrollTop - 4;
+  const scrollingDown = current > lastScrollTop + 4;
+  lastScrollTop = current;
+
+  if (current <= scrollThreshold.value) {
+    isVisible.value = false;
+  } else if (scrollingUp) {
+    isVisible.value = true;
+  } else if (scrollingDown) {
+    isVisible.value = false;
+  }
+
+  if (hideTimer) clearTimeout(hideTimer);
+  if (isVisible.value) {
+    hideTimer = setTimeout(() => {
+      isVisible.value = false;
+    }, hideDelay);
+  }
 }
 
 function scrollToTop() {
@@ -130,22 +152,34 @@ onBeforeUnmount(() => {
   if (frameId) {
     cancelAnimationFrame(frameId);
   }
+  if (hideTimer) clearTimeout(hideTimer);
 });
 </script>
 
 <style scoped>
-.scroll-to-top-sticky {
+.scroll-to-top-wrapper {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
   z-index: 1100;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
+.scroll-to-top-pill {
+  padding: 2px 12px 2px 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
-.fade-enter-from,
-.fade-leave-to {
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
   opacity: 0;
+  transform: translate(-50%, 12px);
 }
 </style>

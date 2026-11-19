@@ -37,8 +37,13 @@ export function useRifaPrizes({ rifa }: UseRifaPrizesOptions) {
   const canStartDrawing = computed(() => {
     const currentRifa = rifa();
     if (!currentRifa) return false;
-    return ticketsStore.soldTicketsCount >= currentRifa.n_prizes;
+    // Solo se sortean tickets pagados que aún no tengan premio
+    // Durante una animación en curso se mantiene visible hasta mostrar el ganador
+    if (activeDrawInProgress.value !== null) return true;
+    return ticketsStore.paidTicketsCount > prizesStore.prizes.length && hasPendingDraws.value;
   });
+
+  const hasPaidTickets = computed(() => ticketsStore.paidTicketsCount > 0);
 
   const hasPrizes = computed(() => {
     if (activeDrawInProgress.value !== null) {
@@ -63,7 +68,7 @@ export function useRifaPrizes({ rifa }: UseRifaPrizesOptions) {
   const canAssignManualPrize = computed(() => {
     const currentRifa = rifa();
     if (!currentRifa) return false;
-    return assignedPrizeOrders.value.length < currentRifa.n_prizes;
+    return hasPaidTickets.value && assignedPrizeOrders.value.length < currentRifa.n_prizes;
   });
 
   /**

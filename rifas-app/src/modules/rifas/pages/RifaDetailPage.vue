@@ -38,6 +38,9 @@
               :reserved="ticketsStore.reservedTicketsCount"
               :paid="ticketsStore.paidTicketsCount"
               :ticket-search="ticketNumberSearch"
+              :person-options="personOptions"
+              :selected-person-id="selectedPersonId"
+              :person-summary="personSummary"
               :actions-disabled="isRifaFinished"
               @update:multi-select-mode="onMultiSelectToggle"
               @cancel-selection="clearSelection"
@@ -47,6 +50,7 @@
               @release="confirmBulkRelease"
               @update:status-filter="setStatusFilter"
               @update:ticket-search="onTicketSearch"
+              @update:person-id="selectedPersonId = $event"
             />
           </div>
 
@@ -151,6 +155,9 @@ const {
   selectedTicketNumbers,
   selectedStatusFilter,
   ticketNumberSearch,
+  selectedPersonId,
+  personOptions,
+  personSummary,
   filteredTickets,
   allSelectedAreAvailable,
   hasSelectedReserved,

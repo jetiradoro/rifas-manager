@@ -27,12 +27,48 @@ export function useRifaTickets(options: UseRifaTicketsOptions) {
   const selectedTicketNumbers = ref<number[]>([]);
   const selectedStatusFilter = ref<string | null>(null);
   const ticketNumberSearch = ref('');
+  const selectedPersonId = ref<number | null>(null);
+
+  /**
+   * Personas con al menos un ticket reservado o pagado en la rifa (calculado en memoria).
+   */
+  const personOptions = computed(() => {
+    const map = new Map<number, { id: number; label: string; count: number }>();
+    for (const ticket of ticketsStore.tickets) {
+      if (!ticket.personId || !ticket.person || ticket.status === 'available') continue;
+      const entry = map.get(ticket.personId);
+      if (entry) {
+        entry.count++;
+      } else {
+        const fullName = `${ticket.person.name} ${ticket.person.surname ?? ''}`.trim();
+        map.set(ticket.personId, { id: ticket.personId, label: fullName, count: 1 });
+      }
+    }
+    return [...map.values()].sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  });
+
+  /**
+   * Resumen de tickets de la persona seleccionada (total, pagados y reservados).
+   */
+  const personSummary = computed(() => {
+    if (selectedPersonId.value === null) return null;
+    const own = ticketsStore.tickets.filter((t) => t.personId === selectedPersonId.value);
+    return {
+      total: own.length,
+      paid: own.filter((t) => t.status === 'paid').length,
+      reserved: own.filter((t) => t.status === 'reserved').length,
+    };
+  });
 
   const filteredTickets = computed(() => {
     let list = ticketsStore.sortedTickets;
 
     if (selectedStatusFilter.value) {
       list = list.filter((ticket) => ticket.status === selectedStatusFilter.value);
+    }
+
+    if (selectedPersonId.value !== null) {
+      list = list.filter((ticket) => ticket.personId === selectedPersonId.value);
     }
 
     const term = ticketNumberSearch.value.trim();
@@ -304,6 +340,9 @@ export function useRifaTickets(options: UseRifaTicketsOptions) {
     handleTicketSelect,
     clearSelection,
     onTicketSearch,
+    selectedPersonId,
+    personOptions,
+    personSummary,
     onMultiSelectToggle,
     setStatusFilter,
     confirmBulkChangeStatus,

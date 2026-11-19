@@ -8,7 +8,7 @@
 
     <q-card-section>
       <div class="text-body2 text-grey-7 q-mb-md">
-        Asigna un número de ticket específico a un premio. El ticket debe estar vendido.
+        Asigna un número de ticket específico a un premio. El ticket debe estar pagado.
       </div>
 
       <q-form @submit="handleSubmit">
