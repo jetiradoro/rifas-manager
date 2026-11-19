@@ -1,5 +1,5 @@
 <template>
-  <q-page class="q-pa-md">
+  <q-page class="q-pa-md page-with-action">
     <section class="text-subtitle1 text-weight-bold q-mb-sm">Usuarios del sistema</section>
 
     <div class="users-list">
@@ -19,9 +19,7 @@
       </q-card>
     </div>
 
-    <q-page-sticky position="bottom-right" :offset="[12, 12]">
-      <q-btn round color="primary" padding="sm" icon="add" size="lg" @click="openForm()" />
-    </q-page-sticky>
+    <PageAddButton label="Nuevo usuario" @click="openForm()" />
 
     <q-dialog v-model="formOpen" persistent>
       <UserForm :user="editingUser" @saved="onSaved" @cancel="closeForm" />
@@ -30,6 +28,7 @@
 </template>
 
 <script setup lang="ts">
+import PageAddButton from 'src/components/common/PageAddButton.vue';
 import { onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { useUsersStore } from 'src/modules/users/stores/users-store';

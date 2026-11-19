@@ -77,6 +77,47 @@
       <router-view />
       <ScrollToTopButton />
     </q-page-container>
+
+    <!-- Barra de navegación inferior (solo móvil, solo iconos) -->
+    <q-footer v-if="$q.screen.lt.md" bordered class="bg-white text-grey-7 mobile-nav">
+      <q-tabs
+        :model-value="activeBottomTab"
+        dense
+        no-caps
+        active-color="primary"
+        indicator-color="primary"
+        class="mobile-nav-tabs"
+      >
+        <q-tab
+          v-for="item in bottomNavItems"
+          :key="item.name"
+          :name="item.name"
+          :icon="item.icon"
+          :aria-label="item.label"
+          @click="navigateTo(item.route)"
+        />
+
+        <q-tab name="settings" icon="settings" aria-label="Configuración">
+          <q-menu anchor="top middle" self="bottom middle" :offset="[0, 8]">
+            <q-list style="min-width: 180px">
+              <q-item
+                v-for="item in settingsItems"
+                :key="item.name"
+                v-close-popup
+                clickable
+                :active="isActiveRoute([item.route])"
+                @click="navigateTo(item.route)"
+              >
+                <q-item-section avatar>
+                  <q-icon :name="item.icon" />
+                </q-item-section>
+                <q-item-section>{{ item.label }}</q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
+        </q-tab>
+      </q-tabs>
+    </q-footer>
   </q-layout>
 </template>
 
@@ -155,6 +196,52 @@ const menuItems = computed(() => {
 });
 
 /**
+ * Accesos principales de la barra inferior móvil (solo iconos).
+ * Personas solo es visible para administradores.
+ */
+const bottomNavItems = computed(() => [
+  {
+    name: 'rifas',
+    label: 'Rifas',
+    icon: 'confirmation_number',
+    route: 'rifas',
+    activeRoutes: ['rifas', 'rifa-detail'],
+  },
+  ...(authStore.isAdmin
+    ? [
+        {
+          name: 'persons',
+          label: 'Personas',
+          icon: 'people',
+          route: 'persons',
+          activeRoutes: ['persons', 'person-detail'],
+        },
+      ]
+    : []),
+]);
+
+/**
+ * Opciones del submenú emergente de Configuración.
+ */
+const settingsItems = computed(() => [
+  ...(authStore.isAdmin
+    ? [{ name: 'users', label: 'Usuarios', icon: 'admin_panel_settings', route: 'users' }]
+    : []),
+  { name: 'profile', label: 'Mi perfil', icon: 'account_circle', route: 'profile' },
+]);
+
+/**
+ * Pestaña activa de la barra inferior según la ruta actual.
+ */
+const activeBottomTab = computed(() => {
+  const current = bottomNavItems.value.find((item) =>
+    item.activeRoutes.includes(route.name as string),
+  );
+  if (current) return current.name;
+  return settingsItems.value.some((item) => item.route === route.name) ? 'settings' : null;
+});
+
+/**
  * Color del rol del usuario.
  */
 const roleColor = computed(() => {
@@ -219,3 +306,17 @@ function logout() {
   });
 }
 </script>
+
+<style scoped>
+.mobile-nav {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mobile-nav-tabs :deep(.q-tab) {
+  min-height: 52px;
+}
+
+.mobile-nav-tabs :deep(.q-tab__icon) {
+  font-size: 26px;
+}
+</style>

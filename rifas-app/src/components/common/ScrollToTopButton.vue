@@ -160,7 +160,7 @@ onBeforeUnmount(() => {
 .scroll-to-top-wrapper {
   position: fixed;
   left: 50%;
-  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(var(--scroll-top-bottom, 16px) + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   z-index: 1100;
 }
@@ -168,6 +168,16 @@ onBeforeUnmount(() => {
 .scroll-to-top-pill {
   padding: 2px 12px 2px 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.scroll-to-top-wrapper {
+  --scroll-top-bottom: 16px;
+}
+
+@media (max-width: 1023px) {
+  .scroll-to-top-wrapper {
+    --scroll-top-bottom: 68px;
+  }
 }
 
 .slide-up-enter-active,

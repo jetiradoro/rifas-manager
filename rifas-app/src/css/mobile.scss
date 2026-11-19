@@ -141,7 +141,7 @@
 
   // Botones flotantes (FAB)
   .q-page-sticky {
-    .q-btn {
+    .q-btn:not(.add-bar-btn):not(.add-btn-desktop) {
       width: 56px !important;
       height: 56px !important;
     }
@@ -260,4 +260,8 @@
   .ticket-grid {
     grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)) !important;
   }
+}
+// Espacio inferior en páginas con botón de acción fijo
+.page-with-action {
+  padding-bottom: 76px !important;
 }

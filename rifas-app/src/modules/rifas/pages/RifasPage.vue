@@ -1,5 +1,5 @@
 <template>
-  <q-page class="q-pa-md">
+  <q-page class="q-pa-md page-with-action">
     <section class="text-subtitle1 text-weight-bold q-mb-sm">Rifas disponibles</section>
 
     <div class="rifas-grid">
@@ -19,9 +19,7 @@
       </q-card>
     </div>
 
-    <q-page-sticky v-if="isAdmin" position="bottom-right" :offset="[12, 12]">
-      <q-btn round color="primary" icon="add" padding="sm" size="lg" @click="openForm()" />
-    </q-page-sticky>
+    <PageAddButton v-if="isAdmin" label="Nueva rifa" @click="openForm()" />
 
     <q-dialog v-model="formOpen" persistent dark>
       <RifaForm :rifa="editingRifa" @saved="onSaved" @cancel="closeForm" />
@@ -30,6 +28,7 @@
 </template>
 
 <script setup lang="ts">
+import PageAddButton from 'src/components/common/PageAddButton.vue';
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useRifasStore, type Rifa } from 'src/modules/rifas/stores/rifas-store';
